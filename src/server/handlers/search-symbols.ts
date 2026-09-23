@@ -17,6 +17,8 @@ type SearchMatch = {
 	title: string;
 	type: 'article' | 'symbol';
 	framework?: string;
+	mediaUrl?: string;
+	mediaType?: string;
 };
 
 const looksLikeExactSymbol = (query: string): boolean => {
@@ -48,7 +50,8 @@ const isArticleKind = (kind: string): boolean => {
 		normalizedKind === 'article' ||
 		normalizedKind === 'overview' ||
 		normalizedKind === 'tutorial' ||
-		normalizedKind === 'guide'
+		normalizedKind === 'guide' ||
+		normalizedKind === 'ui_preview'
 	);
 };
 
@@ -56,14 +59,20 @@ const formatMatch = (match: SearchMatch): string[] => {
 	const platforms =
 		match.platforms.length > 0 ? match.platforms.join(', ') : 'All platforms';
 	const frameworkInfo = match.framework ? ` (${match.framework})` : '';
-	return [
+	const lines = [
 		`### ${match.title}${frameworkInfo}`,
 		`   • **Kind:** ${match.kind}`,
 		`   • **Path:** ${match.path}`,
 		`   • **Platforms:** ${platforms}`,
 		...(match.abstract ? [`   ${match.abstract}`] : []),
-		'',
 	];
+
+	if (match.mediaUrl) {
+		lines.push(`   ![Visual Preview](${match.mediaUrl})`);
+	}
+
+	lines.push('');
+	return lines;
 };
 
 const formatNoResults = (queryMode: QueryMode): string[] => {
@@ -165,6 +174,8 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 								score: sym.score,
 								source: sym.source,
 								type: 'symbol',
+								mediaUrl: sym.mediaUrl,
+								mediaType: sym.mediaType,
 							}),
 						);
 					}
@@ -184,6 +195,8 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 								score: art.score,
 								source: art.source,
 								type: 'article',
+								mediaUrl: art.mediaUrl,
+								mediaType: art.mediaType,
 							}),
 						);
 					}

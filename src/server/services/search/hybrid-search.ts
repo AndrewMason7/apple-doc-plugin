@@ -9,6 +9,8 @@ export interface SearchOptions {
 export interface SearchResultItem extends DbSymbol {
   score: number;
   source: 'fts' | 'semantic' | 'hybrid';
+  mediaUrl?: string;
+  mediaType?: string;
 }
 
 export class HybridSearchEngine {
@@ -40,6 +42,8 @@ export class HybridSearchEngine {
           kind: item.kind,
           summary: item.summary,
           path: item.path,
+          mediaUrl: item.mediaUrl,
+          mediaType: item.mediaType,
           similarity,
         });
       }
@@ -93,6 +97,10 @@ export class HybridSearchEngine {
             if (existing) {
               existing.rrf += rrfBonus;
               existing.item.source = 'hybrid';
+              if (sem.mediaUrl && !existing.item.mediaUrl) {
+                existing.item.mediaUrl = sem.mediaUrl;
+                existing.item.mediaType = sem.mediaType;
+              }
             } else {
               const semItem: SearchResultItem = {
                 id: sem.id,
@@ -104,6 +112,8 @@ export class HybridSearchEngine {
                 platforms: [],
                 score: sem.similarity * 50,
                 source: 'semantic',
+                mediaUrl: sem.mediaUrl,
+                mediaType: sem.mediaType,
               };
               rrfScores.set(sem.id, { item: semItem, rrf: rrfBonus });
             }
