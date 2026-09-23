@@ -48,7 +48,20 @@ Add to your MCP configuration (`mcpServers`):
   }
 }
 ```
-*(Note: `GEMINI_API_KEY` is optional. If omitted, pure local SQLite FTS5 runs offline.)*
+### Environment Configuration
+
+Copy the template to create your local `.env`:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required | Description |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | Optional | Google Gemini API key for multimodal 3072-dim embeddings (`gemini-embedding-2`). Get one at [Google AI Studio](https://aistudio.google.com/). |
+| `APPLE_DOCS_DB_PATH` | Optional | Custom path to the SQLite index database (defaults to `data/apple-docs.db`). |
+
+*(Note: The server automatically loads `.env` natively at startup. If `GEMINI_API_KEY` is omitted, the engine runs pure local SQLite FTS5 offline.)*
 
 ### Local Development
 
@@ -65,6 +78,7 @@ npm test
 # (Optional) Re-crawl and update the pre-indexed Apple SDK database
 npm run build:index
 ```
+
 
 ---
 

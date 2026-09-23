@@ -13,7 +13,20 @@ import { GeminiSemanticSearch } from '../src/server/services/search/semantic-sea
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Load .env file natively if available
+if (typeof process.loadEnvFile === 'function') {
+  const projectEnv = join(__dirname, '../.env');
+  try {
+    if (existsSync(projectEnv)) {
+      process.loadEnvFile(projectEnv);
+    } else {
+      process.loadEnvFile();
+    }
+  } catch {}
+}
+
 const CORE_FRAMEWORKS = [
+
   'SwiftUI',
   'UIKit',
   'Foundation',

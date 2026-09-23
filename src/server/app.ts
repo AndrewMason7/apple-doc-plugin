@@ -30,6 +30,18 @@ export const createServer = () => {
 		},
 	);
 
+	// Ensure .env is loaded if createServer is invoked directly
+	if (typeof process.loadEnvFile === 'function') {
+		const projectEnv = join(__dirname, '../../.env');
+		try {
+			if (existsSync(projectEnv)) {
+				process.loadEnvFile(projectEnv);
+			} else {
+				process.loadEnvFile();
+			}
+		} catch {}
+	}
+
 	const client = new AppleDevDocsClient();
 	const state = new ServerState();
 
@@ -37,7 +49,7 @@ export const createServer = () => {
 	let db: AppleDocsDB | undefined;
 	let searchEngine: HybridSearchEngine | undefined;
 
-	const dbPath = join(__dirname, '../../data/apple-docs.db');
+	const dbPath = process.env.APPLE_DOCS_DB_PATH || join(__dirname, '../../data/apple-docs.db');
 	if (existsSync(dbPath)) {
 		try {
 			db = new AppleDocsDB(dbPath, { readonly: true });
