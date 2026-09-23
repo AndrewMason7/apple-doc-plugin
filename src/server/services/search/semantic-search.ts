@@ -134,17 +134,31 @@ export class GeminiSemanticSearch {
     }
   }
 
-  cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  cosineSimilarityWithNorm(
+    a: Float32Array,
+    normA: number,
+    b: Float32Array,
+    normB: number
+  ): number {
     if (a.length !== b.length || a.length === 0) return 0;
+    const denom = normA * normB;
+    if (denom <= 0) return 0;
     let dot = 0.0;
-    let normA = 0.0;
-    let normB = 0.0;
     for (let i = 0; i < a.length; i++) {
       dot += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
     }
-    const denom = Math.sqrt(normA) * Math.sqrt(normB);
-    return denom > 0 ? dot / denom : 0;
+    return dot / denom;
+  }
+
+  cosineSimilarity(a: Float32Array, b: Float32Array): number {
+    if (a.length !== b.length || a.length === 0) return 0;
+    let normASq = 0.0;
+    let normBSq = 0.0;
+    for (let i = 0; i < a.length; i++) {
+      normASq += a[i] * a[i];
+      normBSq += b[i] * b[i];
+    }
+    return this.cosineSimilarityWithNorm(a, Math.sqrt(normASq), b, Math.sqrt(normBSq));
   }
 }
+

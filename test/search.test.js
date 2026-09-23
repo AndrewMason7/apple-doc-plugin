@@ -84,3 +84,16 @@ test('HybridSearchEngine performs semantic vector match if items exist in DB', a
 
   db.close();
 });
+
+test('GeminiSemanticSearch computes cosine similarity with precomputed norms', () => {
+  const semantic = new GeminiSemanticSearch();
+  const v1 = new Float32Array([3, 4]); // norm = 5
+  const v2 = new Float32Array([6, 8]); // norm = 10
+  const sim = semantic.cosineSimilarityWithNorm(v1, 5, v2, 10);
+  assert(Math.abs(sim - 1.0) < 1e-6);
+
+  const v3 = new Float32Array([-4, 3]); // orthogonal, norm = 5
+  const simOrth = semantic.cosineSimilarityWithNorm(v1, 5, v3, 5);
+  assert(Math.abs(simOrth - 0.0) < 1e-6);
+});
+

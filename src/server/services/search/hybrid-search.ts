@@ -32,8 +32,29 @@ export class HybridSearchEngine {
     const items = this.db.getSemanticItems(framework);
     const matches: SemanticMatch[] = [];
 
+    let queryNormSq = 0.0;
+    for (let i = 0; i < queryVec.length; i++) {
+      queryNormSq += queryVec[i] * queryVec[i];
+    }
+    const queryNorm = Math.sqrt(queryNormSq);
+    if (queryNorm === 0) return [];
+
     for (const item of items) {
-      const similarity = this.semanticSearch.cosineSimilarity(queryVec, item.embedding);
+      let itemNorm = item.norm;
+      if (itemNorm === undefined) {
+        let normSq = 0.0;
+        for (let i = 0; i < item.embedding.length; i++) {
+          normSq += item.embedding[i] * item.embedding[i];
+        }
+        itemNorm = Math.sqrt(normSq);
+      }
+
+      const similarity = this.semanticSearch.cosineSimilarityWithNorm(
+        queryVec,
+        queryNorm,
+        item.embedding,
+        itemNorm
+      );
       if (similarity >= minSimilarity) {
         matches.push({
           id: item.id,
@@ -51,6 +72,7 @@ export class HybridSearchEngine {
 
     return matches.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
   }
+
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResultItem[]> {
     const limit = options.limit || 20;
