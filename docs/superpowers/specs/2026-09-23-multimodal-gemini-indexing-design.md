@@ -5,6 +5,7 @@
 `gemini-embedding-2` natively maps text and image pixels into the exact same 3072-dimensional vector space. In Apple's Developer Documentation, diagrams, layout previews, and Human Interface Guidelines (HIG) screenshots carry critical architectural context that text alone misses.
 
 This specification designs the multimodal upgrade for `apple-doc-mcp-server`:
+
 1. **Multimodal Media Ingestion**: Ephemerally downloads Apple layout preview images and diagrams during indexing, embeds their pixels alongside captions into the unified 3072-dimensional space, and stores the resulting vector + Apple CDN URL into SQLite.
 2. **Compact Database Schema**: Stores only the 3072-float vector and image CDN URL (`https://developer.apple.com/tutorials/images/...`), preventing binary image bloat in SQLite.
 3. **Multimodal Search & Presentation**: AI agents (Claude, Gemini, Cursor) querying via text or intent receive matching visual previews inline in markdown (`![Visual Preview](url)`), allowing multimodal reasoning on Apple UI components.
@@ -59,10 +60,11 @@ When a symbol or guide match contains an associated `media_url`:
 
 ```markdown
 ### NavigationSplitView (SwiftUI)
-   • **Kind:** struct
-   • **Path:** /documentation/swiftui/navigationsplitview
-   • **Platforms:** iOS 16.0+, macOS 13.0+
-   A view that presents views in two or three columns.
 
-   ![Visual Preview](https://developer.apple.com/tutorials/images/com.apple.SwiftUI/NavigationSplitView-hero@2x.png)
+• **Kind:** struct
+• **Path:** /documentation/swiftui/navigationsplitview
+• **Platforms:** iOS 16.0+, macOS 13.0+
+A view that presents views in two or three columns.
+
+![Visual Preview](https://developer.apple.com/tutorials/images/com.apple.SwiftUI/NavigationSplitView-hero@2x.png)
 ```

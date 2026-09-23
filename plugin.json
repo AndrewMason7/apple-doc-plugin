@@ -1,0 +1,24 @@
+{
+	"name": "apple-doc-plugin",
+	"displayName": "Apple Developer Documentation",
+	"version": "1.9.6",
+	"description": "Instant offline access to Apple Developer Documentation with smart SQLite FTS5 search, wildcard matching, multimodal UI layout previews, and DocC markdown extraction.",
+	"author": {
+		"name": "MightyDillah"
+	},
+	"license": "MIT",
+	"homepage": "https://github.com/MightyDillah/apple-doc-mcp#readme",
+	"repository": "https://github.com/MightyDillah/apple-doc-mcp.git",
+	"keywords": [
+		"apple",
+		"documentation",
+		"ios",
+		"macos",
+		"swiftui",
+		"uikit",
+		"swift",
+		"mcp",
+		"sqlite",
+		"fts5"
+	]
+}

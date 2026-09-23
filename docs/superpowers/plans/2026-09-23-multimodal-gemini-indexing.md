@@ -30,46 +30,52 @@
 ### Task 1: SQLite Multimodal Schema Migration & Methods
 
 **Files:**
+
 - Modify: `src/server/db/schema.ts`
 - Modify: `src/server/db/database.ts`
 - Test: `test/db-multimodal.test.js`
 
 **Interfaces:**
+
 - Consumes: `better-sqlite3`
 - Produces: `SemanticItem` with `mediaUrl?: string` and `mediaType?: string`, `insertSemanticItem` and `getSemanticItems` supporting media columns.
 
 - [ ] **Step 1: Write test for multimodal semantic item insertion and retrieval**
 
 Create `test/db-multimodal.test.js`:
+
 ```javascript
 import assert from 'node:assert';
 import test from 'node:test';
 import { AppleDocsDB } from '../dist/server/db/database.js';
 
 test('AppleDocsDB stores and retrieves semantic items with media_url and media_type', () => {
-  const db = new AppleDocsDB(':memory:');
-  const vec = new Float32Array(3072);
-  vec[0] = 0.85;
+	const db = new AppleDocsDB(':memory:');
+	const vec = new Float32Array(3072);
+	vec[0] = 0.85;
 
-  db.insertSemanticItem({
-    id: 'preview-nav-split',
-    framework: 'SwiftUI',
-    title: 'NavigationSplitView Layout Preview',
-    kind: 'ui_preview',
-    summary: 'Three-column navigation layout on iPad.',
-    path: '/documentation/swiftui/navigationsplitview',
-    mediaUrl: 'https://developer.apple.com/tutorials/images/nav-split.png',
-    mediaType: 'image/png',
-    embedding: vec,
-  });
+	db.insertSemanticItem({
+		id: 'preview-nav-split',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView Layout Preview',
+		kind: 'ui_preview',
+		summary: 'Three-column navigation layout on iPad.',
+		path: '/documentation/swiftui/navigationsplitview',
+		mediaUrl: 'https://developer.apple.com/tutorials/images/nav-split.png',
+		mediaType: 'image/png',
+		embedding: vec,
+	});
 
-  const items = db.getSemanticItems('SwiftUI');
-  assert.strictEqual(items.length, 1);
-  assert.strictEqual(items[0].mediaUrl, 'https://developer.apple.com/tutorials/images/nav-split.png');
-  assert.strictEqual(items[0].mediaType, 'image/png');
-  assert.strictEqual(items[0].embedding[0], 0.85);
+	const items = db.getSemanticItems('SwiftUI');
+	assert.strictEqual(items.length, 1);
+	assert.strictEqual(
+		items[0].mediaUrl,
+		'https://developer.apple.com/tutorials/images/nav-split.png',
+	);
+	assert.strictEqual(items[0].mediaType, 'image/png');
+	assert.strictEqual(items[0].embedding[0], 0.85);
 
-  db.close();
+	db.close();
 });
 ```
 
@@ -100,25 +106,32 @@ git commit -m "feat(db): support media_url and media_type in semantic_items"
 ### Task 2: Multimodal Embedding in GeminiSemanticSearch
 
 **Files:**
+
 - Modify: `src/server/services/search/semantic-search.ts`
 - Test: `test/multimodal-search.test.js`
 
 **Interfaces:**
+
 - Consumes: Gemini API (`gemini-embedding-2`)
 - Produces: `embedMultimodal(text: string, imageBase64: string, mimeType: string): Promise<Float32Array | null>`
 
 - [ ] **Step 1: Write unit test for embedMultimodal**
 
 Create `test/multimodal-search.test.js`:
+
 ```javascript
 import assert from 'node:assert';
 import test from 'node:test';
 import { GeminiSemanticSearch } from '../dist/server/services/search/semantic-search.js';
 
 test('GeminiSemanticSearch validates embedMultimodal interface', async () => {
-  const search = new GeminiSemanticSearch(null); // disabled API
-  const res = await search.embedMultimodal('Sample caption', 'base64data', 'image/png');
-  assert.strictEqual(res, null); // Graceful null when no API key
+	const search = new GeminiSemanticSearch(null); // disabled API
+	const res = await search.embedMultimodal(
+		'Sample caption',
+		'base64data',
+		'image/png',
+	);
+	assert.strictEqual(res, null); // Graceful null when no API key
 });
 ```
 
@@ -148,40 +161,46 @@ git commit -m "feat(search): add embedMultimodal support to GeminiSemanticSearch
 ### Task 3: Media Reference Extraction in Indexer
 
 **Files:**
+
 - Modify: `src/server/services/indexer.ts`
 - Test: `test/indexer-media.test.js`
 
 **Interfaces:**
+
 - Consumes: Apple DocC JSON `references`
 - Produces: `extractMediaReferences(data: any): DocCMediaItem[]`
 
 - [ ] **Step 1: Write unit test for DocC media extraction**
 
 Create `test/indexer-media.test.js`:
+
 ```javascript
 import assert from 'node:assert';
 import test from 'node:test';
 import { extractMediaReferences } from '../dist/server/services/indexer.js';
 
 test('extractMediaReferences correctly parses Apple image references and trait URLs', () => {
-  const mockDocC = {
-    references: {
-      'sample-card.png': {
-        type: 'image',
-        alt: 'A screenshot showing iPad UI layout.',
-        variants: [
-          { traits: ['2x', 'light'], url: '/images/sample-card@2x.png' },
-          { traits: ['2x', 'dark'], url: '/images/sample-card~dark@2x.png' }
-        ]
-      }
-    }
-  };
+	const mockDocC = {
+		references: {
+			'sample-card.png': {
+				type: 'image',
+				alt: 'A screenshot showing iPad UI layout.',
+				variants: [
+					{ traits: ['2x', 'light'], url: '/images/sample-card@2x.png' },
+					{ traits: ['2x', 'dark'], url: '/images/sample-card~dark@2x.png' },
+				],
+			},
+		},
+	};
 
-  const media = extractMediaReferences(mockDocC);
-  assert.strictEqual(media.length, 1);
-  assert.strictEqual(media[0].alt, 'A screenshot showing iPad UI layout.');
-  assert.strictEqual(media[0].url, 'https://developer.apple.com/tutorials/images/sample-card@2x.png');
-  assert.strictEqual(media[0].mimeType, 'image/png');
+	const media = extractMediaReferences(mockDocC);
+	assert.strictEqual(media.length, 1);
+	assert.strictEqual(media[0].alt, 'A screenshot showing iPad UI layout.');
+	assert.strictEqual(
+		media[0].url,
+		'https://developer.apple.com/tutorials/images/sample-card@2x.png',
+	);
+	assert.strictEqual(media[0].mimeType, 'image/png');
 });
 ```
 
@@ -211,16 +230,19 @@ git commit -m "feat(indexer): add extractMediaReferences for Apple DocC visual a
 ### Task 4: Ingestion Pipeline Media Seeding
 
 **Files:**
+
 - Modify: `scripts/build-index.ts`
 - Test: Manual run of indexing media items into `data/apple-docs.db`
 
 **Interfaces:**
+
 - Consumes: `extractMediaReferences`, `embedMultimodal`, `AppleDocsDB`
 - Produces: Visual previews embedded into `semantic_items` table in `data/apple-docs.db`.
 
 - [ ] **Step 1: Update scripts/build-index.ts to fetch and embed DocC media references**
 
 When `canEmbed` is true:
+
 - Extract media references for each core framework.
 - Fetch image bytes, convert to base64.
 - Call `semantic.embedMultimodal(alt, base64, mimeType)`.
@@ -243,16 +265,19 @@ git commit -m "feat(pipeline): seed multimodal visual previews with gemini-embed
 ### Task 5: MCP Tool Visual Formatting
 
 **Files:**
+
 - Modify: `src/server/handlers/search-symbols.ts`
 - Test: `test/mcp-visual.test.js`
 
 **Interfaces:**
+
 - Consumes: `SearchResultItem` with `mediaUrl`
 - Produces: ToolResponse markdown containing `![Visual Preview](media_url)` when `mediaUrl` is present.
 
 - [ ] **Step 1: Write test for visual markdown output in search_symbols**
 
 Create `test/mcp-visual.test.js`:
+
 ```javascript
 import assert from 'node:assert';
 import test from 'node:test';
@@ -263,32 +288,35 @@ import { ServerState } from '../dist/server/state.js';
 import { AppleDevDocsClient } from '../dist/apple-client.js';
 
 test('search_symbols includes visual preview markdown when item has mediaUrl', async () => {
-  const db = new AppleDocsDB(':memory:');
-  const vec = new Float32Array(3072);
-  vec[0] = 1.0;
+	const db = new AppleDocsDB(':memory:');
+	const vec = new Float32Array(3072);
+	vec[0] = 1.0;
 
-  db.insertSemanticItem({
-    id: 'test-preview',
-    framework: 'SwiftUI',
-    title: 'NavigationSplitView Preview',
-    kind: 'ui_preview',
-    summary: 'Visual layout on iPad.',
-    path: '/documentation/swiftui/navigationsplitview',
-    mediaUrl: 'https://developer.apple.com/tutorials/images/test.png',
-    mediaType: 'image/png',
-    embedding: vec,
-  });
+	db.insertSemanticItem({
+		id: 'test-preview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView Preview',
+		kind: 'ui_preview',
+		summary: 'Visual layout on iPad.',
+		path: '/documentation/swiftui/navigationsplitview',
+		mediaUrl: 'https://developer.apple.com/tutorials/images/test.png',
+		mediaType: 'image/png',
+		embedding: vec,
+	});
 
-  const state = new ServerState();
-  const searchEngine = new HybridSearchEngine(db, { apiKey: null });
-  const client = new AppleDevDocsClient();
+	const state = new ServerState();
+	const searchEngine = new HybridSearchEngine(db, { apiKey: null });
+	const client = new AppleDevDocsClient();
 
-  // Test searchSemanticWithVector returns mediaUrl
-  const matches = searchEngine.searchSemanticWithVector(vec);
-  assert.strictEqual(matches.length, 1);
-  assert.strictEqual(matches[0].mediaUrl, 'https://developer.apple.com/tutorials/images/test.png');
+	// Test searchSemanticWithVector returns mediaUrl
+	const matches = searchEngine.searchSemanticWithVector(vec);
+	assert.strictEqual(matches.length, 1);
+	assert.strictEqual(
+		matches[0].mediaUrl,
+		'https://developer.apple.com/tutorials/images/test.png',
+	);
 
-  db.close();
+	db.close();
 });
 ```
 
@@ -319,6 +347,7 @@ git commit -m "feat(mcp): render visual preview markdown in search_symbols outpu
 ### Task 6: Full Verification & End-to-End Suite
 
 **Files:**
+
 - Modify: `README.md`
 - Test: All tests (`npm test`, `npm run typecheck`, E2E test)
 

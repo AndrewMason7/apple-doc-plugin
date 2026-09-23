@@ -2,14 +2,16 @@
 
 ## 1. Executive Summary
 
-This specification defines the architecture for transforming the `apple-doc-mcp-server` into a next-generation AI agent documentation plugin. 
+This specification defines the architecture for transforming the `apple-doc-mcp-server` into a next-generation AI agent documentation plugin.
 
 Current limitations in upstream include:
+
 - **Mandatory stateful selection**: Agents cannot search without first calling `choose_technology`.
 - **Empty cache on launch**: The existing `LocalSymbolIndex` relies on a local `.cache/` folder that starts empty on install.
 - **Pure substring/in-memory token matching**: No persistent database, no BM25 ranking, no semantic understanding.
 
 This design introduces:
+
 1. **Pre-indexed SQLite + FTS5 database** bundled with the plugin, enabling instant (<1ms) offline search across 100k+ core Apple symbols.
 2. **Stateless Global Search First**: Agents can query symbols directly without pre-selecting a framework, while maintaining backwards compatibility for existing workflows.
 3. **Hybrid Search with Gemini Embeddings**: Optional semantic search for natural language conceptual queries using Google Gemini embeddings (`text-embedding-004`), with seamless zero-config fallback to pure FTS5.
@@ -127,12 +129,14 @@ CREATE TABLE IF NOT EXISTS semantic_items (
 ## 4. Search & Ranking Algorithm
 
 ### 4.1. Lexical Scoring (FTS5 BM25 + Exact Match Booster)
+
 1. Exact match on symbol title (e.g. `query == "NavigationStack"`): $+100.0$ score boost.
 2. Prefix match (e.g. `query == "Navig*"`): FTS5 prefix expansion.
 3. Substring / CamelCase tokenization: Query decomposed into sub-tokens (`Navigation`, `Stack`) matched across `title`, `abstract`, and `framework`.
 4. Platform and framework filtering: If `framework` argument is provided, the query is scoped via `WHERE framework = ? COLLATE NOCASE`.
 
 ### 4.2. Semantic Scoring (Gemini `text-embedding-004`)
+
 1. If `GEMINI_API_KEY` is present:
    - Call Gemini API to compute 768-dimensional float embedding for query.
    - Calculate cosine similarity against `semantic_items` embeddings:
@@ -142,6 +146,7 @@ CREATE TABLE IF NOT EXISTS semantic_items (
    - Gracefully skip vector search; rely entirely on FTS5 without error.
 
 ### 4.3. Hybrid Merge (Reciprocal Rank Fusion - RRF)
+
 When both lexical and semantic candidates exist:
 $$\text{Score}(d) = \frac{1}{60 + \text{Rank}_{\text{fts}}(d)} + \frac{1}{60 + \text{Rank}_{\text{semantic}}(d)}$$
 Returns top $N$ unique items (default 10, max 25) with exact API signature, kind, framework, platform availability, and doc path.
@@ -151,6 +156,7 @@ Returns top $N$ unique items (default 10, max 25) with exact API signature, kind
 ## 5. Backward Compatibility & Migration
 
 All existing tools from upstream remain functional:
+
 - `discover_technologies`: Returns list of frameworks from DB/API.
 - `choose_technology`: Still updates state for tools that depend on it.
 - `search_symbols`: Now works **both** with or without a chosen technology! If no technology is chosen, it runs a global search. If a technology is chosen, it defaults to scoping to that technology unless overridden by an explicit argument.

@@ -5,48 +5,98 @@ import { fileURLToPath } from 'node:url';
 import { AppleDocsDB } from '../dist/server/db/database.js';
 import { HybridSearchEngine } from '../dist/server/services/search/hybrid-search.js';
 import { buildSearchSymbolsHandler } from '../dist/server/handlers/search-symbols.js';
-import { buildGetDocumentationHandler } from '../dist/server/handlers/get-documentation.js';
 import { ServerState } from '../dist/server/state.js';
-import { AppleDevDocsClient } from '../dist/apple-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-test('End-to-End: Global search on seeded 100k+ SQLite database', async () => {
-  const dbPath = join(__dirname, '../data/apple-docs.db');
-  const db = new AppleDocsDB(dbPath, { readonly: true });
-  const searchEngine = new HybridSearchEngine(db);
-  const client = new AppleDevDocsClient();
-  const state = new ServerState();
+const headings = (text) =>
+	[...text.matchAll(/^### (.+)$/gm)].map((match) => match[1]);
 
-  const searchHandler = buildSearchSymbolsHandler({
-    client,
-    state,
-    db,
-    searchEngine,
-  });
+test('End-to-End: shipped index ranks exact names, suffix wildcards, and platforms', async () => {
+	const dbPath = join(__dirname, '../data/apple-docs.db');
+	const db = new AppleDocsDB(dbPath, { readonly: true });
+	const searchEngine = new HybridSearchEngine(db, { apiKey: null });
+	const state = new ServerState();
 
-  // 1. Global search without choosing technology
-  const t0 = performance.now();
-  const resGlobal = await searchHandler({ query: 'NavigationSplitView' });
-  const t1 = performance.now();
-  const textGlobal = resGlobal.content[0].text;
+	const searchHandler = buildSearchSymbolsHandler({
+		client: {},
+		state,
+		db,
+		searchEngine,
+	});
 
-  console.log(`Global search took ${(t1 - t0).toFixed(2)}ms`);
-  assert(textGlobal.includes('NavigationSplitView'), 'Expected NavigationSplitView in results');
-  assert(textGlobal.includes('SwiftUI'), 'Expected SwiftUI framework tag');
+	const t0 = performance.now();
+	const resGlobal = await searchHandler({ query: 'NavigationSplitView' });
+	const t1 = performance.now();
+	const textGlobal = resGlobal.content[0].text;
 
-  // 2. Scoped search via framework param
-  const resUIKit = await searchHandler({ query: 'ViewController', framework: 'UIKit' });
-  const textUIKit = resUIKit.content[0].text;
-  assert(textUIKit.includes('UIViewController'), 'Expected UIViewController in UIKit results');
-  assert(textUIKit.includes('UIKit'), 'Expected UIKit framework tag');
+	console.log(`Global search took ${(t1 - t0).toFixed(2)}ms`);
+	assert.ok(textGlobal.includes('### NavigationSplitView (SwiftUI)'));
+	assert.strictEqual(state.getActiveTechnology(), undefined);
 
-  // 4. Verify FTS5 MATCH on real corpus
-  const ftsDirect = db.queryFTS('View', 'SwiftUI', 5);
-  assert(ftsDirect.length > 0, 'FTS5 MATCH View must return results');
-  assert(ftsDirect[0].score > 0, 'BM25 score must be positive');
+	const resUIKit = await searchHandler({
+		query: 'ViewController',
+		framework: 'UIKit',
+	});
+	const uikitHeadings = headings(resUIKit.content[0].text);
+	assert.ok(
+		uikitHeadings.some((heading) => heading.includes('UIViewController')),
+	);
+	assert.ok(uikitHeadings.every((heading) => heading.endsWith('(UIKit)')));
 
-  db.close();
+	const view = db.queryFTS('View', 'SwiftUI', 5);
+	assert.strictEqual(view[0].title, 'View');
+	assert.strictEqual(view[0].framework, 'SwiftUI');
+	assert.strictEqual(view[0].score, 1000);
+	assert.ok(view[0].platforms.includes('iOS'));
+	assert.ok(view[0].platforms.includes('macOS'));
+
+	const styles = db.queryFTS('*Style', undefined, 10);
+	assert.strictEqual(styles.length, 10);
+	assert.ok(styles.some((row) => row.title === 'ButtonStyle'));
+	assert.ok(styles.some((row) => row.title === 'ListStyle'));
+	assert.ok(styles.every((row) => /style$/i.test(row.title)));
+	assert.ok(styles.every((row) => row.isPrimaryType));
+	for (let i = 1; i < styles.length; i++) {
+		assert.ok(styles[i - 1].score >= styles[i].score);
+	}
+
+	const ios = await searchHandler({
+		query: 'NSWindow',
+		platform: 'iOS',
+		maxResults: 5,
+	});
+	const iosText = ios.content[0].text;
+	const iosHeadings = headings(iosText);
+	assert.ok(!iosHeadings.includes('NSWindow (AppKit)'));
+	assert.ok(!iosText.includes('(AppKit)'));
+	const iosPlatforms = [...iosText.matchAll(/\*\*Platforms:\*\* (.+)/g)].map(
+		(match) => match[1],
+	);
+	assert.ok(
+		iosPlatforms.every((platform) => platform.toLowerCase().includes('ios')),
+		`iOS filter leaked non-iOS rows: ${iosPlatforms.join(' | ')}`,
+	);
+
+	const macos = await searchHandler({
+		query: 'NSWindow',
+		platform: 'macOS',
+		maxResults: 5,
+	});
+	const macosHeadings = headings(macos.content[0].text);
+	assert.ok(macosHeadings.includes('NSWindow (AppKit)'));
+	assert.ok(macosHeadings.every((heading) => heading.endsWith('(AppKit)')));
+
+	const coverage = db['db']
+		.prepare(
+			`SELECT COUNT(*) AS symbols,
+              SUM(CASE WHEN platforms IS NULL OR platforms IN ('', '[]') THEN 1 ELSE 0 END) AS empty_platforms
+       FROM symbols`,
+		)
+		.get();
+	assert.ok(coverage.symbols > 60000);
+	assert.strictEqual(coverage.empty_platforms, 0);
+
+	db.close();
 });
-

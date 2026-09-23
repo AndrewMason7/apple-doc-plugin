@@ -131,7 +131,9 @@ export const registerTools = (server, context) => {
         if (!tool) {
             return {
                 isError: true,
-                content: [{ type: 'text', text: `Unknown tool: ${request.params.name}` }],
+                content: [
+                    { type: 'text', text: `Unknown tool: ${request.params.name}` },
+                ],
             };
         }
         try {

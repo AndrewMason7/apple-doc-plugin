@@ -11,7 +11,6 @@ export type ToolResponse = {
 	isError?: boolean;
 };
 
-
 export type ServerContext = {
 	client: AppleDevDocsClient;
 	state: ServerState;

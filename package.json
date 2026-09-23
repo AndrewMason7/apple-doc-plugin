@@ -10,11 +10,15 @@
 	"files": [
 		"dist/",
 		"data/apple-docs.db",
+		"bin/launcher.cjs",
+		"plugin.json",
+		"mcp_config.json",
+		"skills/",
+		"rules/",
 		"CHANGELOG.md",
 		"README.md",
 		"LICENSE"
 	],
-
 	"keywords": [
 		"mcp",
 		"apple",
@@ -38,13 +42,14 @@
 		"build:index": "tsx scripts/build-index.ts",
 		"test": "npm run build && node --test test/**/*.test.js",
 		"typecheck": "tsc --noEmit",
-
 		"lint": "eslint src",
 		"lint:fix": "eslint src --fix",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"check": "npm run typecheck && npm run lint && npm run format:check",
-		"start": "node dist/index.js"
+		"start": "node dist/index.js",
+		"plugin:validate": "agy plugin validate .",
+		"plugin:install": "agy plugin install ."
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",

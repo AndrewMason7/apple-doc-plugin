@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"apple-docs": {
+			"command": "node",
+			"args": ["${extensionPath}/bin/launcher.cjs"],
+			"env": {
+				"APPLE_DOCS_DB_PATH": "${extensionPath}/data/apple-docs.db"
+			}
+		}
+	}
+}

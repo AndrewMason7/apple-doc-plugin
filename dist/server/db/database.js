@@ -121,7 +121,9 @@ export class AppleDocsDB {
             const isTitleMatch = Boolean(r.title_match);
             const isPrimary = Boolean(r.is_primary_type);
             const titleLen = Number(r.title_len) || 0;
-            const score = (isTitleMatch ? 10.0 : 1.0) + (isPrimary ? 5.0 : 0) - Math.min(5, titleLen * 0.1);
+            const score = (isTitleMatch ? 10.0 : 1.0) +
+                (isPrimary ? 5.0 : 0) -
+                Math.min(5, titleLen * 0.1);
             return {
                 id: r.id,
                 framework: r.framework,
@@ -148,7 +150,10 @@ export class AppleDocsDB {
             return this.queryLikePattern(pattern, framework, limit);
         }
         // Strip characters that trigger FTS5 syntax errors
-        const sanitized = trimmed.replace(/["'*^:(){}[\]~+]/g, ' ').replace(/\s+/g, ' ').trim();
+        const sanitized = trimmed
+            .replace(/["'*^:(){}[\]~+]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
         if (!sanitized)
             return [];
         let ftsQuery = '';
@@ -167,9 +172,44 @@ export class AppleDocsDB {
         else {
             ftsQuery = tokens.map((t) => `"${t.replace(/\*+$/, '')}"*`).join(' AND ');
         }
+        const exactMatches = [];
+        if (!trimmed.includes('*') &&
+            !trimmed.includes('?') &&
+            !trimmed.includes(' ')) {
+            let exactSql = `
+        SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+        FROM symbols
+        WHERE title = ? COLLATE NOCASE
+      `;
+            const exactParams = [trimmed];
+            if (framework) {
+                exactSql += ` AND framework = ? COLLATE NOCASE`;
+                exactParams.push(framework);
+            }
+            exactSql += ` ORDER BY is_primary_type DESC LIMIT 5`;
+            try {
+                const exactRows = this.db
+                    .prepare(exactSql)
+                    .all(...exactParams);
+                for (const r of exactRows) {
+                    exactMatches.push({
+                        id: r.id,
+                        framework: r.framework,
+                        title: r.title,
+                        kind: r.kind,
+                        abstract: r.abstract,
+                        path: r.path,
+                        platforms: safeParsePlatforms(r.platforms),
+                        isPrimaryType: Boolean(r.is_primary_type),
+                        score: 1000.0,
+                    });
+                }
+            }
+            catch { }
+        }
         let sql = `
       SELECT s.id, s.framework, s.title, s.kind, s.abstract, s.path, s.platforms, s.is_primary_type,
-             bm25(symbols_fts) AS rank
+             bm25(symbols_fts, 10.0, 2.0, 1.0, 0.5) AS rank
       FROM symbols_fts f
       JOIN symbols s ON s.rowid = f.rowid
       WHERE symbols_fts MATCH ?
@@ -183,17 +223,29 @@ export class AppleDocsDB {
         params.push(limit);
         try {
             const rows = this.db.prepare(sql).all(...params);
-            return rows.map((r) => ({
-                id: r.id,
-                framework: r.framework,
-                title: r.title,
-                kind: r.kind,
-                abstract: r.abstract,
-                path: r.path,
-                platforms: safeParsePlatforms(r.platforms),
-                isPrimaryType: Boolean(r.is_primary_type),
-                score: -r.rank, // Invert BM25 so higher score is better match
-            }));
+            const seen = new Set();
+            const combined = [];
+            for (const m of exactMatches) {
+                seen.add(m.id);
+                combined.push(m);
+            }
+            for (const r of rows) {
+                if (!seen.has(r.id)) {
+                    seen.add(r.id);
+                    combined.push({
+                        id: r.id,
+                        framework: r.framework,
+                        title: r.title,
+                        kind: r.kind,
+                        abstract: r.abstract,
+                        path: r.path,
+                        platforms: safeParsePlatforms(r.platforms),
+                        isPrimaryType: Boolean(r.is_primary_type),
+                        score: -r.rank,
+                    });
+                }
+            }
+            return combined.slice(0, limit);
         }
         catch (err) {
             console.error('Warning: SQLite FTS5 MATCH failed, falling back to LIKE query:', err instanceof Error ? err.message : err);
@@ -234,12 +286,14 @@ export class AppleDocsDB {
     }
     getSymbolByPath(path) {
         const clean = path.startsWith('/') ? path.slice(1) : path;
-        const row = this.db.prepare(`
+        const row = this.db
+            .prepare(`
       SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
       FROM symbols
       WHERE path = ? OR path = ? OR id = ?
       LIMIT 1
-    `).get(clean, `/${clean}`, clean);
+    `)
+            .get(clean, `/${clean}`, clean);
         if (!row)
             return null;
         return {
@@ -254,7 +308,9 @@ export class AppleDocsDB {
         };
     }
     getFrameworks() {
-        const rows = this.db.prepare('SELECT DISTINCT framework FROM symbols ORDER BY framework').all();
+        const rows = this.db
+            .prepare('SELECT DISTINCT framework FROM symbols ORDER BY framework')
+            .all();
         return rows.map((r) => r.framework);
     }
     close() {

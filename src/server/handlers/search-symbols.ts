@@ -13,7 +13,13 @@ type SearchMatch = {
 	path: string;
 	platforms: string[];
 	score: number;
-	source: 'exact-resolution' | 'framework-references' | 'local-index' | 'fts' | 'semantic' | 'hybrid';
+	source:
+		| 'exact-resolution'
+		| 'framework-references'
+		| 'local-index'
+		| 'fts'
+		| 'semantic'
+		| 'hybrid';
 	title: string;
 	type: 'article' | 'symbol';
 	framework?: string;
@@ -121,7 +127,12 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		if (typeof query !== 'string' || query.trim().length === 0) {
 			return {
 				isError: true,
-				content: [{ type: 'text', text: 'Error: A non-empty "query" parameter is required.' }],
+				content: [
+					{
+						type: 'text',
+						text: 'Error: A non-empty "query" parameter is required.',
+					},
+				],
 			};
 		}
 
@@ -135,7 +146,8 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		const activeTechnology = state.getActiveTechnology();
 
 		// Determine target framework: explicit param takes priority, then active state
-		const targetFramework = args.framework || activeTechnology?.title || undefined;
+		const targetFramework =
+			args.framework || activeTechnology?.title || undefined;
 
 		// 1. If high-performance searchEngine (SQLite FTS5 + Gemini) is available, use it!
 		if (searchEngine) {
@@ -160,7 +172,6 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 			}
 
 			const topResults = filtered.slice(0, clampedMaxResults);
-
 
 			if (topResults.length > 0) {
 				const lines: string[] = [

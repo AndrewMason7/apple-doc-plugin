@@ -19,7 +19,8 @@ export class GeminiSemanticSearch {
             this.authDisabled = true;
         }
         else {
-            this.apiKey = apiKey === null ? undefined : apiKey || process.env.GEMINI_API_KEY;
+            this.apiKey =
+                apiKey === null ? undefined : apiKey || process.env.GEMINI_API_KEY;
             this.authDisabled = false;
         }
         this.modelName = modelName;
@@ -61,7 +62,9 @@ export class GeminiSemanticSearch {
                 return true;
             }
         }
-        if (process.env.K_SERVICE || process.env.GAE_SERVICE || process.env.CLOUD_RUN_JOB) {
+        if (process.env.K_SERVICE ||
+            process.env.GAE_SERVICE ||
+            process.env.CLOUD_RUN_JOB) {
             return true;
         }
         return false;
@@ -79,19 +82,20 @@ export class GeminiSemanticSearch {
         // 2. Application Default Credentials (ADC)
         try {
             const now = Date.now();
-            if (this.cachedAccessToken && this.cachedAccessToken.expiresAt > now + 60_000) {
+            if (this.cachedAccessToken &&
+                this.cachedAccessToken.expiresAt > now + 60_000) {
                 return { Authorization: `Bearer ${this.cachedAccessToken.token}` };
             }
             const client = await this.googleAuth.getClient();
             const tokenResult = await client.getAccessToken();
             const token = typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
             if (token && typeof token === 'string' && token.trim().length > 0) {
-                const expiresInSec = tokenResult?.res?.data?.expires_in;
                 const expiryDateMs = client?.credentials?.expiry_date;
-                const ttlMs = expiresInSec
-                    ? expiresInSec * 1000
-                    : expiryDateMs && expiryDateMs > now
-                        ? expiryDateMs - now
+                const expiresInSec = tokenResult?.res?.data?.expires_in;
+                const ttlMs = expiryDateMs && expiryDateMs > now
+                    ? expiryDateMs - now
+                    : expiresInSec
+                        ? expiresInSec * 1000
                         : 50 * 60 * 1000;
                 this.cachedAccessToken = {
                     token,
@@ -117,8 +121,11 @@ export class GeminiSemanticSearch {
     handleApiError(err, action) {
         if (axios.isAxiosError(err)) {
             const status = err.response?.status;
-            const isTimeout = err.code === 'ECONNABORTED' || err.message.toLowerCase().includes('timeout');
-            const isNetworkError = err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED';
+            const isTimeout = err.code === 'ECONNABORTED' ||
+                err.message.toLowerCase().includes('timeout');
+            const isNetworkError = err.code === 'ECONNRESET' ||
+                err.code === 'ENOTFOUND' ||
+                err.code === 'ECONNREFUSED';
             const isAuthError = status === 401 || status === 403;
             const isRateLimitOrServer = status === 429 || (status !== undefined && status >= 500);
             if (isTimeout || isNetworkError || isAuthError || isRateLimitOrServer) {
@@ -150,7 +157,8 @@ export class GeminiSemanticSearch {
             const values = response.data?.embedding?.values;
             if (!Array.isArray(values))
                 return null;
-            if (this.expectedDimensions !== undefined && values.length !== this.expectedDimensions) {
+            if (this.expectedDimensions !== undefined &&
+                values.length !== this.expectedDimensions) {
                 console.warn(`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`);
                 return null;
             }
@@ -194,7 +202,8 @@ export class GeminiSemanticSearch {
             const values = response.data?.embedding?.values;
             if (!Array.isArray(values))
                 return null;
-            if (this.expectedDimensions !== undefined && values.length !== this.expectedDimensions) {
+            if (this.expectedDimensions !== undefined &&
+                values.length !== this.expectedDimensions) {
                 console.warn(`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`);
                 return null;
             }

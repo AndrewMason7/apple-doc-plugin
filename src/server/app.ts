@@ -49,7 +49,9 @@ export const createServer = () => {
 	let db: AppleDocsDB | undefined;
 	let searchEngine: HybridSearchEngine | undefined;
 
-	const dbPath = process.env.APPLE_DOCS_DB_PATH || join(__dirname, '../../data/apple-docs.db');
+	const dbPath =
+		process.env.APPLE_DOCS_DB_PATH ||
+		join(__dirname, '../../data/apple-docs.db');
 	if (existsSync(dbPath)) {
 		try {
 			db = new AppleDocsDB(dbPath, { readonly: true });

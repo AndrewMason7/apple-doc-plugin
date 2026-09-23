@@ -37,7 +37,12 @@ export const buildGetDocumentationHandler = (context) => {
         if (typeof path !== 'string' || path.trim().length === 0) {
             return {
                 isError: true,
-                content: [{ type: 'text', text: 'Error: A non-empty "path" parameter is required.' }],
+                content: [
+                    {
+                        type: 'text',
+                        text: 'Error: A non-empty "path" parameter is required.',
+                    },
+                ],
             };
         }
         let activeTechnology = state.getActiveTechnology();
@@ -53,7 +58,6 @@ export const buildGetDocumentationHandler = (context) => {
                     url: `/documentation/${dbSym.framework.toLowerCase()}`,
                     abstract: [],
                 };
-                state.setActiveTechnology(activeTechnology);
             }
         }
         if (!activeTechnology) {
@@ -68,14 +72,26 @@ export const buildGetDocumentationHandler = (context) => {
                     url: `/documentation/${fw.toLowerCase()}`,
                     abstract: [],
                 };
-                state.setActiveTechnology(activeTechnology);
             }
         }
         if (!activeTechnology) {
             return noTechnology();
         }
         try {
-            const framework = await loadActiveFrameworkData(context);
+            const effectiveContext = state.getActiveTechnology()
+                ? context
+                : {
+                    ...context,
+                    state: new Proxy(state, {
+                        get(target, prop, receiver) {
+                            if (prop === 'getActiveTechnology') {
+                                return () => activeTechnology;
+                            }
+                            return Reflect.get(target, prop, receiver);
+                        },
+                    }),
+                };
+            const framework = await loadActiveFrameworkData(effectiveContext);
             const { data } = await resolveSymbol(client, activeTechnology, path);
             const title = data.metadata?.title || 'Symbol';
             const kind = data.metadata?.symbolKind || 'Unknown';
@@ -108,7 +124,9 @@ export const buildGetDocumentationHandler = (context) => {
                                 '',
                                 bold('Technology', dbSym.framework),
                                 bold('Type', dbSym.kind),
-                                bold('Platforms', dbSym.platforms.length > 0 ? dbSym.platforms.join(', ') : 'All platforms'),
+                                bold('Platforms', dbSym.platforms.length > 0
+                                    ? dbSym.platforms.join(', ')
+                                    : 'All platforms'),
                                 '',
                                 header(2, 'Overview'),
                                 dbSym.abstract ||

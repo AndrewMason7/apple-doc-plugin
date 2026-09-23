@@ -4,7 +4,7 @@ export class HybridSearchEngine {
     semanticSearch;
     constructor(db, options = {}) {
         this.db = db;
-        this.semanticSearch = new GeminiSemanticSearch(options.apiKey);
+        this.semanticSearch = new GeminiSemanticSearch(options.apiKey, options.modelName, options.baseUrl, options.googleAuth, options.expectedDimensions ?? 3072);
     }
     searchSemanticWithVector(queryVec, framework, limit = 10, minSimilarity = 0.65) {
         const items = this.db.getSemanticItems(framework);

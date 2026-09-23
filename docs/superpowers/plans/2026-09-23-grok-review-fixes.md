@@ -9,6 +9,7 @@
 ### Task 1: Fix SQLite FTS5 Upsert, Abstract Preservation & Safe Deserialization
 
 **Files:**
+
 - Modify: `src/server/db/schema.ts`
 - Modify: `src/server/db/database.ts`
 - Test: `test/fts-integrity.test.js`
@@ -24,6 +25,7 @@
 ### Task 2: Circuit Breaker Hardening & Embedding Dimension Pinning
 
 **Files:**
+
 - Modify: `src/server/services/search/semantic-search.ts`
 - Test: `test/security-headers.test.js`
 
@@ -38,6 +40,7 @@
 ### Task 3: MCP Input Validation & Wildcard Handling
 
 **Files:**
+
 - Modify: `src/server/handlers/search-symbols.ts`
 - Modify: `src/server/db/database.ts`
 - Test: `test/search.test.js`
@@ -53,6 +56,7 @@
 ### Task 4: Re-index Database & Verify FTS MATCH on Real Corpus
 
 **Files:**
+
 - Modify: `scripts/build-index.ts`
 - Test: `test/e2e.test.js`
 

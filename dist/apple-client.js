@@ -127,7 +127,8 @@ export class AppleDevDocsClient {
     }
     scoreKeywordReference(title, path, abstractText, lowerQuery, queryTokens) {
         let score = 0;
-        if (title.toLowerCase() === lowerQuery || path.toLowerCase() === lowerQuery) {
+        if (title.toLowerCase() === lowerQuery ||
+            path.toLowerCase() === lowerQuery) {
             score += 120;
         }
         for (const queryToken of queryTokens) {
@@ -154,7 +155,9 @@ export class AppleDevDocsClient {
         };
     }
     async resolveSearchResultKind(result) {
-        if (!result.path || !result.symbolKind || result.symbolKind.toLowerCase() !== 'symbol') {
+        if (!result.path ||
+            !result.symbolKind ||
+            result.symbolKind.toLowerCase() !== 'symbol') {
             return result.symbolKind;
         }
         try {

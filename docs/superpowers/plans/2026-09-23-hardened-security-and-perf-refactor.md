@@ -30,6 +30,7 @@
 ### Task 1: Security & Credential Hygiene in GeminiSemanticSearch
 
 **Files:**
+
 - Modify: `src/server/services/search/semantic-search.ts`
 - Test: `test/security-headers.test.js`
 
@@ -44,6 +45,7 @@
 ### Task 2: Memory Alignment, Vector Cache & Sanitization in Database Layer
 
 **Files:**
+
 - Modify: `src/server/db/database.ts`
 - Test: `test/db-hardened.test.js`
 
@@ -58,6 +60,7 @@
 ### Task 3: Vector Norm Optimization in Hybrid Search Engine
 
 **Files:**
+
 - Modify: `src/server/services/search/hybrid-search.ts`
 - Test: `test/search.test.js`
 
@@ -70,10 +73,10 @@
 ### Task 4: Tribunal Adversarial Stress Test Suite & Final Build
 
 **Files:**
+
 - Create: `test/stress-tribunal.test.js`
 - Test: All tests (`npm test`, `npm run typecheck`, `npm run build`)
 
 - [x] **Step 1: Write comprehensive adversarial stress tests**
 - [x] **Step 2: Run all tests to verify 100% green**
 - [x] **Step 3: Commit and finalize**
-

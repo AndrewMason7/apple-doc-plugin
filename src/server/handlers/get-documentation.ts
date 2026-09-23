@@ -1,5 +1,9 @@
 import type { ServerContext, ToolResponse } from '../context.js';
-import type { SymbolData, ReferenceData, Technology } from '../../apple-client.js';
+import type {
+	SymbolData,
+	ReferenceData,
+	Technology,
+} from '../../apple-client.js';
 import { bold, header, trimWithEllipsis } from '../markdown.js';
 import { loadActiveFrameworkData } from '../services/framework-loader.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
@@ -58,7 +62,12 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 		if (typeof path !== 'string' || path.trim().length === 0) {
 			return {
 				isError: true,
-				content: [{ type: 'text', text: 'Error: A non-empty "path" parameter is required.' }],
+				content: [
+					{
+						type: 'text',
+						text: 'Error: A non-empty "path" parameter is required.',
+					},
+				],
 			};
 		}
 
@@ -111,7 +120,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 								return Reflect.get(target, prop, receiver);
 							},
 						}),
-				  };
+					};
 			const framework = await loadActiveFrameworkData(effectiveContext);
 
 			const { data }: { data: SymbolData; targetPath: string } =
@@ -154,7 +163,9 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 								bold('Type', dbSym.kind),
 								bold(
 									'Platforms',
-									dbSym.platforms.length > 0 ? dbSym.platforms.join(', ') : 'All platforms',
+									dbSym.platforms.length > 0
+										? dbSym.platforms.join(', ')
+										: 'All platforms',
 								),
 								'',
 								header(2, 'Overview'),

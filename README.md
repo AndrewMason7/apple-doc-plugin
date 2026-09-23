@@ -18,37 +18,62 @@ A high-performance Model Context Protocol (MCP) server providing instant offline
 
 ## 🛠️ Available MCP Tools
 
-| Tool | Description |
-| :--- | :--- |
-| `search_symbols` | **Primary Tool**. Instant search across symbols with exact-name boosting, wildcard matching (`*`, `?`), and optional semantic intent queries. `framework` parameter is optional. |
-| `get_documentation` | Fetches focused documentation for a specific symbol or path (e.g., `documentation/swiftui/view`). |
-| `discover_technologies` | Browse and filter available Apple technologies/frameworks. |
-| `choose_technology` | Optionally scope subsequent searches to a specific framework (backward compatible). |
-| `current_technology` | View the currently selected technology scope. |
-| `get_version` | Report MCP server version. |
+| Tool                    | Description                                                                                                                                                                      |
+| :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_symbols`        | **Primary Tool**. Instant search across symbols with exact-name boosting, wildcard matching (`*`, `?`), and optional semantic intent queries. `framework` parameter is optional. |
+| `get_documentation`     | Fetches focused documentation for a specific symbol or path (e.g., `documentation/swiftui/view`).                                                                                |
+| `discover_technologies` | Browse and filter available Apple technologies/frameworks.                                                                                                                       |
+| `choose_technology`     | Optionally scope subsequent searches to a specific framework (backward compatible).                                                                                              |
+| `current_technology`    | View the currently selected technology scope.                                                                                                                                    |
+| `get_version`           | Report MCP server version.                                                                                                                                                       |
 
 ---
 
 ## 📦 Installation & Setup
 
-### Antigravity / Claude Code / Cursor / Windsurf
+### Antigravity Plugin (Recommended)
+
+Install directly with the `agy` CLI:
+
+```bash
+# Install from local directory:
+agy plugin install .
+
+# Or install from GitHub:
+agy plugin install MightyDillah/apple-doc-mcp
+```
+
+Once installed, the plugin automatically provides:
+
+- **`apple-docs` MCP Server**: Registered and active for all sessions.
+- **`apple-docs` Skill**: Best practice procedures for searching Apple APIs and DocC docs.
+- **Apple Platform Rules**: Enforces API verification and modern framework patterns.
+
+To validate the plugin structure:
+
+```bash
+agy plugin validate .
+```
+
+### Manual MCP Server Configuration (Claude Code / Cursor / Windsurf)
 
 Add to your MCP configuration (`mcpServers`):
 
 ```json
 {
-  "mcpServers": {
-    "apple-docs": {
-      "command": "node",
-      "args": ["/path/to/apple-doc-plugin/dist/index.js"],
-      "env": {
-        "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY"
-      }
-    }
-  }
+	"mcpServers": {
+		"apple-docs": {
+			"command": "node",
+			"args": ["/path/to/apple-doc-plugin/dist/index.js"],
+			"env": {
+				"GEMINI_API_KEY": "YOUR_GEMINI_API_KEY"
+			}
+		}
+	}
 }
 ```
-*(Note: `GEMINI_API_KEY` and ADC are optional. If omitted, pure local SQLite FTS5 runs offline.)*
+
+_(Note: `GEMINI_API_KEY` and ADC are optional. If omitted, pure local SQLite FTS5 runs offline.)_
 
 ### Environment Configuration
 
@@ -58,14 +83,13 @@ Copy the template to create your local `.env`:
 cp .env.example .env
 ```
 
-| Variable | Required | Description |
-| :--- | :--- | :--- |
-| `GEMINI_API_KEY` | Optional | Google Gemini API key for multimodal 3072-dim embeddings (`gemini-embedding-2`). Get one at [Google AI Studio](https://aistudio.google.com/). |
+| Variable                         | Required | Description                                                                                                                                                          |
+| :------------------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`                 | Optional | Google Gemini API key for multimodal 3072-dim embeddings (`gemini-embedding-2`). Get one at [Google AI Studio](https://aistudio.google.com/).                        |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Optional | Path to Service Account JSON key for Google Application Default Credentials (ADC). Alternatively, `gcloud auth application-default login` is detected automatically. |
-| `APPLE_DOCS_DB_PATH` | Optional | Custom path to the SQLite index database (defaults to `data/apple-docs.db`). |
+| `APPLE_DOCS_DB_PATH`             | Optional | Custom path to the SQLite index database (defaults to `data/apple-docs.db`).                                                                                         |
 
-*(Note: The server automatically loads `.env` natively at startup. If neither `GEMINI_API_KEY` nor ADC credentials are provided, the engine runs pure local SQLite FTS5 offline.)*
-
+_(Note: The server automatically loads `.env` natively at startup. If neither `GEMINI_API_KEY` nor ADC credentials are provided, the engine runs pure local SQLite FTS5 offline.)_
 
 ### Local Development
 
@@ -82,7 +106,6 @@ npm test
 # (Optional) Re-crawl and update the pre-indexed Apple SDK database
 npm run build:index
 ```
-
 
 ---
 

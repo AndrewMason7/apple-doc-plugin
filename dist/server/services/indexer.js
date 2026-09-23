@@ -19,14 +19,62 @@ export function extractAbstract(abstractObj) {
     return '';
 }
 export const FRAMEWORK_DEFAULT_PLATFORMS = {
-    SwiftUI: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+    SwiftUI: [
+        'iOS',
+        'iPadOS',
+        'Mac Catalyst',
+        'macOS',
+        'tvOS',
+        'visionOS',
+        'watchOS',
+    ],
     UIKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'tvOS', 'visionOS'],
-    Foundation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
-    SwiftData: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
-    Combine: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+    Foundation: [
+        'iOS',
+        'iPadOS',
+        'Mac Catalyst',
+        'macOS',
+        'tvOS',
+        'visionOS',
+        'watchOS',
+    ],
+    SwiftData: [
+        'iOS',
+        'iPadOS',
+        'Mac Catalyst',
+        'macOS',
+        'tvOS',
+        'visionOS',
+        'watchOS',
+    ],
+    Combine: [
+        'iOS',
+        'iPadOS',
+        'Mac Catalyst',
+        'macOS',
+        'tvOS',
+        'visionOS',
+        'watchOS',
+    ],
     AppKit: ['macOS'],
-    Observation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
-    CoreLocation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'watchOS', 'visionOS'],
+    Observation: [
+        'iOS',
+        'iPadOS',
+        'Mac Catalyst',
+        'macOS',
+        'tvOS',
+        'visionOS',
+        'watchOS',
+    ],
+    CoreLocation: [
+        'iOS',
+        'iPadOS',
+        'Mac Catalyst',
+        'macOS',
+        'tvOS',
+        'watchOS',
+        'visionOS',
+    ],
 };
 export function indexFrameworkData(db, framework, data, defaultPlatforms) {
     if (!data?.references || typeof data.references !== 'object')
@@ -34,7 +82,7 @@ export function indexFrameworkData(db, framework, data, defaultPlatforms) {
     let count = 0;
     const frameworkPlatforms = Array.isArray(data?.metadata?.platforms)
         ? data.metadata.platforms.map((p) => p?.name || '').filter(Boolean)
-        : (defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || []);
+        : defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || [];
     for (const [id, ref] of Object.entries(data.references)) {
         if (!ref || typeof ref !== 'object')
             continue;
@@ -74,7 +122,9 @@ export function extractMediaReferences(data) {
             continue;
         const alt = ref.alt || ref.title || '';
         const variants = Array.isArray(ref.variants) ? ref.variants : [];
-        let selectedVariant = variants.find((v) => Array.isArray(v.traits) && v.traits.includes('light') && v.traits.includes('2x'));
+        let selectedVariant = variants.find((v) => Array.isArray(v.traits) &&
+            v.traits.includes('light') &&
+            v.traits.includes('2x'));
         if (!selectedVariant) {
             selectedVariant = variants.find((v) => Array.isArray(v.traits) && v.traits.includes('light'));
         }
@@ -113,7 +163,13 @@ export function indexFrameworkTree(db, framework, indexData, defaultPlatforms) {
     let count = 0;
     function walk(node) {
         if (node.path && node.title && node.type && node.type !== 'groupMarker') {
-            const isPrimary = ['struct', 'class', 'protocol', 'enum', 'macro'].includes(node.type.toLowerCase());
+            const isPrimary = [
+                'struct',
+                'class',
+                'protocol',
+                'enum',
+                'macro',
+            ].includes(node.type.toLowerCase());
             db.insertSymbol({
                 id: node.path,
                 framework,

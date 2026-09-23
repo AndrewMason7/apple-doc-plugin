@@ -207,7 +207,10 @@ export class AppleDevDocsClient {
 	): number {
 		let score = 0;
 
-		if (title.toLowerCase() === lowerQuery || path.toLowerCase() === lowerQuery) {
+		if (
+			title.toLowerCase() === lowerQuery ||
+			path.toLowerCase() === lowerQuery
+		) {
 			score += 120;
 		}
 
@@ -245,8 +248,14 @@ export class AppleDevDocsClient {
 		};
 	}
 
-	private async resolveSearchResultKind(result: SearchResult): Promise<string | undefined> {
-		if (!result.path || !result.symbolKind || result.symbolKind.toLowerCase() !== 'symbol') {
+	private async resolveSearchResultKind(
+		result: SearchResult,
+	): Promise<string | undefined> {
+		if (
+			!result.path ||
+			!result.symbolKind ||
+			result.symbolKind.toLowerCase() !== 'symbol'
+		) {
 			return result.symbolKind;
 		}
 
@@ -258,9 +267,11 @@ export class AppleDevDocsClient {
 		}
 	}
 
-	private async enrichSearchResults(results: SearchResult[]): Promise<SearchResult[]> {
+	private async enrichSearchResults(
+		results: SearchResult[],
+	): Promise<SearchResult[]> {
 		return Promise.all(
-			results.map(async result => ({
+			results.map(async (result) => ({
 				...result,
 				symbolKind: await this.resolveSearchResultKind(result),
 			})),

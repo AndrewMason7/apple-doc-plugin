@@ -15,6 +15,10 @@ export declare class HybridSearchEngine {
     private semanticSearch;
     constructor(db: AppleDocsDB, options?: {
         apiKey?: string | null;
+        modelName?: string;
+        baseUrl?: string;
+        googleAuth?: any;
+        expectedDimensions?: number;
     });
     searchSemanticWithVector(queryVec: Float32Array, framework?: string, limit?: number, minSimilarity?: number): SemanticMatch[];
     search(query: string, options?: SearchOptions): Promise<SearchResultItem[]>;

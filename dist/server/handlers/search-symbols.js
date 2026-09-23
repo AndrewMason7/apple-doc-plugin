@@ -66,7 +66,12 @@ export const buildSearchSymbolsHandler = (context) => {
         if (typeof query !== 'string' || query.trim().length === 0) {
             return {
                 isError: true,
-                content: [{ type: 'text', text: 'Error: A non-empty "query" parameter is required.' }],
+                content: [
+                    {
+                        type: 'text',
+                        text: 'Error: A non-empty "query" parameter is required.',
+                    },
+                ],
             };
         }
         const rawMaxResults = typeof maxResults === 'number' && Number.isFinite(maxResults)
