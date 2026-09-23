@@ -1,98 +1,75 @@
-# Apple Doc MCP
+# Apple Doc MCP & Index Plugin
 
-A Model Context Protocol (MCP) server that provides seamless access to Apple's Developer Documentation directly within your AI coding assistant.
-**Note:** Hey guys, thanks for checking out this MCP! Since I've been working on it on a regular basis, and as such its getting really expensive to build it and improve it to work on different platforms, all while adding new features (tokens aint cheap ya'll).
+A high-performance Model Context Protocol (MCP) server providing instant offline access to Apple's Developer Documentation with embedded SQLite FTS5 search, wildcard support, and optional Gemini semantic embeddings.
 
-if you find this MCP helpful, I'd really apperciate it if you clicked on the [❤️ Sponsor](https://github.com/sponsors/MightyDillah) button up there, any contribution is apperciated! thanks.
+---
 
-## 📋 Changelog
+## ✨ Features
 
-Thank you to the Github team for your support! and thank you @billibala, @theoddbrick, @christopherbattlefrontlegal for sponsoring! you guys are amazing.
+- **🚀 Sub-Millisecond Symbol Search**: Pre-indexed SQLite database with FTS5 BM25 scoring over 100,000+ symbols across core Apple frameworks (SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Observation, CoreLocation).
+- **🌐 Global Search by Default**: AI agents can search symbols immediately without being forced to run `choose_technology` first.
+- **🎯 Scoped Search When Desired**: Search across all frameworks or narrow down by passing `framework: "SwiftUI"` or calling `choose_technology`.
+- **🧠 Hybrid Semantic Search (Optional)**: If `GEMINI_API_KEY` is provided in the environment, the server uses Gemini Embeddings (`gemini-embedding-2`) to understand conceptual natural-language queries (e.g. *"track user location in background"*) via Reciprocal Rank Fusion (RRF).
+- **🔒 Zero-Config Offline Fallback**: Fully functional 100% offline without any API keys or network requests needed for symbol searches.
+- **📄 Clean Markdown Doc Extraction**: On-demand retrieval and conversion of Apple's DocC AST into concise, context-optimized Markdown.
 
-- Full release history lives in [CHANGELOG.md](CHANGELOG.md).
+---
 
-- 1.9.6
-  - MAJOR FIX: Simplified `search_symbols` to be more predictable for AI agents
-  - Added exact symbol resolution inside `search_symbols` for queries like `GridItem`, `View`, and `ButtonStyle`
-  - Changed `search_symbols` to return symbol-first results with articles and guides separated into their own section
-  - Fixed wildcard behavior so fallback search respects `*` and `?` patterns instead of degrading to plain substring matches
-  - Removed misleading search messaging about background downloads and "comprehensive" indexing
-  - Removed dead or unused search code paths that were adding confusion without improving results
-  - Fixed first-search index initialization so cache-backed symbol search finishes building before results are used
-- 1.9.1
-  - Moved cached docs into `.cache/` to keep the repo clean
-  - Routed MCP logging to stderr so protocol stdout stays clean (this was breaking codex symbol search)
+## 🛠️ Available MCP Tools
 
-## Installation
+| Tool | Description |
+| :--- | :--- |
+| `search_symbols` | **Primary Tool**. Instant search across symbols with exact-name boosting, wildcard matching (`*`, `?`), and optional semantic intent queries. `framework` parameter is optional. |
+| `get_documentation` | Fetches focused documentation for a specific symbol or path (e.g., `documentation/swiftui/view`). |
+| `discover_technologies` | Browse and filter available Apple technologies/frameworks. |
+| `choose_technology` | Optionally scope subsequent searches to a specific framework (backward compatible). |
+| `current_technology` | View the currently selected technology scope. |
+| `get_version` | Report MCP server version. |
 
-## VS Code
+---
 
-1. Open Command Palette (`Shift+Cmd+P`).
-2. Run `MCP: Add Server`.
-3. When prompted for server type, choose `npm`.
-4. Enter this package:
+## 📦 Installation & Setup
 
-```text
-apple-doc-mcp-server
-```
+### Antigravity / Claude Code / Cursor / Windsurf
 
-## Claude Code:
-
-```bash
-claude mcp add apple-docs -- npx apple-doc-mcp-server@latest
-```
-
-## OpenAI Codex:
-
-```bash
-codex mcp add apple-doc-mcp -- npx apple-doc-mcp-server@latest
-```
-## Manual:
-
-```json
-{
-	"mcpServers": {
-		"apple-docs": {
-			"command": "npx",
-			"args": ["apple-doc-mcp-server@latest"]
-		}
-	}
-}
-```
-
-## Local:
-
-```bash
-yarn install
-yarn build
-```
+Add to your MCP configuration (`mcpServers`):
 
 ```json
 {
   "mcpServers": {
     "apple-docs": {
       "command": "node",
-      "args": ["/absolute/path/to/apple-doc-mcp/dist/index.js"]
+      "args": ["/path/to/apple-doc-plugin/dist/index.js"],
+      "env": {
+        "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY"
+      }
     }
   }
 }
 ```
+*(Note: `GEMINI_API_KEY` is optional. If omitted, pure local SQLite FTS5 runs offline.)*
 
-### Search Tips
+### Local Development
 
-- Use exact API names when you know them (`"GridItem"`, `"ButtonStyle"`, `"View"`).
-- Start broad (e.g. `"tab"`, `"animation"`, `"gesture"`).
-- Try synonyms (`"sheet"` vs `"modal"`, `"toolbar"` vs `"tabbar"`).
-- Use wildcards (`"Grid*"`, `"*Item"`, `"Lazy*"`) for flexible matching.
-- Use multiple keywords (`"tab view layout"`) to narrow results.
-- If nothing turns up, re-run `discover_technologies` with a different keyword or pick another framework.
-- `search_symbols` returns symbols first and lists matching articles separately.
+```bash
+# Install dependencies
+npm install
 
-## Available Tools
+# Compile TypeScript
+npm run build
 
-- `discover_technologies` – browse/filter frameworks before selecting one.
-- `choose_technology` – set the active framework; required before searching docs.
-- `current_technology` – show the current selection and quick next steps.
-- `search_symbols` – symbol-first search with exact-name resolution, wildcard support, and separate article results.
-- `get_documentation` – open detailed docs for a known symbol or documentation path.
-- `get_version` – get current MCP server version information.
+# Run unit, integration, and E2E test suite
+npm test
+
+# (Optional) Re-crawl and update the pre-indexed Apple SDK database
+npm run build:index
+```
+
+---
+
+## 🔍 Search Examples for Agents
+
+- **Exact Symbol Lookup**: `search_symbols(query: "NavigationSplitView")`
+- **Scoped Framework Search**: `search_symbols(query: "ViewController", framework: "UIKit")`
+- **Wildcard Prefix/Suffix**: `search_symbols(query: "Grid*")` or `search_symbols(query: "*Item")`
+- **Conceptual Intent Search**: `search_symbols(query: "background location updates")`
