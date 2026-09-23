@@ -141,10 +141,17 @@ export class GeminiSemanticSearch {
   private handleApiError(err: unknown, action: string): void {
     if (axios.isAxiosError(err)) {
       const status = err.response?.status;
-      if (status === 429 || (status !== undefined && status >= 500)) {
+      const isTimeout =
+        err.code === 'ECONNABORTED' || err.message.toLowerCase().includes('timeout');
+      const isNetworkError =
+        err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED';
+      const isAuthError = status === 401 || status === 403;
+      const isRateLimitOrServer = status === 429 || (status !== undefined && status >= 500);
+
+      if (isTimeout || isNetworkError || isAuthError || isRateLimitOrServer) {
         this.tripCircuitBreaker(30_000);
         console.error(
-          `Warning: Gemini API error (${status}) during ${action}. Circuit breaker tripped for 30s.`
+          `Warning: Gemini API error (${status || err.code || 'timeout'}) during ${action}. Circuit breaker tripped for 30s.`
         );
         return;
       }
@@ -166,6 +173,7 @@ export class GeminiSemanticSearch {
         url,
         {
           content: { parts: [{ text }] },
+          outputDimensionality: 3072,
         },
         {
           headers: {
@@ -212,6 +220,7 @@ export class GeminiSemanticSearch {
         url,
         {
           content: { parts },
+          outputDimensionality: 3072,
         },
         {
           headers: {
@@ -221,6 +230,7 @@ export class GeminiSemanticSearch {
           timeout: 8000,
         }
       );
+
       const values = response.data?.embedding?.values;
       if (!Array.isArray(values)) return null;
       return new Float32Array(values);

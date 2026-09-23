@@ -82,3 +82,53 @@ test('GeminiSemanticSearch trips circuit breaker automatically on 429 response',
     server.close();
   }
 });
+
+test('GeminiSemanticSearch sends output_dimensionality: 3072 in payload', async () => {
+  let receivedBody = null;
+  const server = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      receivedBody = JSON.parse(raw);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ embedding: { values: [0.1, 0.2] } }));
+    });
+  });
+
+  await new Promise((resolve) => server.listen(0, resolve));
+  const port = server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const search = new GeminiSemanticSearch('key', 'models/test-model', baseUrl);
+    await search.embedQuery('test dimensionality');
+    assert(receivedBody !== null);
+    assert.strictEqual(receivedBody.outputDimensionality, 3072, 'Must request 3072 dimensions explicitly');
+  } finally {
+    server.close();
+  }
+});
+
+test('GeminiSemanticSearch trips circuit breaker on 401 and 403 status codes', async () => {
+  for (const status of [401, 403]) {
+    const server = http.createServer((req, res) => {
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'Unauthorized / Forbidden' } }));
+    });
+
+    await new Promise((resolve) => server.listen(0, resolve));
+    const port = server.address().port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    try {
+      const search = new GeminiSemanticSearch('bad-key', 'models/test-model', baseUrl);
+      assert.strictEqual(search.isCircuitOpen(), false);
+      const res = await search.embedQuery('fail query');
+      assert.strictEqual(res, null);
+      assert.strictEqual(search.isCircuitOpen(), true, `Circuit breaker should trip on status ${status}`);
+    } finally {
+      server.close();
+    }
+  }
+});
+
