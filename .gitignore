@@ -99,6 +99,8 @@ jspm_packages/
 
 # Test files (if any)
 test-*.js
-*.test.js 
+
+.superpowers/
 
 dist
+

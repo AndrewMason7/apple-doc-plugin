@@ -33,26 +33,31 @@
 	"homepage": "https://github.com/MightyDillah/apple-doc-mcp#readme",
 	"scripts": {
 		"build": "tsc && chmod +x dist/index.js",
+		"build:index": "tsx scripts/build-index.ts",
+		"test": "node --test test/**/*.test.js",
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint src",
 		"lint:fix": "eslint src --fix",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"check": "yarn typecheck && yarn lint && yarn format:check",
+		"check": "npm run typecheck && npm run lint && npm run format:check",
 		"start": "node dist/index.js"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",
-		"axios": "^1.13.6"
+		"axios": "^1.13.6",
+		"better-sqlite3": "^13.0.3"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.36.0",
+		"@types/better-sqlite3": "^9.6.0",
 		"@types/node": "25.5.0",
 		"eslint": "^9.36.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-n": "^17.24.0",
 		"globals": "17.4.0",
 		"prettier": "^3.8.1",
+		"tsx": "^4.23.15",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.57.1"
 	}
