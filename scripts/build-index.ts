@@ -78,13 +78,21 @@ async function buildIndex() {
     const slug = framework.toLowerCase();
     console.error(`\n📦 Indexing framework: ${framework}...`);
 
-    // 1. Fetch framework overview documentation (contains rich abstracts for top symbols)
+    // 1. Fetch comprehensive index tree
+    const indexUrl = `https://developer.apple.com/tutorials/data/index/${slug}`;
+    const treeData = await fetchJson(indexUrl);
+    if (treeData) {
+      const treeCount = indexFrameworkTree(db, framework, treeData);
+      console.error(`   • Indexed ${treeCount} symbol tree nodes`);
+      totalIndexed += treeCount;
+    }
+
+    // 2. Fetch framework overview documentation (contains rich abstracts for top symbols)
     const docUrl = `https://developer.apple.com/tutorials/data/documentation/${slug}.json`;
     const docData = await fetchJson(docUrl);
     if (docData) {
       const count = indexFrameworkData(db, framework, docData);
-      console.error(`   • Indexed ${count} top-level symbols and abstracts`);
-      totalIndexed += count;
+      console.error(`   • Enriched ${count} symbols with full documentation abstracts`);
 
       // Embed framework overview if semantic enabled
       if (canEmbed && docData.metadata?.title) {
@@ -148,20 +156,20 @@ async function buildIndex() {
         }
       }
     }
-
-    // 2. Fetch comprehensive index tree
-    const indexUrl = `https://developer.apple.com/tutorials/data/index/${slug}`;
-    const treeData = await fetchJson(indexUrl);
-    if (treeData) {
-      const treeCount = indexFrameworkTree(db, framework, treeData);
-      console.error(`   • Indexed ${treeCount} symbol tree nodes`);
-      totalIndexed += treeCount;
-    }
   }
+
+  console.error('\n🔧 Rebuilding SQLite FTS5 index for 100% token consistency...');
+  db.rebuildFTS();
+  console.error('🧹 Running SQLite WAL checkpoint and VACUUM...');
+  // @ts-ignore
+  db['db'].pragma('wal_checkpoint(TRUNCATE)');
+  // @ts-ignore
+  db['db'].exec('VACUUM');
 
   console.error(`\n🎉 Indexing complete! Total symbols indexed: ${totalIndexed}`);
   db.close();
 }
+
 
 buildIndex().catch((err) => {
   console.error('Fatal error building index:', err);

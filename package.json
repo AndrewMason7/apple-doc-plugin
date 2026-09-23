@@ -9,11 +9,12 @@
 	},
 	"files": [
 		"dist/",
-		"data/",
+		"data/apple-docs.db",
 		"CHANGELOG.md",
 		"README.md",
 		"LICENSE"
 	],
+
 	"keywords": [
 		"mcp",
 		"apple",
@@ -35,8 +36,9 @@
 	"scripts": {
 		"build": "tsc && chmod +x dist/index.js",
 		"build:index": "tsx scripts/build-index.ts",
-		"test": "node --test test/**/*.test.js",
+		"test": "npm run build && node --test test/**/*.test.js",
 		"typecheck": "tsc --noEmit",
+
 		"lint": "eslint src",
 		"lint:fix": "eslint src --fix",
 		"format": "prettier --write .",

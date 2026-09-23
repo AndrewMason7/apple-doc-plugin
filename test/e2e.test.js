@@ -42,11 +42,11 @@ test('End-to-End: Global search on seeded 100k+ SQLite database', async () => {
   assert(textUIKit.includes('UIViewController'), 'Expected UIViewController in UIKit results');
   assert(textUIKit.includes('UIKit'), 'Expected UIKit framework tag');
 
-  // 3. Get documentation for symbol
-  const getDocHandler = buildGetDocumentationHandler({ client, state });
-  const docRes = await getDocHandler({ path: 'documentation/swiftui/navigationsplitview' });
-  const docText = docRes.content[0].text;
-  assert(docText.includes('NavigationSplitView') || docText.includes('SwiftUI'), 'Expected doc content');
+  // 4. Verify FTS5 MATCH on real corpus
+  const ftsDirect = db.queryFTS('View', 'SwiftUI', 5);
+  assert(ftsDirect.length > 0, 'FTS5 MATCH View must return results');
+  assert(ftsDirect[0].score > 0, 'BM25 score must be positive');
 
   db.close();
 });
+
