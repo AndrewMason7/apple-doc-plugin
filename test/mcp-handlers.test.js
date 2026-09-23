@@ -137,3 +137,70 @@ test('get_documentation returns isError: true gracefully for non-existent path',
 
   db.close();
 });
+
+test('get_documentation does not leak or mutate session state active technology', async () => {
+  const { buildGetDocumentationHandler } = await import('../dist/server/handlers/get-documentation.js');
+  const db = new AppleDocsDB(':memory:');
+  db.insertSymbol({
+    id: 'documentation/swiftui/text',
+    framework: 'SwiftUI',
+    title: 'Text',
+    kind: 'struct',
+    abstract: 'A view that displays one or more lines of read-only text.',
+    path: '/documentation/swiftui/text',
+    platforms: ['iOS 13.0+'],
+    isPrimaryType: true,
+  });
+
+  const state = new ServerState();
+  assert.strictEqual(state.getActiveTechnology(), undefined, 'Initially no technology should be active');
+
+  const handler = buildGetDocumentationHandler({
+    client: new AppleDevDocsClient(),
+    state,
+    db,
+  });
+
+  const res = await handler({ path: '/documentation/swiftui/text' });
+  assert(!res.isError);
+  // State should remain undefined so subsequent global searches are not polluted
+  assert.strictEqual(state.getActiveTechnology(), undefined, 'State active technology must remain undefined');
+
+  db.close();
+});
+
+test('queryFTS guarantees exact title match is ranked #1 even among many token prefix hits', () => {
+  const db = new AppleDocsDB(':memory:');
+  // Insert many methods with "View" prefix that would dominate BM25
+  for (let i = 0; i < 20; i++) {
+    db.insertSymbol({
+      id: `doc/init-viewing-${i}`,
+      framework: 'SwiftUI',
+      title: `init(viewing:viewer:${i})`,
+      kind: 'initializer',
+      abstract: 'Viewing viewer initializer method with repeated view tokens view view view',
+      path: `/doc/init-viewing-${i}`,
+      platforms: ['iOS'],
+    });
+  }
+
+  // Insert exact symbol "View" with broad abstract
+  db.insertSymbol({
+    id: '/documentation/swiftui/view',
+    framework: 'SwiftUI',
+    title: 'View',
+    kind: 'protocol',
+    abstract: 'A type that represents part of your app’s user interface and provides modifiers that you use to configure views.',
+    path: '/documentation/swiftui/view',
+    platforms: ['iOS', 'macOS'],
+    isPrimaryType: true,
+  });
+
+  const results = db.queryFTS('View', undefined, 5);
+  assert.strictEqual(results.length, 5);
+  assert.strictEqual(results[0].title, 'View', 'Exact symbol View must be ranked #1');
+  assert.strictEqual(results[0].framework, 'SwiftUI');
+  assert.strictEqual(results[0].score, 1000.0);
+
+  db.close();
+});

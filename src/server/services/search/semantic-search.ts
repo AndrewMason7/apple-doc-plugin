@@ -118,13 +118,14 @@ export class GeminiSemanticSearch {
       const tokenResult = await client.getAccessToken();
       const token = typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
       if (token && typeof token === 'string' && token.trim().length > 0) {
-        const expiresInSec = (tokenResult as any)?.res?.data?.expires_in;
         const expiryDateMs = (client as any)?.credentials?.expiry_date;
-        const ttlMs = expiresInSec
-          ? expiresInSec * 1000
-          : expiryDateMs && expiryDateMs > now
-          ? expiryDateMs - now
-          : 50 * 60 * 1000;
+        const expiresInSec = (tokenResult as any)?.res?.data?.expires_in;
+        const ttlMs =
+          expiryDateMs && expiryDateMs > now
+            ? expiryDateMs - now
+            : expiresInSec
+            ? expiresInSec * 1000
+            : 50 * 60 * 1000;
 
         this.cachedAccessToken = {
           token,

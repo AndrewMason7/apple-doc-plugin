@@ -76,7 +76,6 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 					url: `/documentation/${dbSym.framework.toLowerCase()}`,
 					abstract: [],
 				};
-				state.setActiveTechnology(activeTechnology);
 			}
 		}
 
@@ -92,7 +91,6 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 					url: `/documentation/${fw.toLowerCase()}`,
 					abstract: [],
 				};
-				state.setActiveTechnology(activeTechnology);
 			}
 		}
 
@@ -101,7 +99,20 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 		}
 
 		try {
-			const framework = await loadActiveFrameworkData(context);
+			const effectiveContext = state.getActiveTechnology()
+				? context
+				: {
+						...context,
+						state: new Proxy(state, {
+							get(target, prop, receiver) {
+								if (prop === 'getActiveTechnology') {
+									return () => activeTechnology;
+								}
+								return Reflect.get(target, prop, receiver);
+							},
+						}),
+				  };
+			const framework = await loadActiveFrameworkData(effectiveContext);
 
 			const { data }: { data: SymbolData; targetPath: string } =
 				await resolveSymbol(client, activeTechnology, path);

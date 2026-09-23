@@ -18,9 +18,21 @@ export class HybridSearchEngine {
 
   constructor(
     private readonly db: AppleDocsDB,
-    options: { apiKey?: string | null } = {}
+    options: {
+      apiKey?: string | null;
+      modelName?: string;
+      baseUrl?: string;
+      googleAuth?: any;
+      expectedDimensions?: number;
+    } = {}
   ) {
-    this.semanticSearch = new GeminiSemanticSearch(options.apiKey);
+    this.semanticSearch = new GeminiSemanticSearch(
+      options.apiKey,
+      options.modelName,
+      options.baseUrl,
+      options.googleAuth,
+      options.expectedDimensions ?? 3072
+    );
   }
 
   searchSemanticWithVector(

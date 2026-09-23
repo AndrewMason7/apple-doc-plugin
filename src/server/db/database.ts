@@ -224,9 +224,40 @@ export class AppleDocsDB {
     }
 
 
+    const exactMatches: FTSResult[] = [];
+    if (!trimmed.includes('*') && !trimmed.includes('?') && !trimmed.includes(' ')) {
+      let exactSql = `
+        SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+        FROM symbols
+        WHERE title = ? COLLATE NOCASE
+      `;
+      const exactParams: (string | number)[] = [trimmed];
+      if (framework) {
+        exactSql += ` AND framework = ? COLLATE NOCASE`;
+        exactParams.push(framework);
+      }
+      exactSql += ` ORDER BY is_primary_type DESC LIMIT 5`;
+      try {
+        const exactRows = this.db.prepare(exactSql).all(...exactParams) as any[];
+        for (const r of exactRows) {
+          exactMatches.push({
+            id: r.id,
+            framework: r.framework,
+            title: r.title,
+            kind: r.kind,
+            abstract: r.abstract,
+            path: r.path,
+            platforms: safeParsePlatforms(r.platforms),
+            isPrimaryType: Boolean(r.is_primary_type),
+            score: 1000.0,
+          });
+        }
+      } catch {}
+    }
+
     let sql = `
       SELECT s.id, s.framework, s.title, s.kind, s.abstract, s.path, s.platforms, s.is_primary_type,
-             bm25(symbols_fts) AS rank
+             bm25(symbols_fts, 10.0, 2.0, 1.0, 0.5) AS rank
       FROM symbols_fts f
       JOIN symbols s ON s.rowid = f.rowid
       WHERE symbols_fts MATCH ?
@@ -243,17 +274,32 @@ export class AppleDocsDB {
 
     try {
       const rows = this.db.prepare(sql).all(...params) as any[];
-      return rows.map((r) => ({
-        id: r.id,
-        framework: r.framework,
-        title: r.title,
-        kind: r.kind,
-        abstract: r.abstract,
-        path: r.path,
-        platforms: safeParsePlatforms(r.platforms),
-        isPrimaryType: Boolean(r.is_primary_type),
-        score: -r.rank, // Invert BM25 so higher score is better match
-      }));
+      const seen = new Set<string>();
+      const combined: FTSResult[] = [];
+
+      for (const m of exactMatches) {
+        seen.add(m.id);
+        combined.push(m);
+      }
+
+      for (const r of rows) {
+        if (!seen.has(r.id)) {
+          seen.add(r.id);
+          combined.push({
+            id: r.id,
+            framework: r.framework,
+            title: r.title,
+            kind: r.kind,
+            abstract: r.abstract,
+            path: r.path,
+            platforms: safeParsePlatforms(r.platforms),
+            isPrimaryType: Boolean(r.is_primary_type),
+            score: -r.rank,
+          });
+        }
+      }
+
+      return combined.slice(0, limit);
     } catch (err) {
       console.error(
         'Warning: SQLite FTS5 MATCH failed, falling back to LIKE query:',
