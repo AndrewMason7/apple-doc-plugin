@@ -126,7 +126,7 @@ test('GeminiSemanticSearch sends output_dimensionality: 3072 in payload', async 
 		await search.embedQuery('test dimensionality');
 		assert(receivedBody !== null);
 		assert.strictEqual(
-			receivedBody.outputDimensionality,
+			receivedBody.output_dimensionality ?? receivedBody.outputDimensionality,
 			3072,
 			'Must request 3072 dimensions explicitly',
 		);

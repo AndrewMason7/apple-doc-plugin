@@ -110,7 +110,7 @@ async function buildIndex() {
 						: ''
 					: '';
 				const summary = `${title}: ${abstract}`.trim();
-				const vec = await semantic.embedQuery(summary);
+				const vec = await semantic.embedDocument(abstract || summary, title);
 				if (vec) {
 					db.insertSemanticItem({
 						id: `tech-${slug}`,

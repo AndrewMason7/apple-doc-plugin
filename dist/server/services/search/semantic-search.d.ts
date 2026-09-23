@@ -35,7 +35,22 @@ export declare class GeminiSemanticSearch {
     tripCircuitBreaker(durationMs?: number): void;
     resetCircuitBreaker(): void;
     private handleApiError;
+    /**
+     * Formats query string according to official Gemini Embedding 2 asymmetric retrieval prompt guidelines:
+     * `task: search result | query: {query}`
+     */
+    static prepareQuery(query: string, task?: string): string;
+    /**
+     * Formats document string according to official Gemini Embedding 2 asymmetric retrieval guidelines:
+     * `title: {title} | text: {content}` (or `title: none | text: {content}`)
+     */
+    static prepareDocument(content: string, title?: string): string;
+    /**
+     * Checks if the current model is Gemini Embedding 2 (which uses prompt instructions rather than task_type).
+     */
+    isEmbedding2(): boolean;
     embedQuery(text: string): Promise<Float32Array | null>;
+    embedDocument(content: string, title?: string): Promise<Float32Array | null>;
     embedMultimodal(text: string, imageBase64: string, mimeType?: string): Promise<Float32Array | null>;
     cosineSimilarityWithNorm(a: Float32Array, normA: number, b: Float32Array, normB: number): number;
     cosineSimilarity(a: Float32Array, b: Float32Array): number;

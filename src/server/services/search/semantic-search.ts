@@ -129,8 +129,14 @@ export class GeminiSemanticSearch {
 			const token =
 				typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
 			if (token && typeof token === 'string' && token.trim().length > 0) {
-				const expiryDateMs = (client as any)?.credentials?.expiry_date;
-				const expiresInSec = (tokenResult as any)?.res?.data?.expires_in;
+				const clientCredentials = (
+					client as { credentials?: { expiry_date?: number } }
+				)?.credentials;
+				const expiryDateMs = clientCredentials?.expiry_date;
+				const resData = (
+					tokenResult as { res?: { data?: { expires_in?: number } } }
+				)?.res?.data;
+				const expiresInSec = resData?.expires_in;
 				const ttlMs =
 					expiryDateMs && expiryDateMs > now
 						? expiryDateMs - now
@@ -191,6 +197,35 @@ export class GeminiSemanticSearch {
 		);
 	}
 
+	/**
+	 * Formats query string according to official Gemini Embedding 2 asymmetric retrieval prompt guidelines:
+	 * `task: search result | query: {query}`
+	 */
+	static prepareQuery(query: string, task = 'search result'): string {
+		const trimmed = query.trim();
+		if (!trimmed) return '';
+		if (trimmed.startsWith('task:')) return trimmed;
+		return `task: ${task} | query: ${trimmed}`;
+	}
+
+	/**
+	 * Formats document string according to official Gemini Embedding 2 asymmetric retrieval guidelines:
+	 * `title: {title} | text: {content}` (or `title: none | text: {content}`)
+	 */
+	static prepareDocument(content: string, title?: string): string {
+		const trimmed = content.trim();
+		const cleanTitle = title && title.trim().length > 0 ? title.trim() : 'none';
+		if (trimmed.startsWith('title:')) return trimmed;
+		return `title: ${cleanTitle} | text: ${trimmed}`;
+	}
+
+	/**
+	 * Checks if the current model is Gemini Embedding 2 (which uses prompt instructions rather than task_type).
+	 */
+	isEmbedding2(): boolean {
+		return !this.modelName.includes('gemini-embedding-001');
+	}
+
 	async embedQuery(text: string): Promise<Float32Array | null> {
 		if (this.isCircuitOpen()) return null;
 		const authHeaders = await this.getAuthHeaders();
@@ -198,20 +233,29 @@ export class GeminiSemanticSearch {
 
 		try {
 			const url = `${this.baseUrl}/${this.modelName}:embedContent`;
-			const response = await axios.post(
-				url,
-				{
-					content: { parts: [{ text }] },
-					outputDimensionality: 3072,
+			const outputDims = this.expectedDimensions ?? 3072;
+			const formattedText = this.isEmbedding2()
+				? GeminiSemanticSearch.prepareQuery(text)
+				: text;
+
+			const payload: Record<string, unknown> = {
+				content: { parts: [{ text: formattedText }] },
+				output_dimensionality: outputDims,
+			};
+
+			if (!this.isEmbedding2()) {
+				payload.task_type = 'RETRIEVAL_QUERY';
+			}
+
+			const response = await axios.post<{
+				embedding?: { values?: number[] };
+			}>(url, payload, {
+				headers: {
+					'Content-Type': 'application/json',
+					...authHeaders,
 				},
-				{
-					headers: {
-						'Content-Type': 'application/json',
-						...authHeaders,
-					},
-					timeout: 4000,
-				},
-			);
+				timeout: 4000,
+			});
 			const values = response.data?.embedding?.values;
 			if (!Array.isArray(values)) return null;
 			if (
@@ -230,6 +274,60 @@ export class GeminiSemanticSearch {
 		}
 	}
 
+	async embedDocument(
+		content: string,
+		title?: string,
+	): Promise<Float32Array | null> {
+		if (this.isCircuitOpen()) return null;
+		const authHeaders = await this.getAuthHeaders();
+		if (!authHeaders) return null;
+
+		try {
+			const url = `${this.baseUrl}/${this.modelName}:embedContent`;
+			const outputDims = this.expectedDimensions ?? 3072;
+			const formattedText = this.isEmbedding2()
+				? GeminiSemanticSearch.prepareDocument(content, title)
+				: content;
+
+			const payload: Record<string, unknown> = {
+				content: { parts: [{ text: formattedText }] },
+				output_dimensionality: outputDims,
+			};
+
+			if (!this.isEmbedding2()) {
+				payload.task_type = 'RETRIEVAL_DOCUMENT';
+				if (title && title.trim().length > 0) {
+					payload.title = title.trim();
+				}
+			}
+
+			const response = await axios.post<{
+				embedding?: { values?: number[] };
+			}>(url, payload, {
+				headers: {
+					'Content-Type': 'application/json',
+					...authHeaders,
+				},
+				timeout: 4000,
+			});
+			const values = response.data?.embedding?.values;
+			if (!Array.isArray(values)) return null;
+			if (
+				this.expectedDimensions !== undefined &&
+				values.length !== this.expectedDimensions
+			) {
+				console.warn(
+					`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`,
+				);
+				return null;
+			}
+			return new Float32Array(values);
+		} catch (err) {
+			this.handleApiError(err, 'embedDocument');
+			return null;
+		}
+	}
+
 	async embedMultimodal(
 		text: string,
 		imageBase64: string,
@@ -241,24 +339,31 @@ export class GeminiSemanticSearch {
 
 		try {
 			const url = `${this.baseUrl}/${this.modelName}:embedContent`;
-			const parts: any[] = [];
+			const parts: Array<
+				| { text: string }
+				| { inline_data: { mime_type: string; data: string } }
+			> = [];
+			// Per official docs: "The text portion of the multimodal input shouldn't include task type information."
 			if (text && text.trim().length > 0) {
 				parts.push({ text: text.trim() });
 			}
 			if (imageBase64 && imageBase64.trim().length > 0) {
 				parts.push({
-					inlineData: {
-						mimeType,
+					inline_data: {
+						mime_type: mimeType,
 						data: imageBase64,
 					},
 				});
 			}
 
-			const response = await axios.post(
+			const outputDims = this.expectedDimensions ?? 3072;
+			const response = await axios.post<{
+				embedding?: { values?: number[] };
+			}>(
 				url,
 				{
 					content: { parts },
-					outputDimensionality: 3072,
+					output_dimensionality: outputDims,
 				},
 				{
 					headers: {

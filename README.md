@@ -40,7 +40,7 @@ Install directly with the `agy` CLI:
 agy plugin install .
 
 # Or install from GitHub:
-agy plugin install MightyDillah/apple-doc-mcp
+agy plugin install AndrewMason7/apple-doc-plugin
 ```
 
 Once installed, the plugin automatically provides:

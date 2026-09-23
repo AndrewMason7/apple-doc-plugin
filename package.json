@@ -1,6 +1,6 @@
 {
 	"name": "apple-doc-mcp-server",
-	"version": "1.9.6",
+	"version": "1.0.0",
 	"description": "MCP server providing seamless access to Apple Developer Documentation with smart search and wildcard support",
 	"main": "dist/index.js",
 	"type": "module",
@@ -28,15 +28,15 @@
 		"swiftui",
 		"uikit"
 	],
-	"author": "MightyDillah",
+	"author": "Andrew Mason (https://github.com/AndrewMason7)",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/MightyDillah/apple-doc-mcp.git"
+		"url": "https://github.com/AndrewMason7/apple-doc-plugin.git"
 	},
 	"bugs": {
-		"url": "https://github.com/MightyDillah/apple-doc-mcp/issues"
+		"url": "https://github.com/AndrewMason7/apple-doc-plugin/issues"
 	},
-	"homepage": "https://github.com/MightyDillah/apple-doc-mcp#readme",
+	"homepage": "https://github.com/AndrewMason7/apple-doc-plugin#readme",
 	"scripts": {
 		"build": "tsc && chmod +x dist/index.js",
 		"build:index": "tsx scripts/build-index.ts",
