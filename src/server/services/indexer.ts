@@ -17,9 +17,29 @@ export function extractAbstract(abstractObj: any): string {
   return '';
 }
 
-export function indexFrameworkData(db: AppleDocsDB, framework: string, data: any): number {
+export const FRAMEWORK_DEFAULT_PLATFORMS: Record<string, string[]> = {
+  SwiftUI: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+  UIKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'tvOS', 'visionOS'],
+  Foundation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+  SwiftData: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+  Combine: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+  AppKit: ['macOS'],
+  Observation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+  CoreLocation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'watchOS', 'visionOS'],
+};
+
+export function indexFrameworkData(
+  db: AppleDocsDB,
+  framework: string,
+  data: any,
+  defaultPlatforms?: string[]
+): number {
   if (!data?.references || typeof data.references !== 'object') return 0;
   let count = 0;
+
+  const frameworkPlatforms = Array.isArray(data?.metadata?.platforms)
+    ? data.metadata.platforms.map((p: any) => p?.name || '').filter(Boolean)
+    : (defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || []);
 
   for (const [id, ref] of Object.entries<any>(data.references)) {
     if (!ref || typeof ref !== 'object') continue;
@@ -27,9 +47,9 @@ export function indexFrameworkData(db: AppleDocsDB, framework: string, data: any
     if (!ref.title) continue;
 
     const abstractText = extractAbstract(ref.abstract);
-    const platforms: string[] = Array.isArray(ref.platforms)
+    const platforms: string[] = Array.isArray(ref.platforms) && ref.platforms.length > 0
       ? ref.platforms.map((p: any) => p?.name || '').filter(Boolean)
-      : [];
+      : frameworkPlatforms;
 
     const kind = ref.symbolKind || ref.kind || 'symbol';
     const isPrimary = ['struct', 'class', 'protocol', 'enum', 'macro'].includes(kind.toLowerCase());
@@ -116,10 +136,16 @@ export interface DocCIndexNode {
   external?: boolean;
 }
 
-export function indexFrameworkTree(db: AppleDocsDB, framework: string, indexData: any): number {
+export function indexFrameworkTree(
+  db: AppleDocsDB,
+  framework: string,
+  indexData: any,
+  defaultPlatforms?: string[]
+): number {
   const root = indexData?.interfaceLanguages?.swift?.[0];
   if (!root) return 0;
 
+  const nodePlatforms = defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || [];
   let count = 0;
 
   function walk(node: DocCIndexNode) {
@@ -134,7 +160,7 @@ export function indexFrameworkTree(db: AppleDocsDB, framework: string, indexData
         kind: node.type,
         abstract: '', // Populated on-demand or during deep crawl
         path: node.path,
-        platforms: [],
+        platforms: nodePlatforms,
         isPrimaryType: isPrimary,
       });
       count++;

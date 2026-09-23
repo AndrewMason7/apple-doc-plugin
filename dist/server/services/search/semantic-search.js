@@ -1,21 +1,109 @@
 import axios from 'axios';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { GoogleAuth } from 'google-auth-library';
 export class GeminiSemanticSearch {
     apiKey;
     modelName;
     baseUrl;
+    googleAuth;
+    hasInjectedAuth;
+    authDisabled;
     circuitOpenUntil = 0;
-    constructor(apiKey, modelName = 'models/gemini-embedding-2', baseUrl = 'https://generativelanguage.googleapis.com/v1beta') {
-        if (apiKey === null) {
+    cachedAccessToken = null;
+    expectedDimensions;
+    constructor(apiKey, modelName = 'models/gemini-embedding-2', baseUrl = 'https://generativelanguage.googleapis.com/v1beta', googleAuth, expectedDimensions) {
+        this.expectedDimensions = expectedDimensions;
+        if (apiKey === null && !googleAuth) {
             this.apiKey = undefined;
+            this.authDisabled = true;
         }
         else {
-            this.apiKey = apiKey || process.env.GEMINI_API_KEY;
+            this.apiKey = apiKey === null ? undefined : apiKey || process.env.GEMINI_API_KEY;
+            this.authDisabled = false;
         }
         this.modelName = modelName;
         this.baseUrl = baseUrl.replace(/\/+$/, '');
+        if (googleAuth) {
+            this.googleAuth = googleAuth;
+            this.hasInjectedAuth = true;
+        }
+        else {
+            this.googleAuth = new GoogleAuth({
+                scopes: [
+                    'https://www.googleapis.com/auth/generative-language',
+                    'https://www.googleapis.com/auth/cloud-platform',
+                ],
+            });
+            this.hasInjectedAuth = false;
+        }
     }
     hasApiKey() {
+        if (this.authDisabled)
+            return false;
         return Boolean(this.apiKey && this.apiKey.trim().length > 0);
+    }
+    hasAdc() {
+        if (this.authDisabled)
+            return false;
+        if (this.hasInjectedAuth)
+            return true;
+        if (process.env.GOOGLE_APPLICATION_CREDENTIALS &&
+            process.env.GOOGLE_APPLICATION_CREDENTIALS.trim().length > 0) {
+            if (existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS.trim())) {
+                return true;
+            }
+        }
+        const home = process.env.HOME || process.env.USERPROFILE || '';
+        if (home) {
+            const defaultGcloudPath = join(home, '.config/gcloud/application_default_credentials.json');
+            if (existsSync(defaultGcloudPath)) {
+                return true;
+            }
+        }
+        if (process.env.K_SERVICE || process.env.GAE_SERVICE || process.env.CLOUD_RUN_JOB) {
+            return true;
+        }
+        return false;
+    }
+    hasAuth() {
+        return this.hasApiKey() || this.hasAdc();
+    }
+    async getAuthHeaders() {
+        if (this.authDisabled)
+            return null;
+        // 1. Explicit API key takes highest precedence
+        if (this.hasApiKey()) {
+            return { 'x-goog-api-key': this.apiKey };
+        }
+        // 2. Application Default Credentials (ADC)
+        try {
+            const now = Date.now();
+            if (this.cachedAccessToken && this.cachedAccessToken.expiresAt > now + 60_000) {
+                return { Authorization: `Bearer ${this.cachedAccessToken.token}` };
+            }
+            const client = await this.googleAuth.getClient();
+            const tokenResult = await client.getAccessToken();
+            const token = typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
+            if (token && typeof token === 'string' && token.trim().length > 0) {
+                const expiresInSec = tokenResult?.res?.data?.expires_in;
+                const expiryDateMs = client?.credentials?.expiry_date;
+                const ttlMs = expiresInSec
+                    ? expiresInSec * 1000
+                    : expiryDateMs && expiryDateMs > now
+                        ? expiryDateMs - now
+                        : 50 * 60 * 1000;
+                this.cachedAccessToken = {
+                    token,
+                    expiresAt: now + ttlMs,
+                };
+                return { Authorization: `Bearer ${token}` };
+            }
+        }
+        catch {
+            // ADC unavailable or error fetching credentials
+        }
+        return null;
     }
     isCircuitOpen() {
         return Date.now() < this.circuitOpenUntil;
@@ -29,31 +117,43 @@ export class GeminiSemanticSearch {
     handleApiError(err, action) {
         if (axios.isAxiosError(err)) {
             const status = err.response?.status;
-            if (status === 429 || (status !== undefined && status >= 500)) {
+            const isTimeout = err.code === 'ECONNABORTED' || err.message.toLowerCase().includes('timeout');
+            const isNetworkError = err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED';
+            const isAuthError = status === 401 || status === 403;
+            const isRateLimitOrServer = status === 429 || (status !== undefined && status >= 500);
+            if (isTimeout || isNetworkError || isAuthError || isRateLimitOrServer) {
                 this.tripCircuitBreaker(30_000);
-                console.error(`Warning: Gemini API error (${status}) during ${action}. Circuit breaker tripped for 30s.`);
+                console.error(`Warning: Gemini API error (${status || err.code || 'timeout'}) during ${action}. Circuit breaker tripped for 30s.`);
                 return;
             }
         }
         console.error(`Warning: Gemini API call failed during ${action}:`, err instanceof Error ? err.message : err);
     }
     async embedQuery(text) {
-        if (!this.hasApiKey() || this.isCircuitOpen())
+        if (this.isCircuitOpen())
+            return null;
+        const authHeaders = await this.getAuthHeaders();
+        if (!authHeaders)
             return null;
         try {
             const url = `${this.baseUrl}/${this.modelName}:embedContent`;
             const response = await axios.post(url, {
                 content: { parts: [{ text }] },
+                outputDimensionality: 3072,
             }, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-goog-api-key': this.apiKey,
+                    ...authHeaders,
                 },
                 timeout: 4000,
             });
             const values = response.data?.embedding?.values;
             if (!Array.isArray(values))
                 return null;
+            if (this.expectedDimensions !== undefined && values.length !== this.expectedDimensions) {
+                console.warn(`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`);
+                return null;
+            }
             return new Float32Array(values);
         }
         catch (err) {
@@ -62,7 +162,10 @@ export class GeminiSemanticSearch {
         }
     }
     async embedMultimodal(text, imageBase64, mimeType = 'image/png') {
-        if (!this.hasApiKey() || this.isCircuitOpen())
+        if (this.isCircuitOpen())
+            return null;
+        const authHeaders = await this.getAuthHeaders();
+        if (!authHeaders)
             return null;
         try {
             const url = `${this.baseUrl}/${this.modelName}:embedContent`;
@@ -80,16 +183,21 @@ export class GeminiSemanticSearch {
             }
             const response = await axios.post(url, {
                 content: { parts },
+                outputDimensionality: 3072,
             }, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-goog-api-key': this.apiKey,
+                    ...authHeaders,
                 },
                 timeout: 8000,
             });
             const values = response.data?.embedding?.values;
             if (!Array.isArray(values))
                 return null;
+            if (this.expectedDimensions !== undefined && values.length !== this.expectedDimensions) {
+                console.warn(`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`);
+                return null;
+            }
             return new Float32Array(values);
         }
         catch (err) {
@@ -97,19 +205,28 @@ export class GeminiSemanticSearch {
             return null;
         }
     }
+    cosineSimilarityWithNorm(a, normA, b, normB) {
+        if (a.length !== b.length || a.length === 0)
+            return 0;
+        const denom = normA * normB;
+        if (denom <= 0)
+            return 0;
+        let dot = 0.0;
+        for (let i = 0; i < a.length; i++) {
+            dot += a[i] * b[i];
+        }
+        return dot / denom;
+    }
     cosineSimilarity(a, b) {
         if (a.length !== b.length || a.length === 0)
             return 0;
-        let dot = 0.0;
-        let normA = 0.0;
-        let normB = 0.0;
+        let normASq = 0.0;
+        let normBSq = 0.0;
         for (let i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
+            normASq += a[i] * a[i];
+            normBSq += b[i] * b[i];
         }
-        const denom = Math.sqrt(normA) * Math.sqrt(normB);
-        return denom > 0 ? dot / denom : 0;
+        return this.cosineSimilarityWithNorm(a, Math.sqrt(normASq), b, Math.sqrt(normBSq));
     }
 }
 //# sourceMappingURL=semantic-search.js.map

@@ -125,10 +125,11 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 			};
 		}
 
-		const clampedMaxResults = Math.min(
-			Math.max(1, typeof maxResults === 'number' ? maxResults : 20),
-			100
-		);
+		const rawMaxResults =
+			typeof maxResults === 'number' && Number.isFinite(maxResults)
+				? Math.floor(maxResults)
+				: 20;
+		const clampedMaxResults = Math.min(Math.max(1, rawMaxResults), 100);
 
 		const queryMode = getQueryMode(query);
 		const activeTechnology = state.getActiveTechnology();

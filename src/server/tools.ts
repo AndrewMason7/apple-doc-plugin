@@ -171,9 +171,24 @@ export const registerTools = (server: Server, context: ServerContext) => {
 			(entry) => entry.name === request.params.name,
 		);
 		if (!tool) {
-			throw new Error(`Unknown tool: ${request.params.name}`);
+			return {
+				isError: true,
+				content: [{ type: 'text', text: `Unknown tool: ${request.params.name}` }],
+			};
 		}
 
-		return tool.handler(request.params.arguments ?? {});
+		try {
+			return await tool.handler(request.params.arguments ?? {});
+		} catch (error) {
+			return {
+				isError: true,
+				content: [
+					{
+						type: 'text',
+						text: `Error executing tool ${request.params.name}: ${error instanceof Error ? error.message : String(error)}`,
+					},
+				],
+			};
+		}
 	});
 };

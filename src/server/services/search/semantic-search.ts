@@ -30,13 +30,16 @@ export class GeminiSemanticSearch {
   private readonly authDisabled: boolean;
   private circuitOpenUntil = 0;
   private cachedAccessToken: { token: string; expiresAt: number } | null = null;
+  public readonly expectedDimensions?: number;
 
   constructor(
     apiKey?: string | null,
     modelName = 'models/gemini-embedding-2',
     baseUrl = 'https://generativelanguage.googleapis.com/v1beta',
-    googleAuth?: GoogleAuthClient
+    googleAuth?: GoogleAuthClient,
+    expectedDimensions?: number
   ) {
+    this.expectedDimensions = expectedDimensions;
     if (apiKey === null && !googleAuth) {
       this.apiKey = undefined;
       this.authDisabled = true;
@@ -74,7 +77,9 @@ export class GeminiSemanticSearch {
       process.env.GOOGLE_APPLICATION_CREDENTIALS &&
       process.env.GOOGLE_APPLICATION_CREDENTIALS.trim().length > 0
     ) {
-      return true;
+      if (existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS.trim())) {
+        return true;
+      }
     }
     const home = process.env.HOME || process.env.USERPROFILE || '';
     if (home) {
@@ -83,7 +88,7 @@ export class GeminiSemanticSearch {
         return true;
       }
     }
-    if (process.env.GOOGLE_CLOUD_PROJECT || process.env.K_SERVICE || process.env.GAE_SERVICE) {
+    if (process.env.K_SERVICE || process.env.GAE_SERVICE || process.env.CLOUD_RUN_JOB) {
       return true;
     }
     return false;
@@ -113,9 +118,17 @@ export class GeminiSemanticSearch {
       const tokenResult = await client.getAccessToken();
       const token = typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
       if (token && typeof token === 'string' && token.trim().length > 0) {
+        const expiresInSec = (tokenResult as any)?.res?.data?.expires_in;
+        const expiryDateMs = (client as any)?.credentials?.expiry_date;
+        const ttlMs = expiresInSec
+          ? expiresInSec * 1000
+          : expiryDateMs && expiryDateMs > now
+          ? expiryDateMs - now
+          : 50 * 60 * 1000;
+
         this.cachedAccessToken = {
           token,
-          expiresAt: now + 50 * 60 * 1000,
+          expiresAt: now + ttlMs,
         };
         return { Authorization: `Bearer ${token}` };
       }
@@ -185,6 +198,12 @@ export class GeminiSemanticSearch {
       );
       const values = response.data?.embedding?.values;
       if (!Array.isArray(values)) return null;
+      if (this.expectedDimensions !== undefined && values.length !== this.expectedDimensions) {
+        console.warn(
+          `Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`
+        );
+        return null;
+      }
       return new Float32Array(values);
     } catch (err) {
       this.handleApiError(err, 'embedQuery');
@@ -233,6 +252,12 @@ export class GeminiSemanticSearch {
 
       const values = response.data?.embedding?.values;
       if (!Array.isArray(values)) return null;
+      if (this.expectedDimensions !== undefined && values.length !== this.expectedDimensions) {
+        console.warn(
+          `Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`
+        );
+        return null;
+      }
       return new Float32Array(values);
     } catch (err) {
       this.handleApiError(err, 'embedMultimodal');

@@ -7,6 +7,7 @@ export type ToolResponse = {
         text: string;
         type: 'text';
     }>;
+    isError?: boolean;
 };
 export type ServerContext = {
     client: AppleDevDocsClient;

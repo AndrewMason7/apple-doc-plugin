@@ -9,8 +9,27 @@ export class HybridSearchEngine {
     searchSemanticWithVector(queryVec, framework, limit = 10, minSimilarity = 0.65) {
         const items = this.db.getSemanticItems(framework);
         const matches = [];
+        let queryNormSq = 0.0;
+        for (let i = 0; i < queryVec.length; i++) {
+            queryNormSq += queryVec[i] * queryVec[i];
+        }
+        const queryNorm = Math.sqrt(queryNormSq);
+        if (queryNorm === 0)
+            return [];
         for (const item of items) {
-            const similarity = this.semanticSearch.cosineSimilarity(queryVec, item.embedding);
+            let itemNorm = item.norm;
+            if (itemNorm === undefined) {
+                let normSq = 0.0;
+                for (let i = 0; i < item.embedding.length; i++) {
+                    normSq += item.embedding[i] * item.embedding[i];
+                }
+                itemNorm = Math.sqrt(normSq);
+            }
+            if (item.embedding.length !== queryVec.length) {
+                console.warn(`Warning: Semantic vector dimension mismatch: item "${item.id}" has ${item.embedding.length} dims, query has ${queryVec.length} dims.`);
+                continue;
+            }
+            const similarity = this.semanticSearch.cosineSimilarityWithNorm(queryVec, queryNorm, item.embedding, itemNorm);
             if (similarity >= minSimilarity) {
                 matches.push({
                     id: item.id,
@@ -40,8 +59,8 @@ export class HybridSearchEngine {
                 source: 'fts',
             };
         });
-        // Check if semantic search is available
-        if (this.semanticSearch.hasApiKey()) {
+        // Check if semantic search is available (API key or ADC)
+        if (this.semanticSearch.hasAuth()) {
             const queryVec = await this.semanticSearch.embedQuery(query);
             if (queryVec) {
                 const semanticMatches = this.searchSemanticWithVector(queryVec, options.framework, limit);

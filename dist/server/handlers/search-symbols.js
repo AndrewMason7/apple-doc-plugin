@@ -63,6 +63,16 @@ export const buildSearchSymbolsHandler = (context) => {
     const noTechnology = buildNoTechnologyMessage(context);
     return async (args) => {
         const { query, maxResults = 20, platform, symbolType } = args;
+        if (typeof query !== 'string' || query.trim().length === 0) {
+            return {
+                isError: true,
+                content: [{ type: 'text', text: 'Error: A non-empty "query" parameter is required.' }],
+            };
+        }
+        const rawMaxResults = typeof maxResults === 'number' && Number.isFinite(maxResults)
+            ? Math.floor(maxResults)
+            : 20;
+        const clampedMaxResults = Math.min(Math.max(1, rawMaxResults), 100);
         const queryMode = getQueryMode(query);
         const activeTechnology = state.getActiveTechnology();
         // Determine target framework: explicit param takes priority, then active state
@@ -71,7 +81,7 @@ export const buildSearchSymbolsHandler = (context) => {
         if (searchEngine) {
             const results = await searchEngine.search(query, {
                 framework: targetFramework,
-                limit: maxResults * 2,
+                limit: clampedMaxResults * 2,
             });
             let filtered = results;
             if (platform) {
@@ -83,7 +93,7 @@ export const buildSearchSymbolsHandler = (context) => {
                 const lowerKind = symbolType.toLowerCase();
                 filtered = filtered.filter((r) => r.kind.toLowerCase() === lowerKind);
             }
-            const topResults = filtered.slice(0, maxResults);
+            const topResults = filtered.slice(0, clampedMaxResults);
             if (topResults.length > 0) {
                 const lines = [
                     header(1, `🔍 Search Results for "${query}"`),

@@ -49,6 +49,13 @@ export class HybridSearchEngine {
         itemNorm = Math.sqrt(normSq);
       }
 
+      if (item.embedding.length !== queryVec.length) {
+        console.warn(
+          `Warning: Semantic vector dimension mismatch: item "${item.id}" has ${item.embedding.length} dims, query has ${queryVec.length} dims.`
+        );
+        continue;
+      }
+
       const similarity = this.semanticSearch.cosineSimilarityWithNorm(
         queryVec,
         queryNorm,

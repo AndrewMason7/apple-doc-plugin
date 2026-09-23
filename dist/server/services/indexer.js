@@ -18,10 +18,23 @@ export function extractAbstract(abstractObj) {
     }
     return '';
 }
-export function indexFrameworkData(db, framework, data) {
+export const FRAMEWORK_DEFAULT_PLATFORMS = {
+    SwiftUI: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+    UIKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'tvOS', 'visionOS'],
+    Foundation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+    SwiftData: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+    Combine: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+    AppKit: ['macOS'],
+    Observation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS', 'watchOS'],
+    CoreLocation: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'watchOS', 'visionOS'],
+};
+export function indexFrameworkData(db, framework, data, defaultPlatforms) {
     if (!data?.references || typeof data.references !== 'object')
         return 0;
     let count = 0;
+    const frameworkPlatforms = Array.isArray(data?.metadata?.platforms)
+        ? data.metadata.platforms.map((p) => p?.name || '').filter(Boolean)
+        : (defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || []);
     for (const [id, ref] of Object.entries(data.references)) {
         if (!ref || typeof ref !== 'object')
             continue;
@@ -30,9 +43,9 @@ export function indexFrameworkData(db, framework, data) {
         if (!ref.title)
             continue;
         const abstractText = extractAbstract(ref.abstract);
-        const platforms = Array.isArray(ref.platforms)
+        const platforms = Array.isArray(ref.platforms) && ref.platforms.length > 0
             ? ref.platforms.map((p) => p?.name || '').filter(Boolean)
-            : [];
+            : frameworkPlatforms;
         const kind = ref.symbolKind || ref.kind || 'symbol';
         const isPrimary = ['struct', 'class', 'protocol', 'enum', 'macro'].includes(kind.toLowerCase());
         const symbolPath = ref.url || id;
@@ -92,10 +105,11 @@ export function extractMediaReferences(data) {
     }
     return items;
 }
-export function indexFrameworkTree(db, framework, indexData) {
+export function indexFrameworkTree(db, framework, indexData, defaultPlatforms) {
     const root = indexData?.interfaceLanguages?.swift?.[0];
     if (!root)
         return 0;
+    const nodePlatforms = defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || [];
     let count = 0;
     function walk(node) {
         if (node.path && node.title && node.type && node.type !== 'groupMarker') {
@@ -107,7 +121,7 @@ export function indexFrameworkTree(db, framework, indexData) {
                 kind: node.type,
                 abstract: '', // Populated on-demand or during deep crawl
                 path: node.path,
-                platforms: [],
+                platforms: nodePlatforms,
                 isPrimaryType: isPrimary,
             });
             count++;

@@ -21,12 +21,25 @@ export const createServer = () => {
             tools: {},
         },
     });
+    // Ensure .env is loaded if createServer is invoked directly
+    if (typeof process.loadEnvFile === 'function') {
+        const projectEnv = join(__dirname, '../../.env');
+        try {
+            if (existsSync(projectEnv)) {
+                process.loadEnvFile(projectEnv);
+            }
+            else {
+                process.loadEnvFile();
+            }
+        }
+        catch { }
+    }
     const client = new AppleDevDocsClient();
     const state = new ServerState();
     // Initialize database and hybrid search engine if database file exists
     let db;
     let searchEngine;
-    const dbPath = join(__dirname, '../../data/apple-docs.db');
+    const dbPath = process.env.APPLE_DOCS_DB_PATH || join(__dirname, '../../data/apple-docs.db');
     if (existsSync(dbPath)) {
         try {
             db = new AppleDocsDB(dbPath, { readonly: true });

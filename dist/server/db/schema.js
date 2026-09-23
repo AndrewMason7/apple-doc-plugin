@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS symbols (
     is_primary_type INTEGER DEFAULT 0
 );
 
+CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
+
+
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
     title,
     framework,

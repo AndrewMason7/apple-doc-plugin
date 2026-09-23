@@ -82,7 +82,7 @@ export class AppleDocsDB {
         kind = excluded.kind,
         abstract = CASE WHEN excluded.abstract IS NOT NULL AND excluded.abstract != '' THEN excluded.abstract ELSE symbols.abstract END,
         path = excluded.path,
-        platforms = excluded.platforms,
+        platforms = CASE WHEN excluded.platforms IS NOT NULL AND excluded.platforms != '[]' AND excluded.platforms != '' THEN excluded.platforms ELSE symbols.platforms END,
         is_primary_type = excluded.is_primary_type
     `);
     stmt.run(
@@ -126,7 +126,7 @@ export class AppleDocsDB {
       for (const r of rows) {
         const buf = r.embedding as Buffer;
         const f32 = deserializeFloat32Array(buf);
-        if (!f32) continue;
+        if (!f32 || f32.length === 0) continue;
         let normSq = 0;
         for (let i = 0; i < f32.length; i++) {
           normSq += f32[i] * f32[i];
@@ -157,30 +157,38 @@ export class AppleDocsDB {
 
   private queryLikePattern(pattern: string, framework?: string, limit = 20): FTSResult[] {
     let sql = `
-      SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+      SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type,
+             CASE WHEN title LIKE ? THEN 1 ELSE 0 END AS title_match,
+             length(title) AS title_len
       FROM symbols
       WHERE (title LIKE ? OR abstract LIKE ?)
     `;
-    const params: (string | number)[] = [pattern, pattern];
+    const params: (string | number)[] = [pattern, pattern, pattern];
     if (framework) {
       sql += ` AND framework = ? COLLATE NOCASE`;
       params.push(framework);
     }
-    sql += ` LIMIT ?`;
+    sql += ` ORDER BY title_match DESC, is_primary_type DESC, title_len ASC, title ASC LIMIT ?`;
     params.push(limit);
 
     const rows = this.db.prepare(sql).all(...params) as any[];
-    return rows.map((r) => ({
-      id: r.id,
-      framework: r.framework,
-      title: r.title,
-      kind: r.kind,
-      abstract: r.abstract,
-      path: r.path,
-      platforms: safeParsePlatforms(r.platforms),
-      isPrimaryType: Boolean(r.is_primary_type),
-      score: 1.0,
-    }));
+    return rows.map((r) => {
+      const isTitleMatch = Boolean(r.title_match);
+      const isPrimary = Boolean(r.is_primary_type);
+      const titleLen = Number(r.title_len) || 0;
+      const score = (isTitleMatch ? 10.0 : 1.0) + (isPrimary ? 5.0 : 0) - Math.min(5, titleLen * 0.1);
+      return {
+        id: r.id,
+        framework: r.framework,
+        title: r.title,
+        kind: r.kind,
+        abstract: r.abstract,
+        path: r.path,
+        platforms: safeParsePlatforms(r.platforms),
+        isPrimaryType: isPrimary,
+        score,
+      };
+    });
   }
 
   queryFTS(query: string, framework?: string, limit = 20): FTSResult[] {

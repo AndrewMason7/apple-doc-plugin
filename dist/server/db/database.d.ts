@@ -22,13 +22,18 @@ export interface SemanticItem {
     mediaUrl?: string;
     mediaType?: string;
     embedding: Float32Array;
+    norm?: number;
 }
+export declare function deserializeFloat32Array(buf: Buffer): Float32Array | null;
 export declare class AppleDocsDB {
     private db;
+    private vectorCache;
     constructor(dbPath: string, options?: Database.Options);
+    rebuildFTS(): void;
     insertSymbol(sym: DbSymbol): void;
     insertSemanticItem(item: SemanticItem): void;
     getSemanticItems(framework?: string): SemanticItem[];
+    private queryLikePattern;
     queryFTS(query: string, framework?: string, limit?: number): FTSResult[];
     private queryLike;
     getSymbolByPath(path: string): DbSymbol | null;

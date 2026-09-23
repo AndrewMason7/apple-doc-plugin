@@ -132,3 +132,14 @@ test('GeminiSemanticSearch trips circuit breaker on 401 and 403 status codes', a
   }
 });
 
+test('GeminiSemanticSearch trips circuit breaker on network failure (ECONNREFUSED)', async () => {
+  // Use a port where nothing is listening to trigger ECONNREFUSED
+  const deadBaseUrl = 'http://127.0.0.1:59999';
+  const search = new GeminiSemanticSearch('some-key', 'models/test-model', deadBaseUrl);
+  assert.strictEqual(search.isCircuitOpen(), false);
+
+  const res = await search.embedQuery('will-fail');
+  assert.strictEqual(res, null);
+  assert.strictEqual(search.isCircuitOpen(), true, 'Circuit breaker should trip on network connection error');
+});
+

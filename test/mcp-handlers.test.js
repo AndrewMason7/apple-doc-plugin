@@ -78,3 +78,62 @@ test('search_symbols respects framework argument', async () => {
   assert(!text.includes('UIKit'));
   db.close();
 });
+
+test('get_documentation validates empty path and returns isError: true', async () => {
+  const { buildGetDocumentationHandler } = await import('../dist/server/handlers/get-documentation.js');
+  const handler = buildGetDocumentationHandler({
+    client: new AppleDevDocsClient(),
+    state: new ServerState(),
+  });
+
+  const res = await handler({ path: '' });
+  assert.strictEqual(res.isError, true);
+  assert(res.content[0].text.includes('Error: A non-empty "path" parameter is required.'));
+});
+
+test('get_documentation resolves using local db when no technology is selected', async () => {
+  const { buildGetDocumentationHandler } = await import('../dist/server/handlers/get-documentation.js');
+  const db = new AppleDocsDB(':memory:');
+  db.insertSymbol({
+    id: 'documentation/swiftui/button',
+    framework: 'SwiftUI',
+    title: 'Button',
+    kind: 'struct',
+    abstract: 'A control that initiates an action.',
+    path: '/documentation/swiftui/button',
+    platforms: ['iOS 13.0+', 'macOS 10.15+'],
+    isPrimaryType: true,
+  });
+
+  const handler = buildGetDocumentationHandler({
+    client: new AppleDevDocsClient(),
+    state: new ServerState(),
+    db,
+  });
+
+  const res = await handler({ path: '/documentation/swiftui/button' });
+  assert(!res.isError);
+  const text = res.content[0].text;
+  assert(text.includes('Button'));
+  assert(text.includes('SwiftUI'));
+  assert(text.includes('A control that initiates an action.'));
+
+  db.close();
+});
+
+test('get_documentation returns isError: true gracefully for non-existent path', async () => {
+  const { buildGetDocumentationHandler } = await import('../dist/server/handlers/get-documentation.js');
+  const db = new AppleDocsDB(':memory:');
+  const handler = buildGetDocumentationHandler({
+    client: new AppleDevDocsClient(),
+    state: new ServerState(),
+    db,
+  });
+
+  // Path has framework prefix so it tries to resolve, but Apple CDN will 404
+  const res = await handler({ path: 'documentation/nonexistentframework/nonexistent' });
+  assert.strictEqual(res.isError, true);
+  assert(res.content[0].text.includes('Failed to load documentation'));
+
+  db.close();
+});

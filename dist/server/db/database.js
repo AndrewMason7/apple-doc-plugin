@@ -1,29 +1,63 @@
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from './schema.js';
+export function deserializeFloat32Array(buf) {
+    if (buf.byteLength % 4 !== 0 || buf.byteLength === 0) {
+        return null;
+    }
+    const aligned = new ArrayBuffer(buf.byteLength);
+    new Uint8Array(aligned).set(buf);
+    return new Float32Array(aligned);
+}
+function safeParsePlatforms(val) {
+    if (typeof val !== 'string' || !val.trim())
+        return [];
+    try {
+        const parsed = JSON.parse(val);
+        return Array.isArray(parsed) ? parsed : [];
+    }
+    catch {
+        return [];
+    }
+}
 export class AppleDocsDB {
     db;
+    vectorCache = null;
     constructor(dbPath, options = {}) {
         this.db = new Database(dbPath, options);
-        this.db.pragma('journal_mode = WAL');
-        this.db.exec(SCHEMA_SQL);
-        // Safe column migrations for existing databases
-        try {
-            this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
+        if (!options.readonly) {
+            this.db.pragma('journal_mode = WAL');
+            this.db.exec(SCHEMA_SQL);
+            // Safe column migrations for existing databases
+            try {
+                this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
+            }
+            catch { }
+            try {
+                this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_type TEXT');
+            }
+            catch { }
         }
-        catch { }
-        try {
-            this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_type TEXT');
-        }
-        catch { }
+    }
+    rebuildFTS() {
+        this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')");
     }
     insertSymbol(sym) {
         const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO symbols (id, framework, title, kind, abstract, path, platforms, is_primary_type)
+      INSERT INTO symbols (id, framework, title, kind, abstract, path, platforms, is_primary_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        framework = excluded.framework,
+        title = excluded.title,
+        kind = excluded.kind,
+        abstract = CASE WHEN excluded.abstract IS NOT NULL AND excluded.abstract != '' THEN excluded.abstract ELSE symbols.abstract END,
+        path = excluded.path,
+        platforms = CASE WHEN excluded.platforms IS NOT NULL AND excluded.platforms != '[]' AND excluded.platforms != '' THEN excluded.platforms ELSE symbols.platforms END,
+        is_primary_type = excluded.is_primary_type
     `);
         stmt.run(sym.id, sym.framework, sym.title, sym.kind, sym.abstract || '', sym.path, JSON.stringify(sym.platforms || []), sym.isPrimaryType ? 1 : 0);
     }
     insertSemanticItem(item) {
+        this.vectorCache = null; // Invalidate vector cache on new writes
         const buffer = Buffer.from(item.embedding.buffer, item.embedding.byteOffset, item.embedding.byteLength);
         const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, media_url, media_type, embedding)
@@ -32,44 +66,106 @@ export class AppleDocsDB {
         stmt.run(item.id, item.framework, item.title, item.kind, item.summary, item.path, item.mediaUrl || null, item.mediaType || null, buffer);
     }
     getSemanticItems(framework) {
-        let sql = 'SELECT id, framework, title, kind, summary, path, media_url, media_type, embedding FROM semantic_items';
-        const params = [];
+        if (!this.vectorCache) {
+            const rows = this.db
+                .prepare('SELECT id, framework, title, kind, summary, path, media_url, media_type, embedding FROM semantic_items')
+                .all();
+            const items = [];
+            for (const r of rows) {
+                const buf = r.embedding;
+                const f32 = deserializeFloat32Array(buf);
+                if (!f32 || f32.length === 0)
+                    continue;
+                let normSq = 0;
+                for (let i = 0; i < f32.length; i++) {
+                    normSq += f32[i] * f32[i];
+                }
+                items.push({
+                    id: r.id,
+                    framework: r.framework,
+                    title: r.title,
+                    kind: r.kind,
+                    summary: r.summary,
+                    path: r.path,
+                    mediaUrl: r.media_url || undefined,
+                    mediaType: r.media_type || undefined,
+                    embedding: f32,
+                    norm: Math.sqrt(normSq),
+                });
+            }
+            this.vectorCache = items;
+        }
         if (framework) {
-            sql += ' WHERE framework = ? COLLATE NOCASE';
+            const target = framework.toLowerCase();
+            return this.vectorCache.filter((item) => item.framework.toLowerCase() === target);
+        }
+        return this.vectorCache;
+    }
+    queryLikePattern(pattern, framework, limit = 20) {
+        let sql = `
+      SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type,
+             CASE WHEN title LIKE ? THEN 1 ELSE 0 END AS title_match,
+             length(title) AS title_len
+      FROM symbols
+      WHERE (title LIKE ? OR abstract LIKE ?)
+    `;
+        const params = [pattern, pattern, pattern];
+        if (framework) {
+            sql += ` AND framework = ? COLLATE NOCASE`;
             params.push(framework);
         }
+        sql += ` ORDER BY title_match DESC, is_primary_type DESC, title_len ASC, title ASC LIMIT ?`;
+        params.push(limit);
         const rows = this.db.prepare(sql).all(...params);
         return rows.map((r) => {
-            const buf = r.embedding;
-            const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / Float32Array.BYTES_PER_ELEMENT);
+            const isTitleMatch = Boolean(r.title_match);
+            const isPrimary = Boolean(r.is_primary_type);
+            const titleLen = Number(r.title_len) || 0;
+            const score = (isTitleMatch ? 10.0 : 1.0) + (isPrimary ? 5.0 : 0) - Math.min(5, titleLen * 0.1);
             return {
                 id: r.id,
                 framework: r.framework,
                 title: r.title,
                 kind: r.kind,
-                summary: r.summary,
+                abstract: r.abstract,
                 path: r.path,
-                mediaUrl: r.media_url || undefined,
-                mediaType: r.media_type || undefined,
-                embedding: f32,
+                platforms: safeParsePlatforms(r.platforms),
+                isPrimaryType: isPrimary,
+                score,
             };
         });
     }
     queryFTS(query, framework, limit = 20) {
-        const sanitized = query.replace(/['"]/g, '').trim();
+        const trimmed = query.trim();
+        if (!trimmed)
+            return [];
+        // If query has suffix wildcard (*Item) or single-char wildcard (?)
+        if (trimmed.startsWith('*') || trimmed.includes('?')) {
+            const pattern = trimmed
+                .replace(/\*/g, '%')
+                .replace(/\?/g, '_')
+                .replace(/["']/g, '');
+            return this.queryLikePattern(pattern, framework, limit);
+        }
+        // Strip characters that trigger FTS5 syntax errors
+        const sanitized = trimmed.replace(/["'*^:(){}[\]~+]/g, ' ').replace(/\s+/g, ' ').trim();
         if (!sanitized)
             return [];
-        let ftsQuery = sanitized;
-        // If not a wildcard and doesn't contain spaces, add prefix wildcard and expand CamelCase
-        if (!sanitized.includes('*') && !sanitized.includes(' ')) {
-            const camelParts = sanitized.split(/(?=[A-Z])/).filter(Boolean);
+        let ftsQuery = '';
+        const tokens = sanitized.split(' ').filter(Boolean);
+        if (tokens.length === 1) {
+            const single = tokens[0].replace(/\*+$/, '');
+            const camelParts = single.split(/(?=[A-Z])/).filter(Boolean);
             if (camelParts.length > 1) {
                 const tokenQuery = camelParts.map((p) => `"${p}"*`).join(' AND ');
-                ftsQuery = `("${sanitized}"* OR (${tokenQuery}))`;
+                ftsQuery = `("${single}"* OR (${tokenQuery}))`;
             }
             else {
-                ftsQuery = `"${sanitized}"*`;
+                ftsQuery = `"${single}"*`;
             }
+        }
+        else {
+            ftsQuery = tokens.map((t) => `"${t.replace(/\*+$/, '')}"*`).join(' AND ');
         }
         let sql = `
       SELECT s.id, s.framework, s.title, s.kind, s.abstract, s.path, s.platforms, s.is_primary_type,
@@ -94,12 +190,13 @@ export class AppleDocsDB {
                 kind: r.kind,
                 abstract: r.abstract,
                 path: r.path,
-                platforms: r.platforms ? JSON.parse(r.platforms) : [],
+                platforms: safeParsePlatforms(r.platforms),
                 isPrimaryType: Boolean(r.is_primary_type),
                 score: -r.rank, // Invert BM25 so higher score is better match
             }));
         }
-        catch {
+        catch (err) {
+            console.error('Warning: SQLite FTS5 MATCH failed, falling back to LIKE query:', err instanceof Error ? err.message : err);
             // Safe fallback to LIKE query if FTS expression has syntax issue
             return this.queryLike(sanitized, framework, limit);
         }
@@ -108,9 +205,13 @@ export class AppleDocsDB {
         let sql = `
       SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
       FROM symbols
-      WHERE (title LIKE ? OR abstract LIKE ?)
+      WHERE (title LIKE ? ESCAPE '\\' OR abstract LIKE ? ESCAPE '\\')
     `;
-        const term = `%${query}%`;
+        const escaped = query
+            .replace(/\\/g, '\\\\')
+            .replace(/%/g, '\\%')
+            .replace(/_/g, '\\_');
+        const term = `%${escaped}%`;
         const params = [term, term];
         if (framework) {
             sql += ` AND framework = ? COLLATE NOCASE`;
@@ -126,7 +227,7 @@ export class AppleDocsDB {
             kind: r.kind,
             abstract: r.abstract,
             path: r.path,
-            platforms: r.platforms ? JSON.parse(r.platforms) : [],
+            platforms: safeParsePlatforms(r.platforms),
             isPrimaryType: Boolean(r.is_primary_type),
             score: 1.0,
         }));
@@ -148,7 +249,7 @@ export class AppleDocsDB {
             kind: row.kind,
             abstract: row.abstract,
             path: row.path,
-            platforms: row.platforms ? JSON.parse(row.platforms) : [],
+            platforms: safeParsePlatforms(row.platforms),
             isPrimaryType: Boolean(row.is_primary_type),
         };
     }
