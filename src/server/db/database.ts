@@ -26,10 +26,28 @@ export interface SemanticItem {
   mediaUrl?: string;
   mediaType?: string;
   embedding: Float32Array;
+  norm?: number;
+}
+
+export function deserializeFloat32Array(buf: Buffer): Float32Array {
+  const aligned = new ArrayBuffer(buf.byteLength);
+  new Uint8Array(aligned).set(buf);
+  return new Float32Array(aligned);
+}
+
+function safeParsePlatforms(val: unknown): string[] {
+  if (typeof val !== 'string' || !val.trim()) return [];
+  try {
+    const parsed = JSON.parse(val);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 export class AppleDocsDB {
   private db: Database.Database;
+  private vectorCache: SemanticItem[] | null = null;
 
   constructor(dbPath: string, options: Database.Options = {}) {
     this.db = new Database(dbPath, options);
@@ -62,6 +80,7 @@ export class AppleDocsDB {
   }
 
   insertSemanticItem(item: SemanticItem): void {
+    this.vectorCache = null; // Invalidate vector cache on new writes
     const buffer = Buffer.from(item.embedding.buffer, item.embedding.byteOffset, item.embedding.byteLength);
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, media_url, media_type, embedding)
@@ -81,44 +100,57 @@ export class AppleDocsDB {
   }
 
   getSemanticItems(framework?: string): SemanticItem[] {
-    let sql = 'SELECT id, framework, title, kind, summary, path, media_url, media_type, embedding FROM semantic_items';
-    const params: string[] = [];
-    if (framework) {
-      sql += ' WHERE framework = ? COLLATE NOCASE';
-      params.push(framework);
+    if (!this.vectorCache) {
+      const rows = this.db
+        .prepare('SELECT id, framework, title, kind, summary, path, media_url, media_type, embedding FROM semantic_items')
+        .all() as any[];
+      this.vectorCache = rows.map((r) => {
+        const buf = r.embedding as Buffer;
+        const f32 = deserializeFloat32Array(buf);
+        let normSq = 0;
+        for (let i = 0; i < f32.length; i++) {
+          normSq += f32[i] * f32[i];
+        }
+        return {
+          id: r.id,
+          framework: r.framework,
+          title: r.title,
+          kind: r.kind,
+          summary: r.summary,
+          path: r.path,
+          mediaUrl: r.media_url || undefined,
+          mediaType: r.media_type || undefined,
+          embedding: f32,
+          norm: Math.sqrt(normSq),
+        };
+      });
     }
-    const rows = this.db.prepare(sql).all(...params) as any[];
-    return rows.map((r) => {
-      const buf = r.embedding as Buffer;
-      const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / Float32Array.BYTES_PER_ELEMENT);
-      return {
-        id: r.id,
-        framework: r.framework,
-        title: r.title,
-        kind: r.kind,
-        summary: r.summary,
-        path: r.path,
-        mediaUrl: r.media_url || undefined,
-        mediaType: r.media_type || undefined,
-        embedding: f32,
-      };
-    });
+
+    if (framework) {
+      const target = framework.toLowerCase();
+      return this.vectorCache.filter((item) => item.framework.toLowerCase() === target);
+    }
+    return this.vectorCache;
   }
 
   queryFTS(query: string, framework?: string, limit = 20): FTSResult[] {
-    const sanitized = query.replace(/['"]/g, '').trim();
+    // Strip characters that trigger FTS5 syntax errors
+    const sanitized = query.replace(/["'*^:(){}[\]~+]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!sanitized) return [];
 
-    let ftsQuery = sanitized;
-    // If not a wildcard and doesn't contain spaces, add prefix wildcard and expand CamelCase
-    if (!sanitized.includes('*') && !sanitized.includes(' ')) {
-      const camelParts = sanitized.split(/(?=[A-Z])/).filter(Boolean);
+    let ftsQuery = '';
+    const tokens = sanitized.split(' ').filter(Boolean);
+    if (tokens.length === 1) {
+      const single = tokens[0];
+      const camelParts = single.split(/(?=[A-Z])/).filter(Boolean);
       if (camelParts.length > 1) {
         const tokenQuery = camelParts.map((p) => `"${p}"*`).join(' AND ');
-        ftsQuery = `("${sanitized}"* OR (${tokenQuery}))`;
+        ftsQuery = `("${single}"* OR (${tokenQuery}))`;
       } else {
-        ftsQuery = `"${sanitized}"*`;
+        ftsQuery = `"${single}"*`;
       }
+    } else {
+      ftsQuery = tokens.map((t) => `"${t}"*`).join(' AND ');
     }
 
     let sql = `
@@ -147,7 +179,7 @@ export class AppleDocsDB {
         kind: r.kind,
         abstract: r.abstract,
         path: r.path,
-        platforms: r.platforms ? JSON.parse(r.platforms) : [],
+        platforms: safeParsePlatforms(r.platforms),
         isPrimaryType: Boolean(r.is_primary_type),
         score: -r.rank, // Invert BM25 so higher score is better match
       }));
@@ -161,9 +193,13 @@ export class AppleDocsDB {
     let sql = `
       SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
       FROM symbols
-      WHERE (title LIKE ? OR abstract LIKE ?)
+      WHERE (title LIKE ? ESCAPE '\\' OR abstract LIKE ? ESCAPE '\\')
     `;
-    const term = `%${query}%`;
+    const escaped = query
+      .replace(/\\/g, '\\\\')
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_');
+    const term = `%${escaped}%`;
     const params: (string | number)[] = [term, term];
 
     if (framework) {
@@ -182,7 +218,7 @@ export class AppleDocsDB {
       kind: r.kind,
       abstract: r.abstract,
       path: r.path,
-      platforms: r.platforms ? JSON.parse(r.platforms) : [],
+      platforms: safeParsePlatforms(r.platforms),
       isPrimaryType: Boolean(r.is_primary_type),
       score: 1.0,
     }));
@@ -205,7 +241,7 @@ export class AppleDocsDB {
       kind: row.kind,
       abstract: row.abstract,
       path: row.path,
-      platforms: row.platforms ? JSON.parse(row.platforms) : [],
+      platforms: safeParsePlatforms(row.platforms),
       isPrimaryType: Boolean(row.is_primary_type),
     };
   }
