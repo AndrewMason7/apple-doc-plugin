@@ -32,6 +32,36 @@ export class GeminiSemanticSearch {
             return null;
         }
     }
+    async embedMultimodal(text, imageBase64, mimeType = 'image/png') {
+        if (!this.hasApiKey())
+            return null;
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/${this.modelName}:embedContent?key=${this.apiKey}`;
+            const parts = [];
+            if (text && text.trim().length > 0) {
+                parts.push({ text: text.trim() });
+            }
+            if (imageBase64 && imageBase64.trim().length > 0) {
+                parts.push({
+                    inlineData: {
+                        mimeType,
+                        data: imageBase64,
+                    },
+                });
+            }
+            const response = await axios.post(url, {
+                content: { parts },
+            }, { timeout: 8000 });
+            const values = response.data?.embedding?.values;
+            if (!Array.isArray(values))
+                return null;
+            return new Float32Array(values);
+        }
+        catch (err) {
+            console.error('Warning: Gemini multimodal embedding failed:', err instanceof Error ? err.message : err);
+            return null;
+        }
+    }
     cosineSimilarity(a, b) {
         if (a.length !== b.length || a.length === 0)
             return 0;

@@ -7,6 +7,8 @@ export interface SearchOptions {
 export interface SearchResultItem extends DbSymbol {
     score: number;
     source: 'fts' | 'semantic' | 'hybrid';
+    mediaUrl?: string;
+    mediaType?: string;
 }
 export declare class HybridSearchEngine {
     private readonly db;

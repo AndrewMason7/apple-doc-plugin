@@ -19,6 +19,8 @@ export interface SemanticItem {
     kind: string;
     summary: string;
     path: string;
+    mediaUrl?: string;
+    mediaType?: string;
     embedding: Float32Array;
 }
 export declare class AppleDocsDB {

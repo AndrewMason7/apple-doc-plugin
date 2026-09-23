@@ -1,6 +1,14 @@
 import { AppleDocsDB } from '../db/database.js';
 export declare function extractAbstract(abstractObj: any): string;
 export declare function indexFrameworkData(db: AppleDocsDB, framework: string, data: any): number;
+export interface DocCMediaItem {
+    id: string;
+    identifier: string;
+    alt: string;
+    url: string;
+    mimeType: string;
+}
+export declare function extractMediaReferences(data: any): DocCMediaItem[];
 export interface DocCIndexNode {
     title?: string;
     path?: string;

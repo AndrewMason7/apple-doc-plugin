@@ -50,6 +50,48 @@ export function indexFrameworkData(db, framework, data) {
     }
     return count;
 }
+export function extractMediaReferences(data) {
+    if (!data?.references || typeof data.references !== 'object')
+        return [];
+    const items = [];
+    for (const [id, ref] of Object.entries(data.references)) {
+        if (!ref || typeof ref !== 'object')
+            continue;
+        if (ref.type !== 'image' && ref.type !== 'video' && ref.kind !== 'image')
+            continue;
+        const alt = ref.alt || ref.title || '';
+        const variants = Array.isArray(ref.variants) ? ref.variants : [];
+        let selectedVariant = variants.find((v) => Array.isArray(v.traits) && v.traits.includes('light') && v.traits.includes('2x'));
+        if (!selectedVariant) {
+            selectedVariant = variants.find((v) => Array.isArray(v.traits) && v.traits.includes('light'));
+        }
+        if (!selectedVariant && variants.length > 0) {
+            selectedVariant = variants[0];
+        }
+        if (selectedVariant?.url) {
+            const rawUrl = selectedVariant.url;
+            const fullUrl = rawUrl.startsWith('http')
+                ? rawUrl
+                : `https://developer.apple.com/tutorials${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+            const ext = fullUrl.split('.').pop()?.toLowerCase();
+            let mimeType = 'image/png';
+            if (ext === 'jpg' || ext === 'jpeg')
+                mimeType = 'image/jpeg';
+            else if (ext === 'svg')
+                mimeType = 'image/svg+xml';
+            else if (ext === 'mp4')
+                mimeType = 'video/mp4';
+            items.push({
+                id,
+                identifier: ref.identifier || id,
+                alt,
+                url: fullUrl,
+                mimeType,
+            });
+        }
+    }
+    return items;
+}
 export function indexFrameworkTree(db, framework, indexData) {
     const root = indexData?.interfaceLanguages?.swift?.[0];
     if (!root)

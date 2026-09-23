@@ -5,6 +5,8 @@ export interface SemanticMatch {
     kind: string;
     summary: string;
     path: string;
+    mediaUrl?: string;
+    mediaType?: string;
     similarity: number;
 }
 export declare class GeminiSemanticSearch {
@@ -13,5 +15,6 @@ export declare class GeminiSemanticSearch {
     constructor(apiKey?: string | null, modelName?: string);
     hasApiKey(): boolean;
     embedQuery(text: string): Promise<Float32Array | null>;
+    embedMultimodal(text: string, imageBase64: string, mimeType?: string): Promise<Float32Array | null>;
     cosineSimilarity(a: Float32Array, b: Float32Array): number;
 }

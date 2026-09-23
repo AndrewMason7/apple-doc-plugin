@@ -3,7 +3,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import axios from 'axios';
 import { AppleDocsDB } from '../src/server/db/database.js';
-import { indexFrameworkData, indexFrameworkTree } from '../src/server/services/indexer.js';
+import {
+  indexFrameworkData,
+  indexFrameworkTree,
+  extractMediaReferences,
+} from '../src/server/services/indexer.js';
 import { GeminiSemanticSearch } from '../src/server/services/search/semantic-search.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,7 +53,7 @@ async function buildIndex() {
   const semantic = new GeminiSemanticSearch();
   const canEmbed = semantic.hasApiKey();
   if (canEmbed) {
-    console.error('✨ GEMINI_API_KEY detected! Semantic vector embeddings enabled.');
+    console.error('✨ GEMINI_API_KEY detected! Multimodal vector embeddings enabled.');
   } else {
     console.error('ℹ️ No GEMINI_API_KEY provided; proceeding with pure FTS5 indexing.');
   }
@@ -89,6 +93,44 @@ async function buildIndex() {
             embedding: vec,
           });
           console.error(`   • Embedded overview for ${framework}`);
+        }
+      }
+
+      // Extract and embed visual media previews (diagrams, layout screenshots)
+      if (canEmbed) {
+        const mediaItems = extractMediaReferences(docData);
+        if (mediaItems.length > 0) {
+          console.error(`   • Found ${mediaItems.length} visual media references; embedding...`);
+          for (const item of mediaItems) {
+            try {
+              const imgRes = await axios.get(item.url, {
+                responseType: 'arraybuffer',
+                headers,
+                timeout: 10000,
+              });
+              const base64 = Buffer.from(imgRes.data).toString('base64');
+              const vec = await semantic.embedMultimodal(item.alt, base64, item.mimeType);
+              if (vec) {
+                db.insertSemanticItem({
+                  id: `media-${item.identifier}`,
+                  framework,
+                  title: item.alt ? item.alt.slice(0, 100) : item.identifier,
+                  kind: 'ui_preview',
+                  summary: item.alt || `${framework} layout preview`,
+                  path: `/documentation/${slug}`,
+                  mediaUrl: item.url,
+                  mediaType: item.mimeType,
+                  embedding: vec,
+                });
+                console.error(`     ✓ Embedded visual preview: ${item.identifier}`);
+              }
+            } catch (err) {
+              console.warn(
+                `     ⚠ Could not embed media ${item.url}:`,
+                err instanceof Error ? err.message : err
+              );
+            }
+          }
         }
       }
     }

@@ -9,7 +9,8 @@ A high-performance Model Context Protocol (MCP) server providing instant offline
 - **🚀 Sub-Millisecond Symbol Search**: Pre-indexed SQLite database with FTS5 BM25 scoring over 100,000+ symbols across core Apple frameworks (SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Observation, CoreLocation).
 - **🌐 Global Search by Default**: AI agents can search symbols immediately without being forced to run `choose_technology` first.
 - **🎯 Scoped Search When Desired**: Search across all frameworks or narrow down by passing `framework: "SwiftUI"` or calling `choose_technology`.
-- **🧠 Hybrid Semantic Search (Optional)**: If `GEMINI_API_KEY` is provided in the environment, the server uses Gemini Embeddings (`gemini-embedding-2`) to understand conceptual natural-language queries (e.g. *"track user location in background"*) via Reciprocal Rank Fusion (RRF).
+- **🖼️ Multimodal UI Layout Previews**: Uses `gemini-embedding-2`'s unified text+vision vector space to embed Apple's diagrams, layout previews, and HIG screenshots. Agents can query visual concepts and receive rendered `![Visual Preview](...)` markdown inline.
+- **🧠 Hybrid Semantic Search (Optional)**: If `GEMINI_API_KEY` is provided, combines lexical BM25 ranking and 3072-dimensional vector similarities via Reciprocal Rank Fusion (RRF).
 - **🔒 Zero-Config Offline Fallback**: Fully functional 100% offline without any API keys or network requests needed for symbol searches.
 - **📄 Clean Markdown Doc Extraction**: On-demand retrieval and conversion of Apple's DocC AST into concise, context-optimized Markdown.
 

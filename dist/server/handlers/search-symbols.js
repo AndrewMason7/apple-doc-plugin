@@ -22,19 +22,24 @@ const isArticleKind = (kind) => {
     return (normalizedKind === 'article' ||
         normalizedKind === 'overview' ||
         normalizedKind === 'tutorial' ||
-        normalizedKind === 'guide');
+        normalizedKind === 'guide' ||
+        normalizedKind === 'ui_preview');
 };
 const formatMatch = (match) => {
     const platforms = match.platforms.length > 0 ? match.platforms.join(', ') : 'All platforms';
     const frameworkInfo = match.framework ? ` (${match.framework})` : '';
-    return [
+    const lines = [
         `### ${match.title}${frameworkInfo}`,
         `   • **Kind:** ${match.kind}`,
         `   • **Path:** ${match.path}`,
         `   • **Platforms:** ${platforms}`,
         ...(match.abstract ? [`   ${match.abstract}`] : []),
-        '',
     ];
+    if (match.mediaUrl) {
+        lines.push(`   ![Visual Preview](${match.mediaUrl})`);
+    }
+    lines.push('');
+    return lines;
 };
 const formatNoResults = (queryMode) => {
     const lines = [
@@ -103,6 +108,8 @@ export const buildSearchSymbolsHandler = (context) => {
                             score: sym.score,
                             source: sym.source,
                             type: 'symbol',
+                            mediaUrl: sym.mediaUrl,
+                            mediaType: sym.mediaType,
                         }));
                     }
                 }
@@ -119,6 +126,8 @@ export const buildSearchSymbolsHandler = (context) => {
                             score: art.score,
                             source: art.source,
                             type: 'article',
+                            mediaUrl: art.mediaUrl,
+                            mediaType: art.mediaType,
                         }));
                     }
                 }
