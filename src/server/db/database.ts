@@ -97,9 +97,15 @@ export class AppleDocsDB {
     if (!sanitized) return [];
 
     let ftsQuery = sanitized;
-    // If not a wildcard and doesn't contain spaces, add prefix wildcard
+    // If not a wildcard and doesn't contain spaces, add prefix wildcard and expand CamelCase
     if (!sanitized.includes('*') && !sanitized.includes(' ')) {
-      ftsQuery = `"${sanitized}"*`;
+      const camelParts = sanitized.split(/(?=[A-Z])/).filter(Boolean);
+      if (camelParts.length > 1) {
+        const tokenQuery = camelParts.map((p) => `"${p}"*`).join(' AND ');
+        ftsQuery = `("${sanitized}"* OR (${tokenQuery}))`;
+      } else {
+        ftsQuery = `"${sanitized}"*`;
+      }
     }
 
     let sql = `
