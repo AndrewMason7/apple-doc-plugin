@@ -52,6 +52,62 @@ export function indexFrameworkData(db: AppleDocsDB, framework: string, data: any
   return count;
 }
 
+export interface DocCMediaItem {
+  id: string;
+  identifier: string;
+  alt: string;
+  url: string;
+  mimeType: string;
+}
+
+export function extractMediaReferences(data: any): DocCMediaItem[] {
+  if (!data?.references || typeof data.references !== 'object') return [];
+  const items: DocCMediaItem[] = [];
+
+  for (const [id, ref] of Object.entries<any>(data.references)) {
+    if (!ref || typeof ref !== 'object') continue;
+    if (ref.type !== 'image' && ref.type !== 'video' && ref.kind !== 'image') continue;
+
+    const alt = ref.alt || ref.title || '';
+    const variants: any[] = Array.isArray(ref.variants) ? ref.variants : [];
+
+    let selectedVariant = variants.find(
+      (v) => Array.isArray(v.traits) && v.traits.includes('light') && v.traits.includes('2x')
+    );
+    if (!selectedVariant) {
+      selectedVariant = variants.find(
+        (v) => Array.isArray(v.traits) && v.traits.includes('light')
+      );
+    }
+    if (!selectedVariant && variants.length > 0) {
+      selectedVariant = variants[0];
+    }
+
+    if (selectedVariant?.url) {
+      const rawUrl: string = selectedVariant.url;
+      const fullUrl = rawUrl.startsWith('http')
+        ? rawUrl
+        : `https://developer.apple.com/tutorials${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+
+      const ext = fullUrl.split('.').pop()?.toLowerCase();
+      let mimeType = 'image/png';
+      if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+      else if (ext === 'svg') mimeType = 'image/svg+xml';
+      else if (ext === 'mp4') mimeType = 'video/mp4';
+
+      items.push({
+        id,
+        identifier: ref.identifier || id,
+        alt,
+        url: fullUrl,
+        mimeType,
+      });
+    }
+  }
+
+  return items;
+}
+
 export interface DocCIndexNode {
   title?: string;
   path?: string;
