@@ -33,11 +33,11 @@
 - Modify: `src/server/services/search/semantic-search.ts`
 - Test: `test/security-headers.test.js`
 
-- [ ] **Step 1: Write test verifying header-based auth and circuit breaker**
-- [ ] **Step 2: Run test to verify it fails**
-- [ ] **Step 3: Implement header auth and circuit breaker in semantic-search.ts**
-- [ ] **Step 4: Run test to verify it passes**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write test verifying header-based auth and circuit breaker**
+- [x] **Step 2: Run test to verify it fails**
+- [x] **Step 3: Implement header auth and circuit breaker in semantic-search.ts**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -47,11 +47,11 @@
 - Modify: `src/server/db/database.ts`
 - Test: `test/db-hardened.test.js`
 
-- [ ] **Step 1: Write test for unaligned buffer, vector cache, and FTS sanitization**
-- [ ] **Step 2: Run test to verify it fails**
-- [ ] **Step 3: Implement fixes in database.ts**
-- [ ] **Step 4: Run test to verify it passes**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write test for unaligned buffer, vector cache, and FTS sanitization**
+- [x] **Step 2: Run test to verify it fails**
+- [x] **Step 3: Implement fixes in database.ts**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -61,9 +61,9 @@
 - Modify: `src/server/services/search/hybrid-search.ts`
 - Test: `test/search.test.js`
 
-- [ ] **Step 1: Update hybrid-search.ts to use pre-computed norms**
-- [ ] **Step 2: Run test to verify it passes**
-- [ ] **Step 3: Commit**
+- [x] **Step 1: Update hybrid-search.ts to use pre-computed norms**
+- [x] **Step 2: Run test to verify it passes**
+- [x] **Step 3: Commit**
 
 ---
 
@@ -73,6 +73,7 @@
 - Create: `test/stress-tribunal.test.js`
 - Test: All tests (`npm test`, `npm run typecheck`, `npm run build`)
 
-- [ ] **Step 1: Write comprehensive adversarial stress tests**
-- [ ] **Step 2: Run all tests to verify 100% green**
-- [ ] **Step 3: Commit and finalize**
+- [x] **Step 1: Write comprehensive adversarial stress tests**
+- [x] **Step 2: Run all tests to verify 100% green**
+- [x] **Step 3: Commit and finalize**
+
