@@ -1,4 +1,5 @@
 import type { ServerContext, ToolResponse } from '../context.js';
+import type { Technology } from '../../apple-client.js';
 import { type LocalSymbolIndexEntry } from '../services/local-symbol-index.js';
 import { header, bold } from '../markdown.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
@@ -12,9 +13,10 @@ type SearchMatch = {
 	path: string;
 	platforms: string[];
 	score: number;
-	source: 'exact-resolution' | 'framework-references' | 'local-index';
+	source: 'exact-resolution' | 'framework-references' | 'local-index' | 'fts' | 'semantic' | 'hybrid';
 	title: string;
 	type: 'article' | 'symbol';
+	framework?: string;
 };
 
 const looksLikeExactSymbol = (query: string): boolean => {
@@ -45,51 +47,21 @@ const isArticleKind = (kind: string): boolean => {
 	return (
 		normalizedKind === 'article' ||
 		normalizedKind === 'overview' ||
-		normalizedKind === 'tutorial'
+		normalizedKind === 'tutorial' ||
+		normalizedKind === 'guide'
 	);
-};
-
-const toSearchMatch = (
-	result: LocalSymbolIndexEntry,
-	score: number,
-): SearchMatch => ({
-	abstract: result.abstract,
-	kind: result.kind,
-	path: result.path,
-	platforms: result.platforms,
-	score,
-	source: 'local-index',
-	title: result.title,
-	type: isArticleKind(result.kind) ? 'article' : 'symbol',
-});
-
-const mergeMatches = (matches: SearchMatch[]): SearchMatch[] => {
-	const deduped = new Map<string, SearchMatch>();
-
-	for (const match of matches.sort((a, b) => b.score - a.score)) {
-		const key = `${match.type}:${match.title.toLowerCase()}`;
-		const existing = deduped.get(key);
-		if (
-			!existing ||
-			match.score > existing.score ||
-			(existing.path.length === 0 && match.path.length > 0)
-		) {
-			deduped.set(key, match);
-		}
-	}
-
-	return [...deduped.values()];
 };
 
 const formatMatch = (match: SearchMatch): string[] => {
 	const platforms =
 		match.platforms.length > 0 ? match.platforms.join(', ') : 'All platforms';
+	const frameworkInfo = match.framework ? ` (${match.framework})` : '';
 	return [
-		`### ${match.title}`,
+		`### ${match.title}${frameworkInfo}`,
 		`   • **Kind:** ${match.kind}`,
 		`   • **Path:** ${match.path}`,
 		`   • **Platforms:** ${platforms}`,
-		`   ${match.abstract}`,
+		...(match.abstract ? [`   ${match.abstract}`] : []),
 		'',
 	];
 };
@@ -124,63 +96,157 @@ const formatNoResults = (queryMode: QueryMode): string[] => {
 	return lines;
 };
 
-const buildExactMatchResponse = (
-	client: ServerContext['client'],
-	technologyTitle: string,
-	query: string,
-	queryMode: QueryMode,
-	data: Awaited<ReturnType<typeof resolveSymbol>>['data'],
-	targetPath: string,
-): ToolResponse => {
-	const exactPlatforms =
-		data.metadata?.platforms?.map((item) => item.name).filter(Boolean) ?? [];
-	const exactKind = data.metadata?.symbolKind ?? 'symbol';
-	const lines = [
-		header(1, `🔍 Search Results for "${query}"`),
-		'',
-		bold('Technology', technologyTitle),
-		bold('Query Mode', queryMode),
-		bold('Search Source', 'exact-resolution'),
-		bold('Symbol Matches', '1'),
-		bold('Article Matches', '0'),
-		'',
-		header(2, 'Exact Match'),
-		'',
-		...formatMatch({
-			abstract: client.extractText(data.abstract),
-			kind: exactKind,
-			path: targetPath,
-			platforms: exactPlatforms,
-			score: 1_000,
-			source: 'exact-resolution',
-			title: data.metadata?.title ?? query,
-			type: 'symbol',
-		}),
-	];
+export const buildSearchSymbolsHandler = (context: ServerContext) => {
+	const { client, state, searchEngine } = context;
+	const noTechnology = buildNoTechnologyMessage(context);
 
-	return {
-		content: [{ text: lines.join('\n'), type: 'text' }],
+	return async (args: {
+		framework?: string;
+		maxResults?: number;
+		platform?: string;
+		query: string;
+		symbolType?: string;
+	}): Promise<ToolResponse> => {
+		const { query, maxResults = 20, platform, symbolType } = args;
+		const queryMode = getQueryMode(query);
+		const activeTechnology = state.getActiveTechnology();
+
+		// Determine target framework: explicit param takes priority, then active state
+		const targetFramework = args.framework || activeTechnology?.title || undefined;
+
+		// 1. If high-performance searchEngine (SQLite FTS5 + Gemini) is available, use it!
+		if (searchEngine) {
+			const results = await searchEngine.search(query, {
+				framework: targetFramework,
+				limit: maxResults * 2,
+			});
+
+			let filtered = results;
+			if (platform) {
+				const lowerPlat = platform.toLowerCase();
+				filtered = filtered.filter(
+					(r) =>
+						r.platforms.length === 0 ||
+						r.platforms.some((p) => p.toLowerCase().includes(lowerPlat)),
+				);
+			}
+
+			if (symbolType) {
+				const lowerKind = symbolType.toLowerCase();
+				filtered = filtered.filter((r) => r.kind.toLowerCase() === lowerKind);
+			}
+
+			const topResults = filtered.slice(0, maxResults);
+
+			if (topResults.length > 0) {
+				const lines: string[] = [
+					header(1, `🔍 Search Results for "${query}"`),
+					'',
+					bold('Framework', targetFramework || 'All Apple Frameworks (Global)'),
+					bold('Query Mode', queryMode),
+					bold('Matches Found', String(topResults.length)),
+					'',
+				];
+
+				const symbolMatches = topResults.filter((r) => !isArticleKind(r.kind));
+				const articleMatches = topResults.filter((r) => isArticleKind(r.kind));
+
+				if (symbolMatches.length > 0) {
+					lines.push(header(2, 'Symbols'), '');
+					for (const sym of symbolMatches) {
+						lines.push(
+							...formatMatch({
+								title: sym.title,
+								framework: sym.framework,
+								kind: sym.kind,
+								path: sym.path,
+								platforms: sym.platforms,
+								abstract: sym.abstract,
+								score: sym.score,
+								source: sym.source,
+								type: 'symbol',
+							}),
+						);
+					}
+				}
+
+				if (articleMatches.length > 0) {
+					lines.push(header(2, 'Articles & Guides'), '');
+					for (const art of articleMatches) {
+						lines.push(
+							...formatMatch({
+								title: art.title,
+								framework: art.framework,
+								kind: art.kind,
+								path: art.path,
+								platforms: art.platforms,
+								abstract: art.abstract,
+								score: art.score,
+								source: art.source,
+								type: 'article',
+							}),
+						);
+					}
+				}
+
+				return {
+					content: [{ text: lines.join('\n'), type: 'text' }],
+				};
+			}
+		}
+
+		// 2. Legacy fallback when searchEngine has no results or isn't initialized
+		if (!activeTechnology && !targetFramework) {
+			// If no technology is chosen and no searchEngine results, return clean suggestions
+			const lines = [
+				header(1, `🔍 No Results for "${query}"`),
+				'',
+				'No symbols found in the index for this query.',
+				'',
+				'**Suggestions:**',
+				'• Try searching with an explicit framework: `search_symbols(query: "...", framework: "SwiftUI")`',
+				'• Or discover technologies with `discover_technologies`',
+			];
+			return {
+				content: [{ text: lines.join('\n'), type: 'text' }],
+			};
+		}
+
+		// If active technology was chosen, try live DocC symbol resolution fallback
+		if (activeTechnology) {
+			const exactMatchResponse = await tryExactSymbolMatch(
+				client,
+				activeTechnology,
+				query,
+				queryMode,
+				platform,
+				symbolType,
+			);
+			if (exactMatchResponse) {
+				return exactMatchResponse;
+			}
+		}
+
+		return {
+			content: [
+				{
+					text: [
+						header(1, `🔍 Search Results for "${query}"`),
+						'',
+						bold('Framework', targetFramework || 'Unknown'),
+						'',
+						...formatNoResults(queryMode),
+					].join('\n'),
+					type: 'text',
+				},
+			],
+		};
 	};
-};
-
-const matchesExactFilters = (
-	platforms: string[],
-	kind: string,
-	platform?: string,
-	symbolType?: string,
-): boolean => {
-	const platformMatches =
-		!platform ||
-		platforms.some((item) => item.toLowerCase().includes(platform.toLowerCase()));
-	const symbolTypeMatches =
-		!symbolType || kind.toLowerCase().includes(symbolType.toLowerCase());
-
-	return platformMatches && symbolTypeMatches;
 };
 
 const tryExactSymbolMatch = async (
 	client: ServerContext['client'],
-	activeTechnology: NonNullable<ReturnType<ServerContext['state']['getActiveTechnology']>>,
+	activeTechnology: Technology,
 	query: string,
 	queryMode: QueryMode,
 	platform?: string,
@@ -191,203 +257,66 @@ const tryExactSymbolMatch = async (
 	}
 
 	try {
-		const { data, targetPath } = await resolveSymbol(client, activeTechnology, query);
-		const exactPlatforms =
-			data.metadata?.platforms?.map((item) => item.name).filter(Boolean) ?? [];
-		const exactKind = data.metadata?.symbolKind ?? 'symbol';
-
-		if (!matchesExactFilters(exactPlatforms, exactKind, platform, symbolType)) {
+		const resolved = await resolveSymbol(client, activeTechnology, query);
+		if (!resolved) {
 			return undefined;
 		}
 
-		return buildExactMatchResponse(
-			client,
-			activeTechnology.title,
-			query,
-			queryMode,
-			data,
-			targetPath,
-		);
-	} catch {
-		return undefined;
-	}
-};
+		const { targetPath, data } = resolved;
 
-const ensureLocalIndexReady = async (
-	techLocalIndex: ReturnType<ServerContext['state']['getLocalSymbolIndex']>,
-): Promise<void> => {
-	if (techLocalIndex.getSymbolCount() > 0) {
-		return;
-	}
-
-	console.error('📚 Building symbol index from cache...');
-	await techLocalIndex.buildIndexFromCache();
-	console.error(`✅ Index built with ${techLocalIndex.getSymbolCount()} symbols`);
-};
-
-const buildFrameworkMatches = async (
-	client: ServerContext['client'],
-	technologyTitle: string,
-	query: string,
-	maxResults: number,
-	platform?: string,
-	symbolType?: string,
-): Promise<SearchMatch[]> => {
-	const results = await client.searchFramework(technologyTitle, query, {
-		maxResults: maxResults * 4,
-		platform,
-		symbolType,
-	});
-
-	return results.map(
-		(result, index): SearchMatch => ({
-			abstract: result.description,
-			kind: result.symbolKind ?? 'symbol',
-			path: result.path ?? '',
-			platforms: result.platforms ? result.platforms.split(', ') : [],
-			score: 500 - index,
-			source: 'framework-references',
-			title: result.title,
-			type: isArticleKind(result.symbolKind ?? 'symbol') ? 'article' : 'symbol',
-		}),
-	);
-};
-
-const buildSearchResponse = (
-	query: string,
-	technologyTitle: string,
-	queryMode: QueryMode,
-	sources: Set<string>,
-	cachedSymbols: number,
-	symbolResults: SearchMatch[],
-	articleResults: SearchMatch[],
-): ToolResponse => {
-	const lines = [
-		header(1, `🔍 Search Results for "${query}"`),
-		'',
-		bold('Technology', technologyTitle),
-		bold('Query Mode', queryMode),
-		bold('Search Sources', [...sources].join(', ')),
-		bold('Cached Symbols', cachedSymbols.toString()),
-		bold('Symbol Matches', symbolResults.length.toString()),
-		bold('Article Matches', articleResults.length.toString()),
-		'',
-	];
-
-	if (cachedSymbols === 0) {
-		lines.push(
-			'Using framework references because there are no cached symbols for this technology yet.',
-			'',
-		);
-	} else {
-		lines.push(
-			'Local cached symbols were merged with framework references for a symbol-first result set.',
-			'',
-		);
-	}
-
-	if (symbolResults.length > 0) {
-		lines.push(header(2, 'Symbols'), '');
-		for (const result of symbolResults) {
-			lines.push(...formatMatch(result));
-		}
-	}
-
-	if (articleResults.length > 0) {
-		lines.push(header(2, 'Articles and Guides'), '');
-		for (const result of articleResults) {
-			lines.push(...formatMatch(result));
-		}
-	}
-
-	if (symbolResults.length === 0 && articleResults.length === 0) {
-		lines.push(...formatNoResults(queryMode), '');
-	}
-
-	return {
-		content: [{ text: lines.join('\n'), type: 'text' }],
-	};
-};
-
-export const buildSearchSymbolsHandler = (context: ServerContext) => {
-	const { client, state } = context;
-	const noTechnology = buildNoTechnologyMessage(context);
-
-	return async (args: {
-		maxResults?: number;
-		platform?: string;
-		query: string;
-		symbolType?: string;
-	}): Promise<ToolResponse> => {
-		const activeTechnology = state.getActiveTechnology();
-		if (!activeTechnology) {
-			return noTechnology();
-		}
-
-		const { query, maxResults = 20, platform, symbolType } = args;
-		const queryMode = getQueryMode(query);
-		const sources = new Set<string>();
-
-		const exactMatchResponse = await tryExactSymbolMatch(
-			client,
-			activeTechnology,
-			query,
-			queryMode,
-			platform,
-			symbolType,
-		);
-		if (exactMatchResponse) {
-			return exactMatchResponse;
-		}
-
-		// Get or create technology-specific local index from state
-		const techLocalIndex = state.getLocalSymbolIndex(client);
-
-		// Build local index from cached files if not already built
-		if (techLocalIndex.getSymbolCount() === 0) {
-			try {
-				await ensureLocalIndexReady(techLocalIndex);
-			} catch (error) {
-				console.warn(
-					'Failed to build local symbol index:',
-					error instanceof Error ? error.message : String(error),
-				);
+		if (platform) {
+			const platforms =
+				data.metadata?.platforms?.map((item) => item.name).filter(Boolean) ??
+				[];
+			if (
+				!platforms.some((item) =>
+					item.toLowerCase().includes(platform.toLowerCase()),
+				)
+			) {
+				return undefined;
 			}
 		}
 
-		const localMatches = techLocalIndex
-			.search(query, maxResults * 4)
-			.map((result, index) => toSearchMatch(result, 700 - index));
-		if (localMatches.length > 0) {
-			sources.add('local-index');
+		if (symbolType && data.metadata?.symbolKind) {
+			if (data.metadata.symbolKind.toLowerCase() !== symbolType.toLowerCase()) {
+				return undefined;
+			}
 		}
 
-		const frameworkMatches = await buildFrameworkMatches(
-			client,
-			activeTechnology.title,
-			query,
-			maxResults,
-			platform,
-			symbolType,
-		);
-		sources.add('framework-references');
-
-		const mergedResults = mergeMatches([...localMatches, ...frameworkMatches]);
-		const symbolResults = mergedResults
-			.filter((result) => result.type === 'symbol')
-			.slice(0, maxResults);
-		const articleResults = mergedResults
-			.filter((result) => result.type === 'article')
-			.slice(0, maxResults);
-
-		return buildSearchResponse(
-			query,
-			activeTechnology.title,
-			queryMode,
-			sources,
-			techLocalIndex.getSymbolCount(),
-			symbolResults,
-			articleResults,
-		);
-	};
+		return {
+			content: [
+				{
+					text: [
+						header(1, `🔍 Search Results for "${query}"`),
+						'',
+						bold('Technology', activeTechnology.title),
+						bold('Query Mode', queryMode),
+						bold('Search Source', 'exact-resolution'),
+						bold('Symbol Matches', '1'),
+						bold('Article Matches', '0'),
+						'',
+						header(2, 'Exact Match'),
+						'',
+						...formatMatch({
+							abstract: client.extractText(data.abstract),
+							kind: data.metadata?.symbolKind ?? 'symbol',
+							path: targetPath,
+							platforms:
+								data.metadata?.platforms
+									?.map((item) => item.name)
+									.filter(Boolean) ?? [],
+							score: 1000,
+							source: 'exact-resolution',
+							title: data.metadata?.title ?? query,
+							type: 'symbol',
+							framework: activeTechnology.title,
+						}),
+					].join('\n'),
+					type: 'text',
+				},
+			],
+		};
+	} catch {
+		return undefined;
+	}
 };
