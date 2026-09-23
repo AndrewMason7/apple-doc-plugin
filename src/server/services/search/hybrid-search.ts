@@ -89,8 +89,8 @@ export class HybridSearchEngine {
       };
     });
 
-    // Check if semantic search is available
-    if (this.semanticSearch.hasApiKey()) {
+    // Check if semantic search is available (API key or ADC)
+    if (this.semanticSearch.hasAuth()) {
       const queryVec = await this.semanticSearch.embedQuery(query);
       if (queryVec) {
         const semanticMatches = this.searchSemanticWithVector(

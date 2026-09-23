@@ -10,7 +10,7 @@ A high-performance Model Context Protocol (MCP) server providing instant offline
 - **🌐 Global Search by Default**: AI agents can search symbols immediately without being forced to run `choose_technology` first.
 - **🎯 Scoped Search When Desired**: Search across all frameworks or narrow down by passing `framework: "SwiftUI"` or calling `choose_technology`.
 - **🖼️ Multimodal UI Layout Previews**: Uses `gemini-embedding-2`'s unified text+vision vector space to embed Apple's diagrams, layout previews, and HIG screenshots. Agents can query visual concepts and receive rendered `![Visual Preview](...)` markdown inline.
-- **🧠 Hybrid Semantic Search (Optional)**: If `GEMINI_API_KEY` is provided, combines lexical BM25 ranking and 3072-dimensional vector similarities via Reciprocal Rank Fusion (RRF).
+- **🧠 Hybrid Semantic Search (Optional)**: If `GEMINI_API_KEY` or Google Application Default Credentials (ADC) are provided, combines lexical BM25 ranking and 3072-dimensional vector similarities via Reciprocal Rank Fusion (RRF).
 - **🔒 Zero-Config Offline Fallback**: Fully functional 100% offline without any API keys or network requests needed for symbol searches.
 - **📄 Clean Markdown Doc Extraction**: On-demand retrieval and conversion of Apple's DocC AST into concise, context-optimized Markdown.
 
@@ -48,6 +48,8 @@ Add to your MCP configuration (`mcpServers`):
   }
 }
 ```
+*(Note: `GEMINI_API_KEY` and ADC are optional. If omitted, pure local SQLite FTS5 runs offline.)*
+
 ### Environment Configuration
 
 Copy the template to create your local `.env`:
@@ -59,9 +61,11 @@ cp .env.example .env
 | Variable | Required | Description |
 | :--- | :--- | :--- |
 | `GEMINI_API_KEY` | Optional | Google Gemini API key for multimodal 3072-dim embeddings (`gemini-embedding-2`). Get one at [Google AI Studio](https://aistudio.google.com/). |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Optional | Path to Service Account JSON key for Google Application Default Credentials (ADC). Alternatively, `gcloud auth application-default login` is detected automatically. |
 | `APPLE_DOCS_DB_PATH` | Optional | Custom path to the SQLite index database (defaults to `data/apple-docs.db`). |
 
-*(Note: The server automatically loads `.env` natively at startup. If `GEMINI_API_KEY` is omitted, the engine runs pure local SQLite FTS5 offline.)*
+*(Note: The server automatically loads `.env` natively at startup. If neither `GEMINI_API_KEY` nor ADC credentials are provided, the engine runs pure local SQLite FTS5 offline.)*
+
 
 ### Local Development
 

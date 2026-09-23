@@ -9,8 +9,10 @@ test('.env.example exists and documents environment variables', () => {
 
   const content = readFileSync(examplePath, 'utf8');
   assert(content.includes('GEMINI_API_KEY='), '.env.example must document GEMINI_API_KEY');
+  assert(content.includes('GOOGLE_APPLICATION_CREDENTIALS='), '.env.example must document GOOGLE_APPLICATION_CREDENTIALS');
   assert(content.includes('APPLE_DOCS_DB_PATH='), '.env.example must document APPLE_DOCS_DB_PATH');
 });
+
 
 test('.env is ignored by git', () => {
   const gitignorePath = join(process.cwd(), '.gitignore');

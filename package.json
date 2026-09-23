@@ -47,7 +47,8 @@
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",
 		"axios": "^1.13.6",
-		"better-sqlite3": "^13.0.3"
+		"better-sqlite3": "^13.0.3",
+		"google-auth-library": "^11.1.0"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.36.0",

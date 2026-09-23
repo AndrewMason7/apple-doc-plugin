@@ -64,12 +64,13 @@ async function buildIndex() {
   const db = new AppleDocsDB(dbPath);
 
   const semantic = new GeminiSemanticSearch();
-  const canEmbed = semantic.hasApiKey();
+  const canEmbed = semantic.hasAuth();
   if (canEmbed) {
-    console.error('✨ GEMINI_API_KEY detected! Multimodal vector embeddings enabled.');
+    console.error('✨ Gemini credentials detected (API Key or ADC)! Multimodal vector embeddings enabled.');
   } else {
-    console.error('ℹ️ No GEMINI_API_KEY provided; proceeding with pure FTS5 indexing.');
+    console.error('ℹ️ No GEMINI_API_KEY or ADC credentials provided; proceeding with pure FTS5 indexing.');
   }
+
 
   let totalIndexed = 0;
 
