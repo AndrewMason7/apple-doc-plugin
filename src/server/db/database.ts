@@ -29,7 +29,10 @@ export interface SemanticItem {
   norm?: number;
 }
 
-export function deserializeFloat32Array(buf: Buffer): Float32Array {
+export function deserializeFloat32Array(buf: Buffer): Float32Array | null {
+  if (buf.byteLength % 4 !== 0 || buf.byteLength === 0) {
+    return null;
+  }
   const aligned = new ArrayBuffer(buf.byteLength);
   new Uint8Array(aligned).set(buf);
   return new Float32Array(aligned);
@@ -51,21 +54,36 @@ export class AppleDocsDB {
 
   constructor(dbPath: string, options: Database.Options = {}) {
     this.db = new Database(dbPath, options);
-    this.db.pragma('journal_mode = WAL');
-    this.db.exec(SCHEMA_SQL);
-    // Safe column migrations for existing databases
-    try {
-      this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
-    } catch {}
-    try {
-      this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_type TEXT');
-    } catch {}
+    if (!options.readonly) {
+      this.db.pragma('journal_mode = WAL');
+      this.db.exec(SCHEMA_SQL);
+      // Safe column migrations for existing databases
+      try {
+        this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
+      } catch {}
+      try {
+        this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_type TEXT');
+      } catch {}
+    }
+  }
+
+
+  rebuildFTS(): void {
+    this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')");
   }
 
   insertSymbol(sym: DbSymbol): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO symbols (id, framework, title, kind, abstract, path, platforms, is_primary_type)
+      INSERT INTO symbols (id, framework, title, kind, abstract, path, platforms, is_primary_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        framework = excluded.framework,
+        title = excluded.title,
+        kind = excluded.kind,
+        abstract = CASE WHEN excluded.abstract IS NOT NULL AND excluded.abstract != '' THEN excluded.abstract ELSE symbols.abstract END,
+        path = excluded.path,
+        platforms = excluded.platforms,
+        is_primary_type = excluded.is_primary_type
     `);
     stmt.run(
       sym.id,
@@ -104,14 +122,16 @@ export class AppleDocsDB {
       const rows = this.db
         .prepare('SELECT id, framework, title, kind, summary, path, media_url, media_type, embedding FROM semantic_items')
         .all() as any[];
-      this.vectorCache = rows.map((r) => {
+      const items: SemanticItem[] = [];
+      for (const r of rows) {
         const buf = r.embedding as Buffer;
         const f32 = deserializeFloat32Array(buf);
+        if (!f32) continue;
         let normSq = 0;
         for (let i = 0; i < f32.length; i++) {
           normSq += f32[i] * f32[i];
         }
-        return {
+        items.push({
           id: r.id,
           framework: r.framework,
           title: r.title,
@@ -122,9 +142,11 @@ export class AppleDocsDB {
           mediaType: r.media_type || undefined,
           embedding: f32,
           norm: Math.sqrt(normSq),
-        };
-      });
+        });
+      }
+      this.vectorCache = items;
     }
+
 
     if (framework) {
       const target = framework.toLowerCase();
@@ -183,10 +205,15 @@ export class AppleDocsDB {
         isPrimaryType: Boolean(r.is_primary_type),
         score: -r.rank, // Invert BM25 so higher score is better match
       }));
-    } catch {
+    } catch (err) {
+      console.error(
+        'Warning: SQLite FTS5 MATCH failed, falling back to LIKE query:',
+        err instanceof Error ? err.message : err
+      );
       // Safe fallback to LIKE query if FTS expression has syntax issue
       return this.queryLike(sanitized, framework, limit);
     }
+
   }
 
   private queryLike(query: string, framework?: string, limit = 20): FTSResult[] {
