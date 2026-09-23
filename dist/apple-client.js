@@ -143,15 +143,33 @@ export class AppleDevDocsClient {
         }
         return score;
     }
-    buildSearchResult(frameworkName, framework, ref, abstractText) {
+    buildSearchResult(frameworkName, framework, ref, abstractText, symbolKind) {
         return {
             title: ref.title ?? 'Symbol',
             framework: frameworkName,
             path: ref.url,
             description: abstractText,
-            symbolKind: ref.kind,
+            symbolKind: symbolKind ?? ref.kind,
             platforms: formatPlatforms(ref.platforms ?? framework.metadata.platforms),
         };
+    }
+    async resolveSearchResultKind(result) {
+        if (!result.path || !result.symbolKind || result.symbolKind.toLowerCase() !== 'symbol') {
+            return result.symbolKind;
+        }
+        try {
+            const symbol = await this.getSymbol(result.path);
+            return symbol.metadata?.symbolKind ?? result.symbolKind;
+        }
+        catch {
+            return result.symbolKind;
+        }
+    }
+    async enrichSearchResults(results) {
+        return Promise.all(results.map(async (result) => ({
+            ...result,
+            symbolKind: await this.resolveSearchResultKind(result),
+        })));
     }
     async searchFramework(frameworkName, query, options = {}) {
         const { maxResults = 20 } = options;
@@ -181,10 +199,11 @@ export class AppleDevDocsClient {
                     score,
                 });
             }
-            return results
+            const rankedResults = results
                 .sort((a, b) => b.score - a.score)
                 .slice(0, maxResults)
                 .map((entry) => entry.result);
+            return this.enrichSearchResults(rankedResults);
         }
         catch (error) {
             throw new Error(`Framework search failed for ${frameworkName}: ${error instanceof Error ? error.message : String(error)}`);

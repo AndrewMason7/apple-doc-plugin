@@ -20,6 +20,8 @@ export declare class AppleDevDocsClient {
     private scoreWildcardReference;
     private scoreKeywordReference;
     private buildSearchResult;
+    private resolveSearchResultKind;
+    private enrichSearchResults;
     searchFramework(frameworkName: string, query: string, options?: {
         maxResults?: number;
         platform?: string;

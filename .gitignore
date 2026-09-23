@@ -100,6 +100,9 @@ jspm_packages/
 # Test files (if any)
 test-*.js
 
+*.db-wal
+*.db-shm
+
 .superpowers/
 
 dist

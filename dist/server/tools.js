@@ -77,13 +77,17 @@ export const registerTools = (server, context) => {
         },
         {
             name: 'search_symbols',
-            description: 'Search the selected technology with symbol-first results. ' +
-                'Exact symbol names are resolved directly when possible, wildcard queries support * and ?, ' +
-                'and broader keyword searches return symbols first with articles and guides listed separately.',
+            description: 'Search Apple developer documentation with sub-millisecond symbol-first results across all indexed Apple frameworks. ' +
+                'Can be optionally scoped to a framework (via the framework argument or choose_technology). ' +
+                'Supports exact symbol resolution, wildcards (*, ?), and conceptual intent searches.',
             inputSchema: {
                 type: 'object',
                 required: ['query'],
                 properties: {
+                    framework: {
+                        type: 'string',
+                        description: 'Optional framework name to scope search (e.g. "SwiftUI", "UIKit", "SwiftData"). If omitted, searches across all indexed Apple frameworks.',
+                    },
                     maxResults: {
                         type: 'number',
                         description: 'Optional maximum number of results (default 20)',

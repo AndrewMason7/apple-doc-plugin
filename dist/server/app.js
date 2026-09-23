@@ -1,10 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { AppleDevDocsClient } from '../apple-client.js';
 import { ServerState } from './state.js';
 import { registerTools } from './tools.js';
+import { AppleDocsDB } from './db/database.js';
+import { HybridSearchEngine } from './services/search/hybrid-search.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 // Read version from package.json
@@ -21,7 +23,20 @@ export const createServer = () => {
     });
     const client = new AppleDevDocsClient();
     const state = new ServerState();
-    registerTools(server, { client, state });
+    // Initialize database and hybrid search engine if database file exists
+    let db;
+    let searchEngine;
+    const dbPath = join(__dirname, '../../data/apple-docs.db');
+    if (existsSync(dbPath)) {
+        try {
+            db = new AppleDocsDB(dbPath, { readonly: true });
+            searchEngine = new HybridSearchEngine(db);
+        }
+        catch (err) {
+            console.error('Failed to open pre-indexed SQLite database, falling back to dynamic search:', err instanceof Error ? err.message : err);
+        }
+    }
+    registerTools(server, { client, state, db, searchEngine });
     return server;
 };
 //# sourceMappingURL=app.js.map
