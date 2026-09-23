@@ -7,6 +7,8 @@ export interface SemanticMatch {
   kind: string;
   summary: string;
   path: string;
+  mediaUrl?: string;
+  mediaType?: string;
   similarity: number;
 }
 
@@ -44,6 +46,46 @@ export class GeminiSemanticSearch {
     } catch (err) {
       console.error(
         'Warning: Gemini embedding failed, falling back to lexical search:',
+        err instanceof Error ? err.message : err
+      );
+      return null;
+    }
+  }
+
+  async embedMultimodal(
+    text: string,
+    imageBase64: string,
+    mimeType = 'image/png'
+  ): Promise<Float32Array | null> {
+    if (!this.hasApiKey()) return null;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/${this.modelName}:embedContent?key=${this.apiKey}`;
+      const parts: any[] = [];
+      if (text && text.trim().length > 0) {
+        parts.push({ text: text.trim() });
+      }
+      if (imageBase64 && imageBase64.trim().length > 0) {
+        parts.push({
+          inlineData: {
+            mimeType,
+            data: imageBase64,
+          },
+        });
+      }
+
+      const response = await axios.post(
+        url,
+        {
+          content: { parts },
+        },
+        { timeout: 8000 }
+      );
+      const values = response.data?.embedding?.values;
+      if (!Array.isArray(values)) return null;
+      return new Float32Array(values);
+    } catch (err) {
+      console.error(
+        'Warning: Gemini multimodal embedding failed:',
         err instanceof Error ? err.message : err
       );
       return null;
