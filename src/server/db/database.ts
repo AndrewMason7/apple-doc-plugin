@@ -155,15 +155,55 @@ export class AppleDocsDB {
     return this.vectorCache;
   }
 
+  private queryLikePattern(pattern: string, framework?: string, limit = 20): FTSResult[] {
+    let sql = `
+      SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+      FROM symbols
+      WHERE (title LIKE ? OR abstract LIKE ?)
+    `;
+    const params: (string | number)[] = [pattern, pattern];
+    if (framework) {
+      sql += ` AND framework = ? COLLATE NOCASE`;
+      params.push(framework);
+    }
+    sql += ` LIMIT ?`;
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      framework: r.framework,
+      title: r.title,
+      kind: r.kind,
+      abstract: r.abstract,
+      path: r.path,
+      platforms: safeParsePlatforms(r.platforms),
+      isPrimaryType: Boolean(r.is_primary_type),
+      score: 1.0,
+    }));
+  }
+
   queryFTS(query: string, framework?: string, limit = 20): FTSResult[] {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    // If query has suffix wildcard (*Item) or single-char wildcard (?)
+    if (trimmed.startsWith('*') || trimmed.includes('?')) {
+      const pattern = trimmed
+        .replace(/\*/g, '%')
+        .replace(/\?/g, '_')
+        .replace(/["']/g, '');
+      return this.queryLikePattern(pattern, framework, limit);
+    }
+
     // Strip characters that trigger FTS5 syntax errors
-    const sanitized = query.replace(/["'*^:(){}[\]~+]/g, ' ').replace(/\s+/g, ' ').trim();
+    const sanitized = trimmed.replace(/["'*^:(){}[\]~+]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!sanitized) return [];
 
     let ftsQuery = '';
     const tokens = sanitized.split(' ').filter(Boolean);
     if (tokens.length === 1) {
-      const single = tokens[0];
+      const single = tokens[0].replace(/\*+$/, '');
       const camelParts = single.split(/(?=[A-Z])/).filter(Boolean);
       if (camelParts.length > 1) {
         const tokenQuery = camelParts.map((p) => `"${p}"*`).join(' AND ');
@@ -172,8 +212,9 @@ export class AppleDocsDB {
         ftsQuery = `"${single}"*`;
       }
     } else {
-      ftsQuery = tokens.map((t) => `"${t}"*`).join(' AND ');
+      ftsQuery = tokens.map((t) => `"${t.replace(/\*+$/, '')}"*`).join(' AND ');
     }
+
 
     let sql = `
       SELECT s.id, s.framework, s.title, s.kind, s.abstract, s.path, s.platforms, s.is_primary_type,
