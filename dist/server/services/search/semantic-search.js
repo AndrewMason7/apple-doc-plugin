@@ -222,7 +222,6 @@ export class GeminiSemanticSearch {
                 : content;
             const payload = {
                 content: { parts: [{ text: formattedText }] },
-                outputDimensionality: outputDims,
                 output_dimensionality: outputDims,
             };
             if (!this.isEmbedding2()) {
@@ -277,7 +276,6 @@ export class GeminiSemanticSearch {
             const outputDims = this.expectedDimensions ?? 3072;
             const response = await axios.post(url, {
                 content: { parts },
-                outputDimensionality: outputDims,
                 output_dimensionality: outputDims,
             }, {
                 headers: {
