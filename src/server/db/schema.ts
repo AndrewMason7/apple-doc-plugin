@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS semantic_items (
     kind TEXT NOT NULL,
     summary TEXT NOT NULL,
     path TEXT NOT NULL,
+    media_url TEXT,
+    media_type TEXT,
     embedding BLOB NOT NULL
 );
 `;

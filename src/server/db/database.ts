@@ -23,6 +23,8 @@ export interface SemanticItem {
   kind: string;
   summary: string;
   path: string;
+  mediaUrl?: string;
+  mediaType?: string;
   embedding: Float32Array;
 }
 
@@ -33,6 +35,13 @@ export class AppleDocsDB {
     this.db = new Database(dbPath, options);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(SCHEMA_SQL);
+    // Safe column migrations for existing databases
+    try {
+      this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
+    } catch {}
+    try {
+      this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_type TEXT');
+    } catch {}
   }
 
   insertSymbol(sym: DbSymbol): void {
@@ -55,8 +64,8 @@ export class AppleDocsDB {
   insertSemanticItem(item: SemanticItem): void {
     const buffer = Buffer.from(item.embedding.buffer, item.embedding.byteOffset, item.embedding.byteLength);
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, embedding)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, media_url, media_type, embedding)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       item.id,
@@ -65,12 +74,14 @@ export class AppleDocsDB {
       item.kind,
       item.summary,
       item.path,
+      item.mediaUrl || null,
+      item.mediaType || null,
       buffer
     );
   }
 
   getSemanticItems(framework?: string): SemanticItem[] {
-    let sql = 'SELECT id, framework, title, kind, summary, path, embedding FROM semantic_items';
+    let sql = 'SELECT id, framework, title, kind, summary, path, media_url, media_type, embedding FROM semantic_items';
     const params: string[] = [];
     if (framework) {
       sql += ' WHERE framework = ? COLLATE NOCASE';
@@ -87,6 +98,8 @@ export class AppleDocsDB {
         kind: r.kind,
         summary: r.summary,
         path: r.path,
+        mediaUrl: r.media_url || undefined,
+        mediaType: r.media_type || undefined,
         embedding: f32,
       };
     });
