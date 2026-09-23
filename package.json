@@ -9,6 +9,7 @@
 	},
 	"files": [
 		"dist/",
+		"data/",
 		"CHANGELOG.md",
 		"README.md",
 		"LICENSE"
