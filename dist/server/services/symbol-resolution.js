@@ -7,9 +7,9 @@ export const getFrameworkName = (technology) => {
     }
     return frameworkName;
 };
-const buildCandidatePaths = (technology, path) => {
+const buildCandidatePaths = (technology, path, frameworkOverride) => {
     const normalizedPath = normalizePath(path.trim());
-    const frameworkName = getFrameworkName(technology);
+    const frameworkName = frameworkOverride || getFrameworkName(technology);
     const candidates = new Set();
     if (normalizedPath && !normalizedPath.startsWith('documentation/')) {
         candidates.add(`documentation/${frameworkName}/${normalizedPath}`);
@@ -19,9 +19,9 @@ const buildCandidatePaths = (technology, path) => {
     }
     return [...candidates];
 };
-export const resolveSymbol = async (client, technology, path) => {
+export const resolveSymbol = async (client, technology, path, frameworkOverride) => {
     let lastError;
-    for (const candidate of buildCandidatePaths(technology, path)) {
+    for (const candidate of buildCandidatePaths(technology, path, frameworkOverride)) {
         try {
             const data = await client.getSymbol(candidate);
             return { data, targetPath: candidate };

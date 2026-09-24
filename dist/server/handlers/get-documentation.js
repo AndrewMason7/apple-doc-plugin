@@ -1,4 +1,5 @@
 import { bold, header, trimWithEllipsis } from '../markdown.js';
+import { formatDeclaration, formatDeprecation, formatParameters, formatDiscussion, } from '../../apple-client/docc-formatter.js';
 import { loadActiveFrameworkData } from '../services/framework-loader.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
 import { buildNoTechnologyMessage } from './no-technology.js';
@@ -33,7 +34,8 @@ const formatTopicSections = (data, client) => {
 export const buildGetDocumentationHandler = (context) => {
     const { client, state, db } = context;
     const noTechnology = buildNoTechnologyMessage(context);
-    return async ({ path }) => {
+    return async (args) => {
+        const { path, framework: frameworkArg } = args;
         if (typeof path !== 'string' || path.trim().length === 0) {
             return {
                 isError: true,
@@ -46,6 +48,19 @@ export const buildGetDocumentationHandler = (context) => {
             };
         }
         let activeTechnology = state.getActiveTechnology();
+        if (frameworkArg &&
+            typeof frameworkArg === 'string' &&
+            frameworkArg.trim().length > 0) {
+            const cleanFw = frameworkArg.trim();
+            activeTechnology = {
+                identifier: `doc://com.apple.documentation/documentation/${cleanFw}`,
+                title: cleanFw,
+                kind: 'symbol',
+                role: 'collection',
+                url: `/documentation/${cleanFw.toLowerCase()}`,
+                abstract: [],
+            };
+        }
         // If no technology is explicitly selected, check local database or path prefix
         if (!activeTechnology && db) {
             const dbSym = db.getSymbolByPath(path);
@@ -91,11 +106,18 @@ export const buildGetDocumentationHandler = (context) => {
                         },
                     }),
                 };
-            const framework = await loadActiveFrameworkData(effectiveContext);
-            const { data } = await resolveSymbol(client, activeTechnology, path);
+            let frameworkPlatforms = [];
+            try {
+                const framework = await loadActiveFrameworkData(effectiveContext);
+                frameworkPlatforms = framework.metadata?.platforms ?? [];
+            }
+            catch {
+                // Fall back gracefully if full framework metadata isn't available
+            }
+            const { data } = await resolveSymbol(client, activeTechnology, path, frameworkArg);
             const title = data.metadata?.title || 'Symbol';
             const kind = data.metadata?.symbolKind || 'Unknown';
-            const platforms = client.formatPlatforms(data.metadata?.platforms ?? framework.metadata?.platforms ?? []);
+            const platforms = client.formatPlatforms(data.metadata?.platforms ?? frameworkPlatforms);
             const description = client.extractText(data.abstract);
             const content = [
                 header(1, title),
@@ -104,12 +126,29 @@ export const buildGetDocumentationHandler = (context) => {
                 bold('Type', kind),
                 bold('Platforms', platforms),
                 '',
-                header(2, 'Overview'),
-                description,
             ];
+            const deprecation = formatDeprecation(data.deprecationSummary);
+            if (deprecation) {
+                content.push(deprecation, '');
+            }
+            const declaration = formatDeclaration(data.primaryContentSections);
+            if (declaration) {
+                content.push(header(2, 'Declaration'), declaration, '');
+            }
+            if (description) {
+                content.push(header(2, 'Overview'), description, '');
+            }
+            const parameters = formatParameters(data.primaryContentSections);
+            if (parameters) {
+                content.push(parameters, '');
+            }
+            const discussion = formatDiscussion(data.primaryContentSections);
+            if (discussion) {
+                content.push(header(2, 'Discussion'), discussion, '');
+            }
             content.push(...formatTopicSections(data, client));
             return {
-                content: [{ text: content.join('\n'), type: 'text' }],
+                content: [{ text: content.join('\n').trim(), type: 'text' }],
             };
         }
         catch (error) {
