@@ -8,7 +8,8 @@ export class ServerState {
     setActiveTechnology(technology) {
         const previousTechnology = this.activeTechnology;
         this.activeTechnology = technology;
-        if (!technology || previousTechnology?.identifier !== technology.identifier) {
+        if (!technology ||
+            previousTechnology?.identifier !== technology.identifier) {
             this.activeFrameworkData = undefined;
         }
     }

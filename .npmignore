@@ -1,9 +1,0 @@
-src/
-*.ts
-*.tsconfig*
-.git/
-.github/
-node_modules/
-.cache/
-.DS_Store
-*.tgz
