@@ -59,6 +59,45 @@ const isArticleKind = (kind: string): boolean => {
 	);
 };
 
+const KIND_ALIASES: Record<string, string[]> = {
+	func: [
+		'func',
+		'method',
+		'function',
+		'typemethod',
+		'instancemethod',
+		'operator',
+	],
+	function: [
+		'func',
+		'method',
+		'function',
+		'typemethod',
+		'instancemethod',
+		'operator',
+	],
+	method: ['method', 'func', 'function', 'typemethod', 'instancemethod'],
+	init: ['init', 'initializer', 'constructor'],
+	initializer: ['init', 'initializer', 'constructor'],
+	property: [
+		'property',
+		'var',
+		'variable',
+		'typeproperty',
+		'instanceproperty',
+		'associatedtype',
+	],
+	var: ['property', 'var', 'variable', 'typeproperty', 'instanceproperty'],
+	type: ['struct', 'class', 'enum', 'protocol', 'typealias'],
+	struct: ['struct', 'structure'],
+	class: ['class'],
+	protocol: ['protocol'],
+	enum: ['enum', 'enumeration'],
+	typealias: ['typealias'],
+	modifier: ['method', 'func', 'viewmodifier'],
+	article: ['article', 'overview', 'tutorial', 'guide', 'ui_preview'],
+};
+
 const formatMatch = (match: SearchMatch): string[] => {
 	const platforms =
 		match.platforms.length > 0 ? match.platforms.join(', ') : 'All platforms';
@@ -176,9 +215,18 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 				);
 			}
 
+			let kindNotice: string | undefined;
 			if (symbolType) {
-				const lowerKind = symbolType.toLowerCase();
-				filtered = filtered.filter((r) => r.kind.toLowerCase() === lowerKind);
+				const lowerKind = symbolType.toLowerCase().trim();
+				const targetKinds = KIND_ALIASES[lowerKind] || [lowerKind];
+				const kindFiltered = filtered.filter((r) =>
+					targetKinds.includes(r.kind.toLowerCase()),
+				);
+				if (kindFiltered.length > 0) {
+					filtered = kindFiltered;
+				} else {
+					kindNotice = `Filter "${symbolType}" matched 0 symbols; showing all kinds`;
+				}
 			}
 
 			const topResults = filtered.slice(0, clampedMaxResults);
@@ -219,6 +267,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 					bold('Search Mode', searchModeDesc),
 					bold('Query Mode', queryMode),
 					bold('Matches Found', String(topResults.length)),
+					...(kindNotice ? [bold('Kind Filter Note', kindNotice)] : []),
 					'',
 				];
 
