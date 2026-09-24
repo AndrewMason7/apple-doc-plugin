@@ -16,13 +16,13 @@ const formatPagination = (
 	const items: string[] = [];
 	if (currentPage > 1) {
 		items.push(
-			`• Previous: \`discover_technologies { "query": "${safeQuery}", "page": ${currentPage - 1} }\``,
+			`• Previous: \`discover_technologies({ "query": "${safeQuery}", "page": ${currentPage - 1} })\``,
 		);
 	}
 
 	if (currentPage < totalPages) {
 		items.push(
-			`• Next: \`discover_technologies { "query": "${safeQuery}", "page": ${currentPage + 1} }\``,
+			`• Next: \`discover_technologies({ "query": "${safeQuery}", "page": ${currentPage + 1} })\``,
 		);
 	}
 
@@ -30,7 +30,7 @@ const formatPagination = (
 };
 
 export const buildDiscoverHandler =
-	({ client, state }: ServerContext) =>
+	({ client, state, db }: ServerContext) =>
 	async (args: {
 		query?: string;
 		page?: number;
@@ -43,24 +43,51 @@ export const buildDiscoverHandler =
 			technologies = await client.getTechnologies();
 		} catch {}
 
-		const frameworks = CORE_FRAMEWORKS.map((name) => {
+		const dbCounts = db ? db.getFrameworkSymbolCounts() : [];
+		const dbCountMap = new Map<string, number>(
+			dbCounts.map((c) => [c.framework.toLowerCase(), c.count]),
+		);
+
+		// Merge CORE_FRAMEWORKS and any frameworks present in DB
+		const frameworkNames: string[] = [...CORE_FRAMEWORKS];
+		for (const c of dbCounts) {
+			if (
+				!frameworkNames.some(
+					(n) => n.toLowerCase() === c.framework.toLowerCase(),
+				)
+			) {
+				frameworkNames.push(c.framework);
+			}
+		}
+
+		const frameworks = frameworkNames.map((name) => {
 			const lower = name.toLowerCase();
 			const found = Object.values(technologies).find(
 				(t) => t && t.title && t.title.toLowerCase() === lower,
 			);
+			const count = dbCountMap.get(lower) ?? 0;
 			if (found) {
 				return {
 					identifier: found.identifier || `documentation/${lower}`,
 					title: found.title,
 					abstract: found.abstract,
+					symbolCount: count,
 				};
 			}
 			return {
 				identifier: `documentation/${lower}`,
 				title: name,
 				abstract: [{ text: `${name} framework`, type: 'text' }],
+				symbolCount: count,
 			};
 		});
+
+		if (db && dbCounts.length > 0) {
+			frameworks.sort(
+				(a, b) =>
+					b.symbolCount - a.symbolCount || a.title.localeCompare(b.title),
+			);
+		}
 
 		let filtered = frameworks;
 		if (query) {
@@ -101,6 +128,7 @@ export const buildDiscoverHandler =
 
 			lines.push(
 				`   • **Identifier:** ${framework.identifier}`,
+				`   • **Symbols Indexed:** ${framework.symbolCount.toLocaleString()}`,
 				`   • **Usage:** Pass \`framework: "${framework.title}"\` to \`semantic_search\` or \`search_symbols\``,
 				'',
 			);

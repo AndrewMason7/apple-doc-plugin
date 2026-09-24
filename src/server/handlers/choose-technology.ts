@@ -87,7 +87,8 @@ export const buildChooseTechnologyHandler =
 				.filter((tech) => tech.title?.toLowerCase().includes(searchTerm))
 				.slice(0, 5)
 				.map(
-					(tech) => `• ${tech.title} — \`choose_technology "${tech.title}"\``,
+					(tech) =>
+						`• ${tech.title} — \`choose_technology({ "name": "${tech.title}" })\``,
 				);
 
 			const lines = [
@@ -98,7 +99,7 @@ export const buildChooseTechnologyHandler =
 				...(suggestions.length > 0
 					? suggestions
 					: [
-							'• Use `discover_technologies { "query": "keyword" }` to find candidates',
+							'• Use `discover_technologies({ "query": "keyword" })` to find candidates',
 						]),
 			];
 

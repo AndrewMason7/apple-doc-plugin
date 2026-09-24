@@ -114,6 +114,19 @@ export class AppleDocsDB {
 		}
 	}
 
+	getFrameworkSymbolCounts(): Array<{ framework: string; count: number }> {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT framework, count(*) as count FROM symbols GROUP BY framework ORDER BY count DESC, framework ASC`,
+				)
+				.all() as Array<{ framework: string; count: number }>;
+			return rows;
+		} catch {
+			return [];
+		}
+	}
+
 	hasEmbeddings(): boolean {
 		try {
 			const row = this.db

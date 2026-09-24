@@ -39,9 +39,9 @@ export const buildNoTechnologyMessage =
 			'• `search_symbols { "query": "Grid*", "framework": "SwiftUI" }` — search with explicit framework',
 			'',
 			bold('Option B:', 'Scope session to a specific technology'),
-			'• `discover_technologies` — explore available Apple frameworks',
-			'• `choose_technology { "name": "SwiftUI" }` — scope future lookups to SwiftUI',
-			'• `get_documentation { "path": "View" }` — view detailed docs within selected technology',
+			'• `discover_technologies()` — explore available Apple frameworks',
+			'• `choose_technology({ "name": "SwiftUI" })` — scope future lookups to SwiftUI',
+			'• `get_documentation({ "path": "View" })` — view detailed docs within selected technology',
 			'',
 			header(2, '📚 Available Technologies'),
 		];
@@ -50,7 +50,7 @@ export const buildNoTechnologyMessage =
 			lines.push('', 'Popular technologies you can choose from:');
 			for (const tech of availableTechnologies) {
 				lines.push(
-					`• **${tech}** — \`choose_technology { "name": "${tech}" }\``,
+					`• **${tech}** — \`choose_technology({ "name": "${tech}" })\``,
 				);
 			}
 
@@ -71,21 +71,21 @@ export const buildNoTechnologyMessage =
 			header(2, '💡 Quick Start Examples'),
 			'',
 			'**For SwiftUI development:**',
-			'1. `discover_technologies { "query": "swiftui" }`',
-			'2. `choose_technology { "name": "SwiftUI" }`',
-			'3. `search_symbols { "query": "Button" }`',
+			'1. `discover_technologies({ "query": "swiftui" })`',
+			'2. `choose_technology({ "name": "SwiftUI" })`',
+			'3. `search_symbols({ "query": "Button" })`',
 			'',
 			'**For UIKit development:**',
-			'1. `discover_technologies { "query": "uikit" }`',
-			'2. `choose_technology { "name": "UIKit" }`',
-			'3. `search_symbols { "query": "UIButton" }`',
+			'1. `discover_technologies({ "query": "uikit" })`',
+			'2. `choose_technology({ "name": "UIKit" })`',
+			'3. `search_symbols({ "query": "UIButton" })`',
 		);
 
 		if (lastDiscovery?.results?.length) {
 			lines.push('', header(2, '🔄 Recently Discovered'));
 			for (const result of lastDiscovery.results.slice(0, 3)) {
 				lines.push(
-					`• **${result.title}** — \`choose_technology { "name": "${result.title}" }\``,
+					`• **${result.title}** — \`choose_technology({ "name": "${result.title}" })\``,
 				);
 			}
 		}
