@@ -23,9 +23,10 @@ export const getFrameworkName = (technology: Technology): string => {
 const buildCandidatePaths = (
 	technology: Technology,
 	path: string,
+	frameworkOverride?: string,
 ): string[] => {
 	const normalizedPath = normalizePath(path.trim());
-	const frameworkName = getFrameworkName(technology);
+	const frameworkName = frameworkOverride || getFrameworkName(technology);
 	const candidates = new Set<string>();
 
 	if (normalizedPath && !normalizedPath.startsWith('documentation/')) {
@@ -43,10 +44,15 @@ export const resolveSymbol = async (
 	client: AppleDevDocsClient,
 	technology: Technology,
 	path: string,
+	frameworkOverride?: string,
 ): Promise<{ data: SymbolData; targetPath: string }> => {
 	let lastError: unknown;
 
-	for (const candidate of buildCandidatePaths(technology, path)) {
+	for (const candidate of buildCandidatePaths(
+		technology,
+		path,
+		frameworkOverride,
+	)) {
 		try {
 			const data = await client.getSymbol(candidate);
 			return { data, targetPath: candidate };

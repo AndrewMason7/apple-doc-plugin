@@ -289,3 +289,123 @@ test('queryFTS guarantees exact title match is ranked #1 even among many token p
 
 	db.close();
 });
+
+test('get_documentation formats declaration, parameters, and deprecation when present', async () => {
+	const { buildGetDocumentationHandler } = await import(
+		'../dist/server/handlers/get-documentation.js'
+	);
+	const mockClient = {
+		formatPlatforms: () => 'iOS 16.0+, macOS 13.0+',
+		extractText: (abstract) => 'Presents a stack of views.',
+		getSymbol: async () => ({
+			metadata: { title: 'NavigationStack', symbolKind: 'struct' },
+			abstract: [{ text: 'Presents a stack of views.' }],
+			deprecationSummary: [
+				{
+					type: 'paragraph',
+					inlineContent: [
+						{ type: 'text', text: 'Use ModernStack instead.' },
+					],
+				},
+			],
+			primaryContentSections: [
+				{
+					kind: 'declarations',
+					declarations: [
+						{
+							tokens: [
+								{ kind: 'keyword', text: 'struct' },
+								{ kind: 'text', text: ' NavigationStack' },
+							],
+						},
+					],
+				},
+				{
+					kind: 'parameters',
+					parameters: [
+						{
+							name: 'root',
+							content: [
+								{
+									type: 'paragraph',
+									inlineContent: [
+										{ type: 'text', text: 'The root view.' },
+									],
+								},
+							],
+						},
+					],
+				},
+				{
+					kind: 'content',
+					content: [
+						{
+							type: 'paragraph',
+							inlineContent: [
+								{ type: 'text', text: 'Stack discussion paragraph.' },
+							],
+						},
+						{
+							type: 'codeListing',
+							syntax: 'swift',
+							code: ['NavigationStack { Text("Hi") }'],
+						},
+					],
+				},
+			],
+			topicSections: [],
+		}),
+	};
+
+	const handler = buildGetDocumentationHandler({
+		client: mockClient,
+		state: new ServerState(),
+	});
+
+	const res = await handler({
+		path: 'NavigationStack',
+		framework: 'SwiftUI',
+	});
+	assert.strictEqual(res.isError, undefined);
+	const text = res.content[0].text;
+	assert.ok(text.includes('# NavigationStack'));
+	assert.ok(text.includes('> [!WARNING]'));
+	assert.ok(text.includes('Use ModernStack instead.'));
+	assert.ok(text.includes('```swift\nstruct NavigationStack\n```'));
+	assert.ok(text.includes('### Parameters'));
+	assert.ok(text.includes('- `root`: The root view.'));
+	assert.ok(text.includes('Stack discussion paragraph.'));
+	assert.ok(text.includes('```swift\nNavigationStack { Text("Hi") }\n```'));
+});
+
+test('get_documentation resolves using explicit framework argument without session state', async () => {
+	const { buildGetDocumentationHandler } = await import(
+		'../dist/server/handlers/get-documentation.js'
+	);
+	let requestedPath = '';
+	const mockClient = {
+		formatPlatforms: () => 'iOS 13.0+',
+		extractText: () => 'A color representation.',
+		getSymbol: async (p) => {
+			requestedPath = p;
+			return {
+				metadata: { title: 'Color', symbolKind: 'struct' },
+				abstract: [{ text: 'A color representation.' }],
+				references: {},
+				topicSections: [],
+			};
+		},
+	};
+
+	const state = new ServerState();
+	const handler = buildGetDocumentationHandler({
+		client: mockClient,
+		state,
+	});
+
+	const res = await handler({ path: 'Color', framework: 'SwiftUI' });
+	assert.strictEqual(res.isError, undefined);
+	assert.strictEqual(requestedPath, 'documentation/SwiftUI/Color');
+	assert.strictEqual(state.getActiveTechnology(), undefined);
+});
+
