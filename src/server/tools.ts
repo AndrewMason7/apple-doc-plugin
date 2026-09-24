@@ -49,7 +49,8 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'choose_technology',
 			description:
-				'Select the framework/technology to scope all subsequent searches and documentation lookups',
+				'(Optional / Legacy) Select the framework/technology to scope subsequent searches and documentation lookups. ' +
+				'In most cases, you can pass framework directly to search_symbols or get_documentation without setting session state.',
 			inputSchema: {
 				type: 'object',
 				required: [],
@@ -73,7 +74,7 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'current_technology',
 			description:
-				'Report the currently selected technology and how to change it',
+				'(Optional / Legacy) Report the currently selected technology in session state',
 			inputSchema: {
 				type: 'object',
 				required: [],
@@ -84,21 +85,28 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'get_documentation',
 			description:
-				'Get detailed documentation for specific symbols within the selected technology. ' +
-				'Use this for known symbol names or paths (e.g., "View", "ButtonStyle", "documentation/SwiftUI/GridItem").',
+				'Get detailed documentation for specific symbols, including Swift syntax declarations, parameters, deprecation notices, and code examples. ' +
+				'Can be optionally scoped to a framework directly via the framework argument without needing choose_technology.',
 			inputSchema: {
 				type: 'object',
 				required: ['path'],
 				properties: {
+					framework: {
+						type: 'string',
+						description:
+							'Optional framework name (e.g. "SwiftUI", "UIKit"). If omitted, framework is auto-detected from path or local database.',
+					},
 					path: {
 						type: 'string',
 						description:
-							'Symbol path or relative name (e.g. "View", "GridItem", "Button")',
+							'Symbol path or relative name (e.g. "View", "GridItem", "documentation/SwiftUI/NavigationStack")',
 					},
 				},
 			},
 			handler: (args) =>
-				buildGetDocumentationHandler(context)(args as { path: string }),
+				buildGetDocumentationHandler(context)(
+					args as { path: string; framework?: string },
+				),
 		},
 		{
 			name: 'search_symbols',

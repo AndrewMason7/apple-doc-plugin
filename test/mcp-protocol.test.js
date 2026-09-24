@@ -110,3 +110,44 @@ test('hasAdc ignores a missing credentials file and accepts a real one', () => {
 		}
 	}
 });
+
+test('get_documentation tool schema exposes optional framework property and rich doc description', async () => {
+	const server = new Server(
+		{ name: 'apple-docs-test', version: '0.0.0' },
+		{ capabilities: { tools: {} } },
+	);
+	registerTools(server, {
+		client: {},
+		state: new ServerState(),
+	});
+
+	const [clientTransport, serverTransport] =
+		InMemoryTransport.createLinkedPair();
+	const client = new Client({ name: 'test-client', version: '0.0.0' });
+	await server.connect(serverTransport);
+	await client.connect(clientTransport);
+
+	try {
+		const listed = await client.listTools();
+		const getDocTool = listed.tools.find(
+			(t) => t.name === 'get_documentation',
+		);
+		assert.ok(getDocTool, 'get_documentation tool must be registered');
+		assert.ok(
+			getDocTool.description.includes('Swift syntax declarations'),
+			'description must highlight rich declarations',
+		);
+		assert.ok(
+			getDocTool.inputSchema.properties.framework,
+			'inputSchema must include framework property',
+		);
+		assert.strictEqual(
+			getDocTool.inputSchema.properties.framework.type,
+			'string',
+		);
+	} finally {
+		await client.close();
+		await server.close();
+	}
+});
+
