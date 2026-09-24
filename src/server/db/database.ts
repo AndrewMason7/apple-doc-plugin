@@ -320,6 +320,37 @@ export class AppleDocsDB {
 				}
 			}
 
+			// If multi-token query yielded zero results with AND, fall back to OR matching with BM25 ranking
+			if (combined.length === 0 && tokens.length > 1) {
+				const orQuery = tokens
+					.map((t) => `"${t.replace(/\*+$/, '')}"*`)
+					.join(' OR ');
+				const orParams: (string | number)[] = [orQuery];
+				if (framework) {
+					orParams.push(framework);
+				}
+				orParams.push(limit);
+				try {
+					const orRows = this.db.prepare(sql).all(...orParams) as any[];
+					for (const r of orRows) {
+						if (!seen.has(r.id)) {
+							seen.add(r.id);
+							combined.push({
+								id: r.id,
+								framework: r.framework,
+								title: r.title,
+								kind: r.kind,
+								abstract: r.abstract,
+								path: r.path,
+								platforms: safeParsePlatforms(r.platforms),
+								isPrimaryType: Boolean(r.is_primary_type),
+								score: -r.rank * 0.5,
+							});
+						}
+					}
+				} catch {}
+			}
+
 			return combined.slice(0, limit);
 		} catch (err) {
 			console.error(
