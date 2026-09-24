@@ -25,16 +25,7 @@ if (typeof process.loadEnvFile === 'function') {
 	} catch {}
 }
 
-const CORE_FRAMEWORKS = [
-	'SwiftUI',
-	'UIKit',
-	'Foundation',
-	'SwiftData',
-	'Combine',
-	'AppKit',
-	'Observation',
-	'CoreLocation',
-];
+import { CORE_FRAMEWORKS } from '../src/server/db/frameworks.js';
 
 const headers = {
 	'User-Agent':
