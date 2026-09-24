@@ -100,3 +100,43 @@ test('End-to-End: shipped index ranks exact names, suffix wildcards, and platfor
 
 	db.close();
 });
+
+test('End-to-End: get_documentation retrieves local symbols and formats cleanly', async () => {
+	const dbPath = join(__dirname, '../data/apple-docs.db');
+	const db = new AppleDocsDB(dbPath, { readonly: true });
+	const state = new ServerState();
+	const { buildGetDocumentationHandler } = await import(
+		'../dist/server/handlers/get-documentation.js'
+	);
+
+	const offlineClient = {
+		formatPlatforms: () => 'All platforms',
+		extractText: () => '',
+		getFramework: async () => {
+			throw new Error('offline');
+		},
+		getSymbol: async () => {
+			throw new Error('offline');
+		},
+		getTechnologies: async () => {
+			throw new Error('offline');
+		},
+	};
+
+	const docHandler = buildGetDocumentationHandler({
+		client: offlineClient,
+		state,
+		db,
+	});
+
+	const res = await docHandler({ path: '/documentation/swiftui/view' });
+	assert.strictEqual(res.isError, undefined);
+	const text = res.content[0].text;
+	assert.ok(text.includes('# View'));
+	assert.ok(text.includes('**Technology:** SwiftUI'));
+	assert.ok(text.includes('**Type:** symbol'));
+	assert.ok(text.includes('## Overview'));
+
+	db.close();
+});
+
