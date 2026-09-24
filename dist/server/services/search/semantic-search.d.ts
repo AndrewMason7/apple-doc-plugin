@@ -46,9 +46,12 @@ export declare class GeminiSemanticSearch {
      */
     static prepareDocument(content: string, title?: string): string;
     /**
-     * Checks if the current model is Gemini Embedding 2 (which uses prompt instructions rather than task_type).
+     * Gemini Embedding 2 takes task instructions in the prompt and rejects task_type.
+     * Every other model, including gemini-embedding-001, uses the task_type field.
      */
     isEmbedding2(): boolean;
+    private requestedDimensions;
+    private embeddingFromValues;
     embedQuery(text: string): Promise<Float32Array | null>;
     embedDocument(content: string, title?: string): Promise<Float32Array | null>;
     embedMultimodal(text: string, imageBase64: string, mimeType?: string): Promise<Float32Array | null>;

@@ -45,6 +45,8 @@ test('GeminiSemanticSearch sends x-goog-api-key header and strips apiKey from UR
 			'my-secret-key-xyz',
 			'models/test-model',
 			baseUrl,
+			undefined,
+			3,
 		);
 		const vec = await search.embedQuery('hello world');
 		assert(vec instanceof Float32Array);

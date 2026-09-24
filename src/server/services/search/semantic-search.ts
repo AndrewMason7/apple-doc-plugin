@@ -21,6 +21,33 @@ export interface GoogleAuthClient {
 	}>;
 }
 
+const MULTIMODAL_MIME_TYPES = new Set([
+	'image/png',
+	'image/jpeg',
+	'image/jpg',
+	'video/mp4',
+	'video/quicktime',
+	'audio/mpeg',
+	'audio/wav',
+	'audio/x-wav',
+	'application/pdf',
+]);
+
+function l2Normalize(values: ArrayLike<number>): Float32Array {
+	const out = Float32Array.from(values);
+	let sum = 0;
+	for (let i = 0; i < out.length; i++) sum += out[i] * out[i];
+	const norm = Math.sqrt(sum);
+	if (norm > 0) {
+		for (let i = 0; i < out.length; i++) out[i] /= norm;
+	}
+	return out;
+}
+
+function stripMultimodalTaskPrefix(text: string): string {
+	return text.replace(/^task:\s*[^|]*\|\s*query:\s*/i, '').trim();
+}
+
 export class GeminiSemanticSearch {
 	private readonly apiKey?: string;
 	private readonly modelName: string;
@@ -220,23 +247,47 @@ export class GeminiSemanticSearch {
 	}
 
 	/**
-	 * Checks if the current model is Gemini Embedding 2 (which uses prompt instructions rather than task_type).
+	 * Gemini Embedding 2 takes task instructions in the prompt and rejects task_type.
+	 * Every other model, including gemini-embedding-001, uses the task_type field.
 	 */
 	isEmbedding2(): boolean {
-		return !this.modelName.includes('gemini-embedding-001');
+		return this.modelName.includes('gemini-embedding-2');
+	}
+
+	private requestedDimensions(): number {
+		return this.expectedDimensions ?? 3072;
+	}
+
+	private embeddingFromValues(
+		values: unknown,
+		requestedDims: number,
+	): Float32Array | null {
+		if (!Array.isArray(values) || values.length !== requestedDims) {
+			const got = Array.isArray(values) ? String(values.length) : 'none';
+			console.warn(
+				`Warning: Gemini API returned ${got} dimensions, expected ${requestedDims}`,
+			);
+			return null;
+		}
+		// gemini-embedding-2 renormalizes truncated vectors. gemini-embedding-001 does not.
+		if (!this.isEmbedding2() && requestedDims !== 3072) {
+			return l2Normalize(values as number[]);
+		}
+		return Float32Array.from(values as number[]);
 	}
 
 	async embedQuery(text: string): Promise<Float32Array | null> {
+		if (!text || text.trim().length === 0) return null;
 		if (this.isCircuitOpen()) return null;
 		const authHeaders = await this.getAuthHeaders();
 		if (!authHeaders) return null;
 
 		try {
 			const url = `${this.baseUrl}/${this.modelName}:embedContent`;
-			const outputDims = this.expectedDimensions ?? 3072;
+			const outputDims = this.requestedDimensions();
 			const formattedText = this.isEmbedding2()
 				? GeminiSemanticSearch.prepareQuery(text)
-				: text;
+				: text.trim();
 
 			const payload: Record<string, unknown> = {
 				content: { parts: [{ text: formattedText }] },
@@ -256,18 +307,10 @@ export class GeminiSemanticSearch {
 				},
 				timeout: 4000,
 			});
-			const values = response.data?.embedding?.values;
-			if (!Array.isArray(values)) return null;
-			if (
-				this.expectedDimensions !== undefined &&
-				values.length !== this.expectedDimensions
-			) {
-				console.warn(
-					`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`,
-				);
-				return null;
-			}
-			return new Float32Array(values);
+			return this.embeddingFromValues(
+				response.data?.embedding?.values,
+				outputDims,
+			);
 		} catch (err) {
 			this.handleApiError(err, 'embedQuery');
 			return null;
@@ -278,16 +321,17 @@ export class GeminiSemanticSearch {
 		content: string,
 		title?: string,
 	): Promise<Float32Array | null> {
+		if (!content || content.trim().length === 0) return null;
 		if (this.isCircuitOpen()) return null;
 		const authHeaders = await this.getAuthHeaders();
 		if (!authHeaders) return null;
 
 		try {
 			const url = `${this.baseUrl}/${this.modelName}:embedContent`;
-			const outputDims = this.expectedDimensions ?? 3072;
+			const outputDims = this.requestedDimensions();
 			const formattedText = this.isEmbedding2()
 				? GeminiSemanticSearch.prepareDocument(content, title)
-				: content;
+				: content.trim();
 
 			const payload: Record<string, unknown> = {
 				content: { parts: [{ text: formattedText }] },
@@ -310,18 +354,10 @@ export class GeminiSemanticSearch {
 				},
 				timeout: 4000,
 			});
-			const values = response.data?.embedding?.values;
-			if (!Array.isArray(values)) return null;
-			if (
-				this.expectedDimensions !== undefined &&
-				values.length !== this.expectedDimensions
-			) {
-				console.warn(
-					`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`,
-				);
-				return null;
-			}
-			return new Float32Array(values);
+			return this.embeddingFromValues(
+				response.data?.embedding?.values,
+				outputDims,
+			);
 		} catch (err) {
 			this.handleApiError(err, 'embedDocument');
 			return null;
@@ -343,20 +379,30 @@ export class GeminiSemanticSearch {
 				| { text: string }
 				| { inline_data: { mime_type: string; data: string } }
 			> = [];
-			// Per official docs: "The text portion of the multimodal input shouldn't include task type information."
-			if (text && text.trim().length > 0) {
-				parts.push({ text: text.trim() });
+			// The text portion of a multimodal input must not carry a task instruction.
+			const caption = stripMultimodalTaskPrefix(text ?? '');
+			if (caption.length > 0) {
+				parts.push({ text: caption });
 			}
 			if (imageBase64 && imageBase64.trim().length > 0) {
+				let mime = mimeType.trim().toLowerCase();
+				if (mime === 'image/jpg') mime = 'image/jpeg';
+				if (!MULTIMODAL_MIME_TYPES.has(mime)) {
+					console.warn(
+						`Warning: Unsupported embedding MIME type "${mimeType}". Supported inputs are PNG, JPEG, MP4, MOV, MP3, WAV, and PDF.`,
+					);
+					return null;
+				}
 				parts.push({
 					inline_data: {
-						mime_type: mimeType,
-						data: imageBase64,
+						mime_type: mime,
+						data: imageBase64.trim(),
 					},
 				});
 			}
+			if (parts.length === 0) return null;
 
-			const outputDims = this.expectedDimensions ?? 3072;
+			const outputDims = this.requestedDimensions();
 			const response = await axios.post<{
 				embedding?: { values?: number[] };
 			}>(
@@ -374,18 +420,10 @@ export class GeminiSemanticSearch {
 				},
 			);
 
-			const values = response.data?.embedding?.values;
-			if (!Array.isArray(values)) return null;
-			if (
-				this.expectedDimensions !== undefined &&
-				values.length !== this.expectedDimensions
-			) {
-				console.warn(
-					`Warning: Gemini API returned ${values.length} dimensions, expected ${this.expectedDimensions}`,
-				);
-				return null;
-			}
-			return new Float32Array(values);
+			return this.embeddingFromValues(
+				response.data?.embedding?.values,
+				outputDims,
+			);
 		} catch (err) {
 			this.handleApiError(err, 'embedMultimodal');
 			return null;
