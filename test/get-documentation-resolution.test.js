@@ -11,7 +11,8 @@ test('AppleDocsDB.resolveSymbol resolves by title, case-insensitive path, and re
 		framework: 'SwiftUI',
 		title: 'NavigationStack',
 		kind: 'struct',
-		abstract: 'A view that displays a root view and enables you to present additional views over the root view.',
+		abstract:
+			'A view that displays a root view and enables you to present additional views over the root view.',
 		path: '/documentation/swiftui/navigationstack',
 		platforms: ['iOS', 'macOS'],
 		isPrimaryType: true,
@@ -42,12 +43,21 @@ test('AppleDocsDB.resolveSymbol resolves by title, case-insensitive path, and re
 	// 1. Resolve by exact title "NavigationStack" (which previously had path == title count of 0)
 	const resNav = db.resolveSymbol('NavigationStack');
 	assert.ok(resNav.symbol, 'Should resolve NavigationStack by title');
-	assert.strictEqual(resNav.symbol?.path, '/documentation/swiftui/navigationstack');
+	assert.strictEqual(
+		resNav.symbol?.path,
+		'/documentation/swiftui/navigationstack',
+	);
 
 	// 2. Resolve case-insensitive path "SwiftUI/NavigationStack"
 	const resCase = db.resolveSymbol('SwiftUI/NavigationStack');
-	assert.ok(resCase.symbol, 'Should resolve case-insensitive SwiftUI/NavigationStack');
-	assert.strictEqual(resCase.symbol?.path, '/documentation/swiftui/navigationstack');
+	assert.ok(
+		resCase.symbol,
+		'Should resolve case-insensitive SwiftUI/NavigationStack',
+	);
+	assert.strictEqual(
+		resCase.symbol?.path,
+		'/documentation/swiftui/navigationstack',
+	);
 
 	// 3. Resolve "View" with explicit framework "SwiftUI"
 	const resViewSwiftUI = db.resolveSymbol('View', 'SwiftUI');
@@ -56,7 +66,10 @@ test('AppleDocsDB.resolveSymbol resolves by title, case-insensitive path, and re
 
 	// 4. Resolve "View" without framework -> multiple matches -> returns candidates for disambiguation
 	const resViewAmbiguous = db.resolveSymbol('View');
-	assert.ok(resViewAmbiguous.candidates, 'Should return candidates for ambiguous View');
+	assert.ok(
+		resViewAmbiguous.candidates,
+		'Should return candidates for ambiguous View',
+	);
 	assert.ok(resViewAmbiguous.candidates.length >= 2);
 
 	db.close();
@@ -77,7 +90,8 @@ test('get_documentation resolves title "NavigationStack" directly without requir
 
 	const handler = buildGetDocumentationHandler({
 		client: {
-			extractText: (abs) => (Array.isArray(abs) ? abs.map((a) => a.text).join('') : ''),
+			extractText: (abs) =>
+				Array.isArray(abs) ? abs.map((a) => a.text).join('') : '',
 		},
 		state: new ServerState(),
 		db,
@@ -144,8 +158,16 @@ test('get_documentation returns disambiguation list with copy-paste calls when m
 	const res = await handler({ path: 'Button' });
 	assert.strictEqual(res.isError, true);
 	assert.ok(res.content[0].text.includes('Multiple symbols match "Button"'));
-	assert.ok(res.content[0].text.includes('get_documentation({ "path": "/documentation/swiftui/button", "framework": "SwiftUI" })'));
-	assert.ok(res.content[0].text.includes('get_documentation({ "path": "/documentation/appkit/nsbutton", "framework": "AppKit" })'));
+	assert.ok(
+		res.content[0].text.includes(
+			'get_documentation({ "path": "/documentation/swiftui/button", "framework": "SwiftUI" })',
+		),
+	);
+	assert.ok(
+		res.content[0].text.includes(
+			'get_documentation({ "path": "/documentation/appkit/nsbutton", "framework": "AppKit" })',
+		),
+	);
 
 	db.close();
 });

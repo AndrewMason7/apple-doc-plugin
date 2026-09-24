@@ -588,7 +588,9 @@ export class AppleDocsDB {
 		}
 		suffixSql += ` ORDER BY is_primary_type DESC, length(path) ASC LIMIT 10`;
 		try {
-			const suffixRows = this.db.prepare(suffixSql).all(...suffixParams) as any[];
+			const suffixRows = this.db
+				.prepare(suffixSql)
+				.all(...suffixParams) as any[];
 			if (suffixRows.length === 1) {
 				return { symbol: mapRow(suffixRows[0]) };
 			}

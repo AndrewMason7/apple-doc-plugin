@@ -142,9 +142,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 		}
 
 		if (!activeTechnology) {
-			const match = path
-				.replace(/^\/+/, '')
-				.match(/^documentation\/([^/]+)/i);
+			const match = path.replace(/^\/+/, '').match(/^documentation\/([^/]+)/i);
 			if (match) {
 				const fw = match[1];
 				activeTechnology = {
@@ -282,8 +280,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 				};
 			}
 
-			const errorMsg =
-				error instanceof Error ? error.message : String(error);
+			const errorMsg = error instanceof Error ? error.message : String(error);
 			return {
 				isError: true,
 				content: [

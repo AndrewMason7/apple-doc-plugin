@@ -190,11 +190,12 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		const clampedMaxResults = Math.min(Math.max(1, rawMaxResults), 100);
 
 		const queryMode = getQueryMode(query);
-		const activeTechnology = state.getActiveTechnology();
 
-		// Determine target framework: explicit param takes priority, then active state
+		// Determine target framework: explicit param takes priority. Global search does NOT inherit sticky session state.
 		const targetFramework =
-			args.framework || activeTechnology?.title || undefined;
+			args.framework && args.framework.trim().length > 0
+				? args.framework.trim()
+				: undefined;
 
 		// 1. If high-performance searchEngine (SQLite FTS5 + Gemini) is available, use it!
 		if (searchEngine) {
@@ -330,7 +331,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 					? '*Note: Running in lexical fallback mode because Gemini API circuit breaker is currently open.*'
 					: undefined;
 
-		if (!activeTechnology && !targetFramework) {
+		if (!targetFramework) {
 			// If no technology is chosen and no searchEngine results, return clean suggestions
 			const lines = [
 				header(1, `🔍 No Results for "${query}"`),
@@ -347,19 +348,26 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 			};
 		}
 
-		// If active technology was chosen, try live DocC symbol resolution fallback
-		if (activeTechnology) {
-			const exactMatchResponse = await tryExactSymbolMatch(
-				client,
-				activeTechnology,
-				query,
-				queryMode,
-				platform,
-				symbolType,
-			);
-			if (exactMatchResponse) {
-				return exactMatchResponse;
-			}
+		// If a target framework was explicitly requested, try live DocC symbol resolution fallback
+		const targetTech: Technology = {
+			identifier: `doc://com.apple.documentation/documentation/${targetFramework}`,
+			title: targetFramework,
+			kind: 'symbol',
+			role: 'collection',
+			url: `/documentation/${targetFramework.toLowerCase()}`,
+			abstract: [],
+		};
+
+		const exactMatchResponse = await tryExactSymbolMatch(
+			client,
+			targetTech,
+			query,
+			queryMode,
+			platform,
+			symbolType,
+		);
+		if (exactMatchResponse) {
+			return exactMatchResponse;
 		}
 
 		return {

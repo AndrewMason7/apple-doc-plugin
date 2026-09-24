@@ -39,10 +39,7 @@ test('symbolType: "func" matches symbols with kind "method" via alias', async ()
 		text.includes('interactiveDismissDisabled(_:)'),
 		'Should find method when filtering by func',
 	);
-	assert.ok(
-		text.includes('Kind:** method'),
-		'Should display the method match',
-	);
+	assert.ok(text.includes('Kind:** method'), 'Should display the method match');
 });
 
 test('kind filter that matches 0 symbols falls back to all results with a note', async () => {
