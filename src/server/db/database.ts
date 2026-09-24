@@ -49,10 +49,12 @@ function safeParsePlatforms(val: unknown): string[] {
 }
 
 export class AppleDocsDB {
+	public readonly dbPath: string;
 	private db: Database.Database;
 	private vectorCache: SemanticItem[] | null = null;
 
 	constructor(dbPath: string, options: Database.Options = {}) {
+		this.dbPath = dbPath;
 		this.db = new Database(dbPath, options);
 		if (!options.readonly) {
 			this.db.pragma('journal_mode = WAL');
@@ -64,6 +66,64 @@ export class AppleDocsDB {
 			try {
 				this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_type TEXT');
 			} catch {}
+		}
+	}
+
+	setMeta(key: string, value: string): void {
+		this.db
+			.prepare(
+				`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			)
+			.run(key, value);
+	}
+
+	getMeta(key: string): string | undefined {
+		try {
+			const row = this.db
+				.prepare(`SELECT value FROM meta WHERE key = ?`)
+				.get(key) as { value: string } | undefined;
+			return row?.value;
+		} catch {
+			return undefined;
+		}
+	}
+
+	getSymbolCount(): number {
+		try {
+			const row = this.db
+				.prepare(`SELECT count(*) as count FROM symbols`)
+				.get() as {
+				count: number;
+			};
+			return row?.count ?? 0;
+		} catch {
+			return 0;
+		}
+	}
+
+	getIndexedFrameworks(): string[] {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT DISTINCT framework FROM symbols ORDER BY framework ASC`,
+				)
+				.all() as Array<{ framework: string }>;
+			return rows.map((r) => r.framework);
+		} catch {
+			return [];
+		}
+	}
+
+	hasEmbeddings(): boolean {
+		try {
+			const row = this.db
+				.prepare(`SELECT count(*) as count FROM semantic_items`)
+				.get() as {
+				count: number;
+			};
+			return (row?.count ?? 0) > 0;
+		} catch {
+			return false;
 		}
 	}
 

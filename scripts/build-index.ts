@@ -60,11 +60,11 @@ async function buildIndex() {
 	const canEmbed = semantic.hasAuth();
 	if (canEmbed) {
 		console.error(
-			'✨ Gemini credentials detected (API Key or ADC)! Multimodal vector embeddings enabled.',
+			'✨ Mode: Hybrid (Gemini credentials detected, multimodal vector embeddings enabled).',
 		);
 	} else {
 		console.error(
-			'ℹ️ No GEMINI_API_KEY or ADC credentials provided; proceeding with pure FTS5 indexing.',
+			'ℹ️ Mode: FTS-only (No Gemini credentials; offline SQLite indexing).',
 		);
 	}
 
@@ -72,95 +72,105 @@ async function buildIndex() {
 
 	for (const framework of CORE_FRAMEWORKS) {
 		const slug = framework.toLowerCase();
-		console.error(`\n📦 Indexing framework: ${framework}...`);
+		console.error(`\n▶ Starting indexing: ${framework}...`);
 
-		// 1. Fetch comprehensive index tree
-		const indexUrl = `https://developer.apple.com/tutorials/data/index/${slug}`;
-		const treeData = await fetchJson(indexUrl);
-		if (treeData) {
-			const treeCount = indexFrameworkTree(db, framework, treeData);
-			console.error(`   • Indexed ${treeCount} symbol tree nodes`);
-			totalIndexed += treeCount;
-		}
-
-		// 2. Fetch framework overview documentation (contains rich abstracts for top symbols)
-		const docUrl = `https://developer.apple.com/tutorials/data/documentation/${slug}.json`;
-		const docData = await fetchJson(docUrl);
-		if (docData) {
-			const count = indexFrameworkData(db, framework, docData);
-			console.error(
-				`   • Enriched ${count} symbols with full documentation abstracts`,
-			);
-
-			// Embed framework overview if semantic enabled
-			if (canEmbed && docData.metadata?.title) {
-				const title = docData.metadata.title;
-				const abstract = docData.abstract
-					? Array.isArray(docData.abstract)
-						? docData.abstract.map((p: any) => p.text || '').join(' ')
-						: ''
-					: '';
-				const summary = `${title}: ${abstract}`.trim();
-				const vec = await semantic.embedDocument(abstract || summary, title);
-				if (vec) {
-					db.insertSemanticItem({
-						id: `tech-${slug}`,
-						framework,
-						title,
-						kind: 'technology',
-						summary,
-						path: `/documentation/${slug}`,
-						embedding: vec,
-					});
-					console.error(`   • Embedded overview for ${framework}`);
-				}
+		try {
+			// 1. Fetch comprehensive index tree
+			const indexUrl = `https://developer.apple.com/tutorials/data/index/${slug}`;
+			const treeData = await fetchJson(indexUrl);
+			if (treeData) {
+				const treeCount = indexFrameworkTree(db, framework, treeData);
+				console.error(`   • Indexed ${treeCount} symbol tree nodes`);
+				totalIndexed += treeCount;
+			} else {
+				console.warn(`   ⚠ No tree data returned for ${framework}`);
 			}
 
-			// Extract and embed visual media previews (diagrams, layout screenshots)
-			if (canEmbed) {
-				const mediaItems = extractMediaReferences(docData);
-				if (mediaItems.length > 0) {
-					console.error(
-						`   • Found ${mediaItems.length} visual media references; embedding...`,
-					);
-					for (const item of mediaItems) {
-						try {
-							const imgRes = await axios.get(item.url, {
-								responseType: 'arraybuffer',
-								headers,
-								timeout: 10000,
-							});
-							const base64 = Buffer.from(imgRes.data).toString('base64');
-							const vec = await semantic.embedMultimodal(
-								item.alt,
-								base64,
-								item.mimeType,
-							);
-							if (vec) {
-								db.insertSemanticItem({
-									id: `media-${item.identifier}`,
-									framework,
-									title: item.alt ? item.alt.slice(0, 100) : item.identifier,
-									kind: 'ui_preview',
-									summary: item.alt || `${framework} layout preview`,
-									path: `/documentation/${slug}`,
-									mediaUrl: item.url,
-									mediaType: item.mimeType,
-									embedding: vec,
+			// 2. Fetch framework overview documentation (contains rich abstracts for top symbols)
+			const docUrl = `https://developer.apple.com/tutorials/data/documentation/${slug}.json`;
+			const docData = await fetchJson(docUrl);
+			if (docData) {
+				const count = indexFrameworkData(db, framework, docData);
+				console.error(
+					`   • Enriched ${count} symbols with full documentation abstracts`,
+				);
+
+				// Embed framework overview if semantic enabled
+				if (canEmbed && docData.metadata?.title) {
+					const title = docData.metadata.title;
+					const abstract = docData.abstract
+						? Array.isArray(docData.abstract)
+							? docData.abstract.map((p: any) => p.text || '').join(' ')
+							: ''
+						: '';
+					const summary = `${title}: ${abstract}`.trim();
+					const vec = await semantic.embedDocument(abstract || summary, title);
+					if (vec) {
+						db.insertSemanticItem({
+							id: `tech-${slug}`,
+							framework,
+							title,
+							kind: 'technology',
+							summary,
+							path: `/documentation/${slug}`,
+							embedding: vec,
+						});
+						console.error(`   • Embedded overview for ${framework}`);
+					}
+				}
+
+				// Extract and embed visual media previews (diagrams, layout screenshots)
+				if (canEmbed) {
+					const mediaItems = extractMediaReferences(docData);
+					if (mediaItems.length > 0) {
+						console.error(
+							`   • Found ${mediaItems.length} visual media references; embedding...`,
+						);
+						for (const item of mediaItems) {
+							try {
+								const imgRes = await axios.get(item.url, {
+									responseType: 'arraybuffer',
+									headers,
+									timeout: 10000,
 								});
-								console.error(
-									`     ✓ Embedded visual preview: ${item.identifier}`,
+								const base64 = Buffer.from(imgRes.data).toString('base64');
+								const vec = await semantic.embedMultimodal(
+									item.alt,
+									base64,
+									item.mimeType,
+								);
+								if (vec) {
+									db.insertSemanticItem({
+										id: `media-${item.identifier}`,
+										framework,
+										title: item.alt ? item.alt.slice(0, 100) : item.identifier,
+										kind: 'ui_preview',
+										summary: item.alt || `${framework} layout preview`,
+										path: `/documentation/${slug}`,
+										mediaUrl: item.url,
+										mediaType: item.mimeType,
+										embedding: vec,
+									});
+									console.error(
+										`     ✓ Embedded visual preview: ${item.identifier}`,
+									);
+								}
+							} catch (err) {
+								console.warn(
+									`     ⚠ Could not embed media ${item.url}:`,
+									err instanceof Error ? err.message : err,
 								);
 							}
-						} catch (err) {
-							console.warn(
-								`     ⚠ Could not embed media ${item.url}:`,
-								err instanceof Error ? err.message : err,
-							);
 						}
 					}
 				}
 			}
+			console.error(`✔ Finished indexing: ${framework}`);
+		} catch (err) {
+			console.error(
+				`✖ Failed indexing ${framework}, continuing to next framework:`,
+				err instanceof Error ? err.message : err,
+			);
 		}
 	}
 
@@ -168,6 +178,15 @@ async function buildIndex() {
 		'\n🔧 Rebuilding SQLite FTS5 index for 100% token consistency...',
 	);
 	db.rebuildFTS();
+
+	// Record Task 8 snapshot metadata
+	const builtAt = new Date().toISOString();
+	db.setMeta('built_at', builtAt);
+	db.setMeta('frameworks', JSON.stringify(CORE_FRAMEWORKS));
+	db.setMeta('symbol_count', String(db.getSymbolCount()));
+	db.setMeta('has_embeddings', String(canEmbed && db.hasEmbeddings()));
+	console.error(`📝 Saved index metadata (built_at: ${builtAt})`);
+
 	console.error('🧹 Running SQLite WAL checkpoint and VACUUM...');
 	// @ts-ignore
 	db['db'].pragma('wal_checkpoint(TRUNCATE)');

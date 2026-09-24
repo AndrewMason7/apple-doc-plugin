@@ -15,19 +15,63 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
 	repository?: { url: string };
 };
 
-export const buildVersionHandler = () => async () => ({
-	content: [
-		{
-			type: 'text' as const,
-			text: `Apple Doc MCP Server Version Information:
+import type { ServerContext, ToolResponse } from '../context.js';
+import { CORE_FRAMEWORKS } from '../db/frameworks.js';
 
-📦 Package Version: ${packageJson.version}
-🏷️  Server Name: ${packageJson.name}
+export interface IndexMetadata {
+	version: string;
+	serverName: string;
+	dbPath: string;
+	symbolCount: number;
+	indexedFrameworks: string[];
+	builtAt: string;
+	embeddingsPresent: boolean;
+}
+
+export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
+	const db = context?.db;
+	const symbolCount = db ? db.getSymbolCount() : 0;
+	const dbFrameworks = db ? db.getIndexedFrameworks() : [];
+	const indexedFrameworks =
+		dbFrameworks.length > 0 ? dbFrameworks : [...CORE_FRAMEWORKS];
+	const builtAt = db?.getMeta('built_at') || 'Not recorded in snapshot';
+	const embeddingsPresent = db ? db.hasEmbeddings() : false;
+	const dbPath = db?.dbPath || 'None (uninitialized)';
+
+	return {
+		version: packageJson.version,
+		serverName: packageJson.name,
+		dbPath,
+		symbolCount,
+		indexedFrameworks,
+		builtAt,
+		embeddingsPresent,
+	};
+};
+
+export const buildVersionHandler =
+	(context?: ServerContext) => async (): Promise<ToolResponse> => {
+		const meta = getIndexMetadata(context);
+
+		const text = `Apple Doc MCP Server Version & Index Information:
+
+📦 Server Version: ${meta.version}
+🏷️ Server Name: ${meta.serverName}
 📝 Description: ${packageJson.description}
+📁 Database Path: ${meta.dbPath}
+📊 Indexed Symbols: ${meta.symbolCount}
+📦 Indexed Frameworks: ${meta.indexedFrameworks.join(', ')}
+🕒 Snapshot Built At: ${meta.builtAt}
+✨ Embeddings Present: ${meta.embeddingsPresent ? 'Yes (hybrid multimodal search enabled)' : 'No (lexical FTS5 only)'}
 👤 Author: ${packageJson.author}
-🔗 Repository: ${packageJson.repository?.url ?? 'N/A'}
+🔗 Repository: ${packageJson.repository?.url ?? 'N/A'}`;
 
-The server version now dynamically reads from package.json instead of being hardcoded.`,
-		},
-	],
-});
+		return {
+			content: [
+				{
+					type: 'text',
+					text,
+				},
+			],
+		};
+	};
