@@ -33,10 +33,15 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 
 1. **Search Before Implementing (Prefer `semantic_search`)**:
    - **Default & Primary Search**: Use `semantic_search` for both symbol lookups (`NavigationSplitView`) and behavioral intents (`"prevent user from dragging sheet down to close"`). The underlying Gemini hybrid search engine matches intent and ranked symbols with superior relevance.
-   - **Wildcard Globbing (Secondary)**: Use `search_symbols` only when you specifically need raw wildcard prefix/suffix globbing (`Grid*`, `*Style`).
-2. **Verify Signatures & Labels**: Inspect the declaration signature returned by `get_documentation` to confirm parameter labels, closure signatures, and return types.
-3. **Check Availability & Deprecations**: Verify platform availability tags (iOS, macOS, watchOS, visionOS) to prevent proposing APIs unsupported on the user's target deployment.
-4. **Inspect Multimodal Previews**: When documentation contains Apple layout diagrams or visual previews, review and share them when discussing UI design.
+   - **Wildcard Globbing (Secondary)**: Use `search_symbols` only when you specifically need raw wildcard globbing (`Grid*`, `*Style`, `Navigation*View`, `Grid?tem`).
+   - **Kind Filtering**: You can safely filter by standard kinds (`symbolType: "func"` or `"var"`). The engine automatically aliases `func` to DocC `method`, `typemethod`, and `instancemethod`.
+2. **Point Lookup with Bare Titles (`get_documentation`)**:
+   - Pass bare API titles directly: `get_documentation({ path: "NavigationStack" })`. You do not need to guess or construct full DocC URL paths.
+   - **Copy-Paste Doc Calls**: Every match in search results provides a pre-formatted, runnable `• **Doc Call:** get_documentation(...)` snippet. Always use this snippet directly.
+   - **Disambiguation Handling**: If a symbol name is ambiguous across frameworks (e.g. `View` exists in SwiftUI, UIKit, and AppKit), `get_documentation` returns `isError: true` with candidate links. Simply copy the runnable call with the desired framework.
+3. **Verify Signatures & Labels**: Inspect the declaration signature returned by `get_documentation` to confirm parameter labels, closure signatures, and return types.
+4. **Check Availability & Deprecations**: Verify platform availability tags (iOS, macOS, watchOS, visionOS) to prevent proposing APIs unsupported on the user's target deployment.
+5. **Inspect Multimodal Previews**: When documentation contains Apple layout diagrams or visual previews, review and share them when discussing UI design.
 
 ---
 

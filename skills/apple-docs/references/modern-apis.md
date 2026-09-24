@@ -81,24 +81,27 @@ Common symbols like `Table`, `Button`, or `Color` exist across multiple framewor
 
 ### 2. Wildcard Syntax
 
-The FTS5 search engine supports fast prefix and infix wildcard queries:
+The search engine supports fast prefix, suffix, infix, and single-character wildcard queries via SQL pattern matching:
 
 - `Grid*` → Matches `Grid`, `GridRow`, `GridItem`, `GridView`
-- `*Navigation*` → Matches `NavigationStack`, `NavigationSplitView`, `NavigationLink`
-- `UI*Controller` → Matches `UIViewController`, `UINavigationController`, `UITabBarController`
+- `*Style` → Matches `ButtonStyle`, `ToggleStyle`, `ProgressViewStyle`
+- `Navigation*View` → Matches `NavigationView`, `NavigationSplitView` (infix globbing)
+- `Grid?tem` → Matches `GridItem`, `GridXtem` (single-character wildcard)
 
 ### 3. Symbol Type Filtering
 
-Filter by the exact Swift construct to cut through noise:
+Filter by the exact Swift construct to cut through noise. The search engine automatically aliases standard kinds to DocC internal representations:
 
+- `func` / `function`: Aliased to DocC `method`, `typemethod`, `instancemethod`, and `operator`
+- `var` / `property`: Aliased to DocC `property`, `typeproperty`, and `instanceproperty`
 - `struct`: Value types, SwiftUI views (`View`, `Text`, `VStack`)
 - `protocol`: Abstractions and conformances (`View`, `Observable`, `Identifiable`)
 - `class`: Reference types (`NSWindow`, `UIViewController`, `ModelContext`)
-- `func` / `var`: View modifiers, methods, and properties
+- `type`: Matches `struct`, `class`, `enum`, `protocol`, and `typealias`
 
 ```json
 {
-	"query": "inspector",
+	"query": "interactiveDismissDisabled",
 	"framework": "SwiftUI",
 	"symbolType": "func"
 }
