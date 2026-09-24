@@ -27,13 +27,13 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 ## Mandatory Documentation Lookup Protocol
 
 > [!IMPORTANT]
-> **Before writing any Apple platform code**, you MUST query the local `apple-docs` MCP server using `search_symbols` or `get_documentation`. Never hallucinate or guess API names, argument labels, default values, or OS availability.
+> **Before writing any Apple platform code**, you MUST query the local `apple-docs` MCP server. **Always prefer `semantic_search` as your primary search tool** over `search_symbols`. Never hallucinate or guess API names, argument labels, default values, or OS availability.
 
 ### Grounding Workflow
 
-1. **Search Before Implementing**:
-   - **Known Symbol or Prefix**: Use `search_symbols` with exact names (`NavigationSplitView`) or wildcards (`Grid*`).
-   - **Unknown Symbol / Behavioral Intent**: Use `semantic_search` to describe what you want in plain English (e.g., `semantic_search(query: "prevent user from dragging sheet down to close")`). The underlying Gemini hybrid search engine matches behavioral descriptions to exact Apple APIs.
+1. **Search Before Implementing (Prefer `semantic_search`)**:
+   - **Default & Primary Search**: Use `semantic_search` for both symbol lookups (`NavigationSplitView`) and behavioral intents (`"prevent user from dragging sheet down to close"`). The underlying Gemini hybrid search engine matches intent and ranked symbols with superior relevance.
+   - **Wildcard Globbing (Secondary)**: Use `search_symbols` only when you specifically need raw wildcard prefix/suffix globbing (`Grid*`, `*Style`).
 2. **Verify Signatures & Labels**: Inspect the declaration signature returned by `get_documentation` to confirm parameter labels, closure signatures, and return types.
 3. **Check Availability & Deprecations**: Verify platform availability tags (iOS, macOS, watchOS, visionOS) to prevent proposing APIs unsupported on the user's target deployment.
 4. **Inspect Multimodal Previews**: When documentation contains Apple layout diagrams or visual previews, review and share them when discussing UI design.
@@ -44,15 +44,15 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 
 The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 100,000+ symbols, wildcard matching, DocC Markdown extraction, and Gemini hybrid multimodal vector search.
 
-| Tool                    | Purpose                                                                                                                                              | Key Arguments                                                           |
-| :---------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
-| `search_symbols`        | **Symbol Lookup Tool**. Instant search across symbols with wildcard and exact-match boosting.                                                        | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
-| `semantic_search`       | **Intent & Concept Tool**. Natural language search powered by Gemini embeddings. Use when you describe behavior or don't know the exact symbol name. | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
-| `get_documentation`     | Fetches full DocC documentation (Swift declarations, parameters, deprecations) as clean Markdown.                                                    | `path` (required), `framework` (optional)                               |
-| `discover_technologies` | Lists and filters available frameworks/technologies.                                                                                                 | `query`, `page`, `pageSize`                                             |
-| `choose_technology`     | Scopes subsequent lookups to a specific framework.                                                                                                   | `name` or `identifier`                                                  |
-| `current_technology`    | Inspects currently scoped framework.                                                                                                                 | None                                                                    |
-| `get_version`           | Checks MCP server version and features.                                                                                                              | None                                                                    |
+| Tool                    | Priority / Purpose                                                                                                                                 | Key Arguments                                                           |
+| :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| `semantic_search`       | **[PRIMARY & PREFERRED] Intent & Symbol Search**. Natural language and symbol search powered by Gemini embeddings + FTS5. Always prefer this tool. | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
+| `search_symbols`        | **(Secondary) Wildcard Tool**. Use when raw wildcard pattern globbing (`Grid*`, `*Style`) is needed.                                               | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
+| `get_documentation`     | Fetches full DocC documentation (Swift declarations, parameters, deprecations) as clean Markdown.                                                  | `path` (required), `framework` (optional)                               |
+| `discover_technologies` | Lists and filters available frameworks/technologies.                                                                                               | `query`, `page`, `pageSize`                                             |
+| `choose_technology`     | Scopes subsequent lookups to a specific framework.                                                                                                 | `name` or `identifier`                                                  |
+| `current_technology`    | Inspects currently scoped framework.                                                                                                               | None                                                                    |
+| `get_version`           | Checks MCP server version and features.                                                                                                            | None                                                                    |
 
 ### Tool Invocation Examples
 

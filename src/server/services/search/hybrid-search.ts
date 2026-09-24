@@ -4,6 +4,7 @@ import { GeminiSemanticSearch, SemanticMatch } from './semantic-search.js';
 export interface SearchOptions {
 	framework?: string;
 	limit?: number;
+	preferSemantic?: boolean;
 }
 
 export interface SearchResultItem extends DbSymbol {
@@ -114,10 +115,12 @@ export class HybridSearchEngine {
 		if (this.semanticSearch.hasAuth()) {
 			const queryVec = await this.semanticSearch.embedQuery(query);
 			if (queryVec) {
+				const minSim = options.preferSemantic ? 0.55 : 0.65;
 				const semanticMatches = this.searchSemanticWithVector(
 					queryVec,
 					options.framework,
 					limit,
+					minSim,
 				);
 
 				if (semanticMatches.length > 0) {
@@ -127,18 +130,20 @@ export class HybridSearchEngine {
 						{ item: SearchResultItem; rrf: number }
 					>();
 					const k = 60;
+					const ftsWeight = options.preferSemantic ? 0.7 : 1.0;
+					const semWeight = options.preferSemantic ? 1.8 : 1.0;
 
 					// Rank FTS items
 					scoredFTS
 						.sort((a, b) => b.score - a.score)
 						.forEach((item, rank) => {
-							const rrf = 1.0 / (k + rank + 1);
+							const rrf = (1.0 / (k + rank + 1)) * ftsWeight;
 							rrfScores.set(item.id, { item, rrf });
 						});
 
 					// Rank Semantic items
 					semanticMatches.forEach((sem, rank) => {
-						const rrfBonus = 1.0 / (k + rank + 1);
+						const rrfBonus = (1.0 / (k + rank + 1)) * semWeight;
 						const existing = rrfScores.get(sem.id);
 						if (existing) {
 							existing.rrf += rrfBonus;

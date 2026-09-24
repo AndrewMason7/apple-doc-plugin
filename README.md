@@ -107,35 +107,24 @@ The server automatically loads `.env` natively at startup.
 
 ## 🔍 Usage Examples for AI Agents
 
-- **Exact Symbol Lookup**:
+- **Primary & Preferred Search (`semantic_search`)**:
   ```json
-  search_symbols({ "query": "NavigationSplitView" })
+  // Search by concept, behavioral intent, or API name
+  semantic_search({ "query": "NavigationSplitView", "framework": "SwiftUI" })
+  semantic_search({ "query": "prevent user from dragging sheet down to close", "framework": "SwiftUI" })
+  semantic_search({ "query": "persist user login credentials securely across reboots" })
+  semantic_search({ "query": "three column sidebar split view diagram", "framework": "SwiftUI" })
   ```
-- **Scoped Framework Search**:
-  ```json
-  search_symbols({ "query": "ViewController", "framework": "UIKit" })
-  ```
-- **Wildcard Prefix & Suffix Search**:
-  ```json
-  search_symbols({ "query": "Grid*" })
-  search_symbols({ "query": "*Style" })
-  ```
-- **Platform & Type Filtered Search**:
-  ```json
-  search_symbols({ "query": "View", "platform": "iOS", "symbolType": "protocol" })
-  ```
-- **Direct Documentation Retrieval**:
+- **Direct Documentation Retrieval (`get_documentation`)**:
   ```json
   get_documentation({ "path": "NavigationStack", "framework": "SwiftUI" })
   ```
-- **Conceptual Intent / Behavioral Search (Gemini Semantic)**:
+- **Secondary / Wildcard Pattern Search (`search_symbols`)**:
   ```json
-  semantic_search({ "query": "prevent user from dragging sheet down to close", "framework": "SwiftUI" })
-  semantic_search({ "query": "persist user login credentials securely across reboots" })
-  ```
-- **Multimodal Layout Diagram Queries**:
-  ```json
-  semantic_search({ "query": "three column sidebar split view diagram", "framework": "SwiftUI" })
+  // Use when raw wildcard pattern matching is specifically required
+  search_symbols({ "query": "Grid*" })
+  search_symbols({ "query": "*Style" })
+  search_symbols({ "query": "View", "platform": "iOS", "symbolType": "protocol" })
   ```
 
 ---

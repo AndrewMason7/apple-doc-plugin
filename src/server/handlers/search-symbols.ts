@@ -118,8 +118,15 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		platform?: string;
 		query: string;
 		symbolType?: string;
+		preferSemantic?: boolean;
 	}): Promise<ToolResponse> => {
-		const { query, maxResults = 20, platform, symbolType } = args;
+		const {
+			query,
+			maxResults = 20,
+			platform,
+			symbolType,
+			preferSemantic,
+		} = args;
 
 		if (typeof query !== 'string' || query.trim().length === 0) {
 			return {
@@ -151,6 +158,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 			const results = await searchEngine.search(query, {
 				framework: targetFramework,
 				limit: clampedMaxResults * 2,
+				preferSemantic,
 			});
 
 			let filtered = results;

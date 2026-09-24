@@ -168,3 +168,56 @@ test('GeminiSemanticSearch computes cosine similarity with precomputed norms', (
 	const simOrth = semantic.cosineSimilarityWithNorm(v1, 5, v3, 5);
 	assert(Math.abs(simOrth - 0.0) < 1e-6);
 });
+
+test('HybridSearchEngine elevates semantic matches over lexical matches when preferSemantic is true', async () => {
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: 'documentation/swiftui/button',
+		framework: 'SwiftUI',
+		title: 'Button',
+		kind: 'struct',
+		abstract: 'A control that initiates an action.',
+		path: '/documentation/swiftui/button',
+		platforms: ['iOS 13.0+'],
+		isPrimaryType: true,
+	});
+
+	const mockEmbedding = new Float32Array(3072);
+	mockEmbedding[0] = 1.0;
+	db.insertSemanticItem({
+		id: 'guide-custom-action',
+		framework: 'SwiftUI',
+		title: 'Custom Action Triggers',
+		kind: 'guide',
+		summary: 'Learn how to trigger actions in response to custom user events.',
+		path: '/documentation/swiftui/custom_action',
+		embedding: mockEmbedding,
+	});
+
+	const server = http.createServer((req, res) => {
+		res.writeHead(200, { 'Content-Type': 'application/json' });
+		const values = new Array(3072).fill(0);
+		values[0] = 0.95;
+		res.end(JSON.stringify({ embedding: { values } }));
+	});
+	await new Promise((resolve) => server.listen(0, resolve));
+	const port = server.address().port;
+
+	try {
+		const engine = new HybridSearchEngine(db, {
+			apiKey: 'test-key',
+			baseUrl: `http://127.0.0.1:${port}`,
+			modelName: 'models/test-model',
+		});
+
+		const results = await engine.search('trigger action', {
+			preferSemantic: true,
+		});
+		assert.ok(results.length >= 1);
+		assert.strictEqual(results[0].id, 'guide-custom-action');
+		assert.strictEqual(results[0].source, 'semantic');
+	} finally {
+		server.close();
+		db.close();
+	}
+});
