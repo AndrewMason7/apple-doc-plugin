@@ -12,6 +12,7 @@ This reference provides complete before-and-after patterns for modernizing legac
 ### Single-Column (iPhone / Stack Navigation)
 
 #### ❌ Deprecated (`NavigationView`)
+
 ```swift
 NavigationView {
     List(items) { item in
@@ -24,6 +25,7 @@ NavigationView {
 ```
 
 #### ✅ Modern (`NavigationStack` with typed destinations)
+
 ```swift
 @State private var navigationPath = NavigationPath()
 
@@ -43,6 +45,7 @@ NavigationStack(path: $navigationPath) {
 ### Multi-Column (iPad / Mac / Split Navigation)
 
 #### ✅ Modern (`NavigationSplitView`)
+
 ```swift
 @State private var selectedCategory: Category?
 @State private var selectedItem: Item?
@@ -80,6 +83,7 @@ NavigationSplitView {
 ### Model Definition
 
 #### ❌ Legacy (`ObservableObject` & `@Published`)
+
 ```swift
 import Combine
 
@@ -87,12 +91,13 @@ class UserProfileViewModel: ObservableObject {
     @Published var name: String = ""
     @Published var age: Int = 0
     @Published var isLoading: Bool = false
-    
+
     func update() { ... }
 }
 ```
 
 #### ✅ Modern (`@Observable`)
+
 ```swift
 import Observation
 
@@ -101,7 +106,7 @@ final class UserProfileViewModel {
     var name: String = ""
     var age: Int = 0
     var isLoading: Bool = false
-    
+
     // Properties that should NOT trigger UI updates can be opted out
     @ObservationIgnored var internalCache: [String: Any] = [:]
 }
@@ -110,11 +115,12 @@ final class UserProfileViewModel {
 ### View Consumption
 
 #### ❌ Legacy View
+
 ```swift
 struct UserProfileView: View {
     @StateObject private var viewModel = UserProfileViewModel()
     // Or @ObservedObject var viewModel: UserProfileViewModel
-    
+
     var body: some View {
         TextField("Name", text: $viewModel.name)
     }
@@ -122,10 +128,11 @@ struct UserProfileView: View {
 ```
 
 #### ✅ Modern View
+
 ```swift
 struct UserProfileView: View {
     @State private var viewModel = UserProfileViewModel()
-    
+
     var body: some View {
         // Use @Bindable for two-way bindings to observable properties
         @Bindable var vm = viewModel
@@ -144,6 +151,7 @@ struct UserProfileView: View {
 ### Schema Definition
 
 #### ❌ Legacy Core Data (`NSManagedObject`)
+
 ```swift
 // Required external xcdatamodeld XML configuration + generated code
 public class CDRecipe: NSManagedObject {
@@ -154,6 +162,7 @@ public class CDRecipe: NSManagedObject {
 ```
 
 #### ✅ Modern SwiftData (`@Model`)
+
 ```swift
 import SwiftData
 
@@ -162,7 +171,7 @@ final class Recipe {
     var title: String
     var createdAt: Date
     @Relationship(deleteRule: .cascade) var ingredients: [Ingredient] = []
-    
+
     init(title: String, createdAt: Date = .now) {
         self.title = title
         self.createdAt = createdAt
@@ -173,6 +182,7 @@ final class Recipe {
 ### Querying in SwiftUI
 
 #### ✅ Modern SwiftData (`@Query`)
+
 ```swift
 import SwiftUI
 import SwiftData
@@ -180,7 +190,7 @@ import SwiftData
 struct RecipeListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Recipe.createdAt, order: .reverse) private var recipes: [Recipe]
-    
+
     var body: some View {
         List {
             ForEach(recipes) { recipe in
@@ -203,6 +213,7 @@ struct RecipeListView: View {
 ### Function Definition
 
 #### ❌ Legacy Completion Handler
+
 ```swift
 func fetchUserData(userId: String, completion: @escaping (Result<UserData, Error>) -> Void) {
     URLSession.shared.dataTask(with: url) { data, response, error in
@@ -225,6 +236,7 @@ func fetchUserData(userId: String, completion: @escaping (Result<UserData, Error
 ```
 
 #### ✅ Modern Async / Await
+
 ```swift
 func fetchUserData(userId: String) async throws -> UserData {
     let (data, response) = try await URLSession.shared.data(from: url)
@@ -238,11 +250,12 @@ func fetchUserData(userId: String) async throws -> UserData {
 ### SwiftUI Task Lifecycle
 
 #### ✅ Modern `.task` Modifier
+
 ```swift
 struct ProfileView: View {
     @State private var userData: UserData?
     let userId: String
-    
+
     var body: some View {
         Group {
             if let userData {

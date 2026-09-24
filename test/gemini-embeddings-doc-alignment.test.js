@@ -20,18 +20,26 @@ test('GeminiSemanticSearch static helpers format prompts according to official d
 	);
 	// No double-prefixing if already formatted
 	assert.strictEqual(
-		GeminiSemanticSearch.prepareQuery('task: search result | query: List selection'),
+		GeminiSemanticSearch.prepareQuery(
+			'task: search result | query: List selection',
+		),
 		'task: search result | query: List selection',
 	);
 	// Custom task support (e.g., code retrieval)
 	assert.strictEqual(
-		GeminiSemanticSearch.prepareQuery('func makeUIViewController', 'code retrieval'),
+		GeminiSemanticSearch.prepareQuery(
+			'func makeUIViewController',
+			'code retrieval',
+		),
 		'task: code retrieval | query: func makeUIViewController',
 	);
 
 	// Document structure: title: {title} | text: {content}
 	assert.strictEqual(
-		GeminiSemanticSearch.prepareDocument('Declare UI for Apple platforms.', 'SwiftUI'),
+		GeminiSemanticSearch.prepareDocument(
+			'Declare UI for Apple platforms.',
+			'SwiftUI',
+		),
 		'title: SwiftUI | text: Declare UI for Apple platforms.',
 	);
 	// Missing or empty title defaults to 'none' per documentation table
@@ -346,7 +354,9 @@ test('embedMultimodal strips an accidental task prefix and normalizes image/jpg'
 		req.on('end', () => {
 			receivedBody = JSON.parse(raw);
 			res.writeHead(200, { 'Content-Type': 'application/json' });
-			res.end(JSON.stringify({ embedding: { values: new Array(1536).fill(0.2) } }));
+			res.end(
+				JSON.stringify({ embedding: { values: new Array(1536).fill(0.2) } }),
+			);
 		});
 	});
 	await listen(server);
@@ -366,7 +376,10 @@ test('embedMultimodal strips an accidental task prefix and normalizes image/jpg'
 		);
 		assert.strictEqual(vec.length, 1536);
 		assert.strictEqual(receivedBody.content.parts[0].text, 'A dog');
-		assert.strictEqual(receivedBody.content.parts[1].inline_data.mime_type, 'image/jpeg');
+		assert.strictEqual(
+			receivedBody.content.parts[1].inline_data.mime_type,
+			'image/jpeg',
+		);
 		assert.strictEqual(receivedBody.output_dimensionality, 1536);
 		assert.strictEqual(receivedBody.task_type, undefined);
 	} finally {

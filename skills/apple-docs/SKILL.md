@@ -42,52 +42,59 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 
 The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 100,000+ symbols, wildcard matching, DocC Markdown extraction, and multimodal layout previews.
 
-| Tool | Purpose | Key Arguments |
-| :--- | :--- | :--- |
-| `search_symbols` | **Primary Tool**. Instant search across symbols with wildcard and semantic scoring. | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
-| `get_documentation` | Fetches full DocC documentation and converts it to clean Markdown. | `path` (required) |
-| `discover_technologies` | Lists and filters available frameworks/technologies. | `query`, `page`, `pageSize` |
-| `choose_technology` | Scopes subsequent lookups to a specific framework. | `name` or `identifier` |
-| `current_technology` | Inspects currently scoped framework. | None |
-| `get_version` | Checks MCP server version and features. | None |
+| Tool                    | Purpose                                                                             | Key Arguments                                                           |
+| :---------------------- | :---------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| `search_symbols`        | **Primary Tool**. Instant search across symbols with wildcard and semantic scoring. | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
+| `get_documentation`     | Fetches full DocC documentation and converts it to clean Markdown.                  | `path` (required)                                                       |
+| `discover_technologies` | Lists and filters available frameworks/technologies.                                | `query`, `page`, `pageSize`                                             |
+| `choose_technology`     | Scopes subsequent lookups to a specific framework.                                  | `name` or `identifier`                                                  |
+| `current_technology`    | Inspects currently scoped framework.                                                | None                                                                    |
+| `get_version`           | Checks MCP server version and features.                                             | None                                                                    |
 
 ### Tool Invocation Examples
 
 #### 1. Search Exact Symbol or Prefix
+
 ```json
 {
-  "query": "NavigationSplitView"
+	"query": "NavigationSplitView"
 }
 ```
 
 #### 2. Scoped Framework Search with Wildcards
+
 ```json
 {
-  "query": "Grid*",
-  "framework": "SwiftUI",
-  "symbolType": "struct"
+	"query": "Grid*",
+	"framework": "SwiftUI",
+	"symbolType": "struct"
 }
 ```
 
 #### 3. Filtering by Symbol Kind
+
 Available symbol types: `struct`, `class`, `protocol`, `enum`, `func`, `var`, `typealias`.
+
 ```json
 {
-  "query": "Observable",
-  "symbolType": "protocol"
+	"query": "Observable",
+	"symbolType": "protocol"
 }
 ```
 
 #### 4. Fetching Full DocC Documentation
+
 ```json
 {
-  "path": "documentation/swiftui/navigationstack"
+	"path": "documentation/swiftui/navigationstack"
 }
 ```
+
 or by direct symbol name:
+
 ```json
 {
-  "path": "NavigationStack"
+	"path": "NavigationStack"
 }
 ```
 
@@ -274,11 +281,11 @@ For detailed architectural patterns, migration guides, and framework inventories
 
 ## Common Developer Pitfalls & Best Practices
 
-| Pitfall | Problem | Modern Solution |
-| :--- | :--- | :--- |
-| **Using `NavigationView`** | Broken multi-column layout, random popping on iPad/Mac | Use `NavigationStack` or `NavigationSplitView` with `.navigationDestination(for:)`. |
-| **Using `ObservableObject` on iOS 17+** | Re-renders view when *any* `@Published` property changes, causing frame drops | Migrate to `@Observable` from the Observation framework for granular dependency tracking. |
-| **Omitting `@MainActor` on ViewModels** | Data races and runtime crashes when updating state from background tasks | Mark view model classes with `@MainActor` to enforce UI thread dispatch at compile time. |
-| **Retain cycles in `Task`** | Long-running asynchronous tasks hold strong references to `self` | Use `[weak self]` in non-structured tasks or rely on view-scoped `.task` modifiers with automatic cancellation. |
-| **Hallucinating parameter labels** | Swift compiler errors from incorrect argument labels or omitted parameter names | Always verify exact function signatures using `search_symbols` or `get_documentation`. |
-| **Hardcoding frame sizes & colors** | Breaks Dynamic Type, accessibility zoom, and dark/light system appearances | Use standard semantic colors (`.primary`, `.secondary`, `.background`) and flexible layouts (`Spacer()`, `Grid`). |
+| Pitfall                                 | Problem                                                                         | Modern Solution                                                                                                   |
+| :-------------------------------------- | :------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------- |
+| **Using `NavigationView`**              | Broken multi-column layout, random popping on iPad/Mac                          | Use `NavigationStack` or `NavigationSplitView` with `.navigationDestination(for:)`.                               |
+| **Using `ObservableObject` on iOS 17+** | Re-renders view when _any_ `@Published` property changes, causing frame drops   | Migrate to `@Observable` from the Observation framework for granular dependency tracking.                         |
+| **Omitting `@MainActor` on ViewModels** | Data races and runtime crashes when updating state from background tasks        | Mark view model classes with `@MainActor` to enforce UI thread dispatch at compile time.                          |
+| **Retain cycles in `Task`**             | Long-running asynchronous tasks hold strong references to `self`                | Use `[weak self]` in non-structured tasks or rely on view-scoped `.task` modifiers with automatic cancellation.   |
+| **Hallucinating parameter labels**      | Swift compiler errors from incorrect argument labels or omitted parameter names | Always verify exact function signatures using `search_symbols` or `get_documentation`.                            |
+| **Hardcoding frame sizes & colors**     | Breaks Dynamic Type, accessibility zoom, and dark/light system appearances      | Use standard semantic colors (`.primary`, `.secondary`, `.background`) and flexible layouts (`Spacer()`, `Grid`). |

@@ -8,7 +8,12 @@ test('DocC types compile and are exportable from types index', async () => {
 	// Verify sample SymbolData shape with primaryContentSections and deprecationSummary
 	const sampleSymbol = {
 		abstract: [{ text: 'Sample', type: 'text' }],
-		deprecationSummary: [{ type: 'paragraph', inlineContent: [{ text: 'Deprecated', type: 'text' }] }],
+		deprecationSummary: [
+			{
+				type: 'paragraph',
+				inlineContent: [{ text: 'Deprecated', type: 'text' }],
+			},
+		],
 		metadata: {
 			platforms: [{ name: 'iOS', introducedAt: '16.0' }],
 			symbolKind: 'struct',

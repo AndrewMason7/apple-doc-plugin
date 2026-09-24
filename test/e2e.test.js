@@ -105,9 +105,8 @@ test('End-to-End: get_documentation retrieves local symbols and formats cleanly'
 	const dbPath = join(__dirname, '../data/apple-docs.db');
 	const db = new AppleDocsDB(dbPath, { readonly: true });
 	const state = new ServerState();
-	const { buildGetDocumentationHandler } = await import(
-		'../dist/server/handlers/get-documentation.js'
-	);
+	const { buildGetDocumentationHandler } =
+		await import('../dist/server/handlers/get-documentation.js');
 
 	const offlineClient = {
 		formatPlatforms: () => 'All platforms',
@@ -139,4 +138,3 @@ test('End-to-End: get_documentation retrieves local symbols and formats cleanly'
 
 	db.close();
 });
-

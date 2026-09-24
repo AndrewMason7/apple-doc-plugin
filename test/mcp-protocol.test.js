@@ -129,9 +129,7 @@ test('get_documentation tool schema exposes optional framework property and rich
 
 	try {
 		const listed = await client.listTools();
-		const getDocTool = listed.tools.find(
-			(t) => t.name === 'get_documentation',
-		);
+		const getDocTool = listed.tools.find((t) => t.name === 'get_documentation');
 		assert.ok(getDocTool, 'get_documentation tool must be registered');
 		assert.ok(
 			getDocTool.description.includes('Swift syntax declarations'),
@@ -150,4 +148,3 @@ test('get_documentation tool schema exposes optional framework property and rich
 		await server.close();
 	}
 });
-

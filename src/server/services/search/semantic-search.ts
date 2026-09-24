@@ -376,8 +376,7 @@ export class GeminiSemanticSearch {
 		try {
 			const url = `${this.baseUrl}/${this.modelName}:embedContent`;
 			const parts: Array<
-				| { text: string }
-				| { inline_data: { mime_type: string; data: string } }
+				{ text: string } | { inline_data: { mime_type: string; data: string } }
 			> = [];
 			// The text portion of a multimodal input must not carry a task instruction.
 			const caption = stripMultimodalTaskPrefix(text ?? '');

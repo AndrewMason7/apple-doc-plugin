@@ -291,9 +291,8 @@ test('queryFTS guarantees exact title match is ranked #1 even among many token p
 });
 
 test('get_documentation formats declaration, parameters, and deprecation when present', async () => {
-	const { buildGetDocumentationHandler } = await import(
-		'../dist/server/handlers/get-documentation.js'
-	);
+	const { buildGetDocumentationHandler } =
+		await import('../dist/server/handlers/get-documentation.js');
 	const mockClient = {
 		formatPlatforms: () => 'iOS 16.0+, macOS 13.0+',
 		extractText: (abstract) => 'Presents a stack of views.',
@@ -303,9 +302,7 @@ test('get_documentation formats declaration, parameters, and deprecation when pr
 			deprecationSummary: [
 				{
 					type: 'paragraph',
-					inlineContent: [
-						{ type: 'text', text: 'Use ModernStack instead.' },
-					],
+					inlineContent: [{ type: 'text', text: 'Use ModernStack instead.' }],
 				},
 			],
 			primaryContentSections: [
@@ -328,9 +325,7 @@ test('get_documentation formats declaration, parameters, and deprecation when pr
 							content: [
 								{
 									type: 'paragraph',
-									inlineContent: [
-										{ type: 'text', text: 'The root view.' },
-									],
+									inlineContent: [{ type: 'text', text: 'The root view.' }],
 								},
 							],
 						},
@@ -379,9 +374,8 @@ test('get_documentation formats declaration, parameters, and deprecation when pr
 });
 
 test('get_documentation resolves using explicit framework argument without session state', async () => {
-	const { buildGetDocumentationHandler } = await import(
-		'../dist/server/handlers/get-documentation.js'
-	);
+	const { buildGetDocumentationHandler } =
+		await import('../dist/server/handlers/get-documentation.js');
 	let requestedPath = '';
 	const mockClient = {
 		formatPlatforms: () => 'iOS 13.0+',
@@ -408,4 +402,3 @@ test('get_documentation resolves using explicit framework argument without sessi
 	assert.strictEqual(requestedPath, 'documentation/SwiftUI/Color');
 	assert.strictEqual(state.getActiveTechnology(), undefined);
 });
-

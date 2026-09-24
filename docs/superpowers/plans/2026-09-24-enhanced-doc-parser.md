@@ -31,16 +31,19 @@
 ### Task 1: DocC AST Type Definitions
 
 **Files:**
+
 - Modify: `src/apple-client/types/index.ts`
 - Test: `test/docc-types.test.js`
 
 **Interfaces:**
+
 - Consumes: Existing `SymbolData` in `src/apple-client/types/index.ts`
 - Produces: `DocCToken`, `DocCDeclaration`, `DocCParameter`, `DocCContentNode`, `DocCInlineContent`, `DocCSection`, updated `SymbolData` with typed `primaryContentSections` and `deprecationSummary`.
 
 - [ ] **Step 1: Write the failing test**
 
 Create `test/docc-types.test.js`:
+
 ```javascript
 import assert from 'node:assert';
 import test from 'node:test';
@@ -60,9 +63,19 @@ Expected: FAIL (file or dist not yet updated with new test)
 - [ ] **Step 3: Write minimal implementation**
 
 Update `src/apple-client/types/index.ts` to add detailed DocC AST definitions:
+
 ```typescript
 export type DocCToken = {
-	kind: 'keyword' | 'attribute' | 'identifier' | 'text' | 'genericParameter' | 'typeIdentifier' | 'externalParam' | 'internalParam' | string;
+	kind:
+		| 'keyword'
+		| 'attribute'
+		| 'identifier'
+		| 'text'
+		| 'genericParameter'
+		| 'typeIdentifier'
+		| 'externalParam'
+		| 'internalParam'
+		| string;
 	text: string;
 };
 
@@ -73,7 +86,14 @@ export type DocCDeclaration = {
 };
 
 export type DocCInlineContent = {
-	type: 'text' | 'codeVoice' | 'reference' | 'emphasis' | 'strong' | 'link' | string;
+	type:
+		| 'text'
+		| 'codeVoice'
+		| 'reference'
+		| 'emphasis'
+		| 'strong'
+		| 'link'
+		| string;
 	text?: string;
 	code?: string;
 	identifier?: string;
@@ -83,7 +103,14 @@ export type DocCInlineContent = {
 };
 
 export type DocCContentNode = {
-	type: 'paragraph' | 'heading' | 'codeListing' | 'unorderedList' | 'orderedList' | 'aside' | string;
+	type:
+		| 'paragraph'
+		| 'heading'
+		| 'codeListing'
+		| 'unorderedList'
+		| 'orderedList'
+		| 'aside'
+		| string;
 	level?: number;
 	text?: string;
 	syntax?: string;
@@ -139,10 +166,12 @@ git commit -m "feat(types): add comprehensive DocC AST and declaration types"
 ### Task 2: Pure DocC AST Formatter Service
 
 **Files:**
+
 - Create: `src/apple-client/docc-formatter.ts`
 - Test: `test/docc-formatter.test.js`
 
 **Interfaces:**
+
 - Consumes: `DocCPrimaryContentSection`, `DocCContentNode`, `DocCInlineContent`, `DocCDeclaration`, `SymbolData` from `src/apple-client/types/index.ts`
 - Produces:
   - `formatDeclaration(sections?: DocCPrimaryContentSection[]): string | undefined`
@@ -155,7 +184,8 @@ git commit -m "feat(types): add comprehensive DocC AST and declaration types"
 - [ ] **Step 1: Write the failing test**
 
 Create `test/docc-formatter.test.js`:
-```javascript
+
+````javascript
 import assert from 'node:assert';
 import test from 'node:test';
 import {
@@ -198,7 +228,8 @@ test('formatDeprecation renders GitHub warning alert with inline content', () =>
 				{ type: 'text', text: 'Use ' },
 				{
 					type: 'reference',
-					identifier: 'doc://com.apple.SwiftUI/documentation/SwiftUI/NavigationStack',
+					identifier:
+						'doc://com.apple.SwiftUI/documentation/SwiftUI/NavigationStack',
 				},
 				{ type: 'text', text: ' instead.' },
 			],
@@ -219,9 +250,7 @@ test('formatParameters renders parameters list', () => {
 					content: [
 						{
 							type: 'paragraph',
-							inlineContent: [
-								{ type: 'text', text: 'An optional value.' },
-							],
+							inlineContent: [{ type: 'text', text: 'An optional value.' }],
 						},
 					],
 				},
@@ -254,7 +283,7 @@ test('formatDiscussion converts code listings and paragraphs', () => {
 	assert.ok(result.includes('Sample description.'));
 	assert.ok(result.includes('```swift\nlet x = 10\nprint(x)\n```'));
 });
-```
+````
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -264,6 +293,7 @@ Expected: FAIL (`Cannot find module '../dist/apple-client/docc-formatter.js'`)
 - [ ] **Step 3: Write minimal implementation**
 
 Create `src/apple-client/docc-formatter.ts`:
+
 ```typescript
 import type {
 	DocCContentNode,
@@ -273,9 +303,7 @@ import type {
 	DocCPrimaryContentSection,
 } from './types/index.js';
 
-export const formatInlineContent = (
-	nodes?: DocCInlineContent[],
-): string => {
+export const formatInlineContent = (nodes?: DocCInlineContent[]): string => {
 	if (!nodes || !Array.isArray(nodes)) {
 		return '';
 	}
@@ -353,15 +381,23 @@ export const formatDeclaration = (
 ): string | undefined => {
 	if (!sections) return undefined;
 	const declSection = sections.find((s) => s.kind === 'declarations');
-	if (!declSection || !Array.isArray(declSection.declarations)) return undefined;
+	if (!declSection || !Array.isArray(declSection.declarations))
+		return undefined;
 
 	const firstDecl = declSection.declarations[0];
-	if (!firstDecl || !Array.isArray(firstDecl.tokens) || firstDecl.tokens.length === 0) {
+	if (
+		!firstDecl ||
+		!Array.isArray(firstDecl.tokens) ||
+		firstDecl.tokens.length === 0
+	) {
 		return undefined;
 	}
 
 	const lang = firstDecl.languages?.[0] || 'swift';
-	const rawCode = firstDecl.tokens.map((t) => t.text).join('').trim();
+	const rawCode = firstDecl.tokens
+		.map((t) => t.text)
+		.join('')
+		.trim();
 	if (!rawCode) return undefined;
 
 	return `\`\`\`${lang}\n${rawCode}\n\`\`\``;
@@ -385,7 +421,11 @@ export const formatParameters = (
 ): string | undefined => {
 	if (!sections) return undefined;
 	const paramsSection = sections.find((s) => s.kind === 'parameters');
-	if (!paramsSection || !Array.isArray(paramsSection.parameters) || paramsSection.parameters.length === 0) {
+	if (
+		!paramsSection ||
+		!Array.isArray(paramsSection.parameters) ||
+		paramsSection.parameters.length === 0
+	) {
 		return undefined;
 	}
 
@@ -430,20 +470,24 @@ git commit -m "feat(formatter): implement pure DocC AST markdown formatter"
 ### Task 3: Handler Integration & Stateless Framework Support
 
 **Files:**
+
 - Modify: `src/server/handlers/get-documentation.ts`
 - Modify: `src/server/services/symbol-resolution.ts`
 - Test: `test/mcp-handlers.test.js`
 
 **Interfaces:**
+
 - Consumes: `formatDeclaration`, `formatDeprecation`, `formatParameters`, `formatDiscussion` from `src/apple-client/docc-formatter.ts`
 - Produces: Enhanced `get_documentation` handler supporting `{ path: string; framework?: string }` with full Swift declarations, parameters, deprecation warnings, and discussion.
 
 - [ ] **Step 1: Write the failing test**
 
 Add to `test/mcp-handlers.test.js`:
-```javascript
+
+````javascript
 test('get_documentation formats declaration, parameters, and deprecation when present', async () => {
-	const { buildGetDocumentationHandler } = await import('../dist/server/handlers/get-documentation.js');
+	const { buildGetDocumentationHandler } =
+		await import('../dist/server/handlers/get-documentation.js');
 	const mockClient = {
 		formatPlatforms: () => 'iOS 16.0+, macOS 13.0+',
 		extractText: (abstract) => 'Presents a stack of views.',
@@ -461,7 +505,10 @@ test('get_documentation formats declaration, parameters, and deprecation when pr
 					kind: 'declarations',
 					declarations: [
 						{
-							tokens: [{ kind: 'keyword', text: 'struct' }, { kind: 'text', text: ' NavigationStack' }],
+							tokens: [
+								{ kind: 'keyword', text: 'struct' },
+								{ kind: 'text', text: ' NavigationStack' },
+							],
 						},
 					],
 				},
@@ -470,7 +517,12 @@ test('get_documentation formats declaration, parameters, and deprecation when pr
 					parameters: [
 						{
 							name: 'root',
-							content: [{ type: 'paragraph', inlineContent: [{ type: 'text', text: 'The root view.' }] }],
+							content: [
+								{
+									type: 'paragraph',
+									inlineContent: [{ type: 'text', text: 'The root view.' }],
+								},
+							],
 						},
 					],
 				},
@@ -494,7 +546,7 @@ test('get_documentation formats declaration, parameters, and deprecation when pr
 	assert.ok(text.includes('### Parameters'));
 	assert.ok(text.includes('- `root`: The root view.'));
 });
-```
+````
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -504,6 +556,7 @@ Expected: FAIL
 - [ ] **Step 3: Update `get-documentation.ts` and `symbol-resolution.ts`**
 
 Update `src/server/services/symbol-resolution.ts` to accept optional target framework:
+
 ```typescript
 const buildCandidatePaths = (
 	technology: Technology,
@@ -527,6 +580,7 @@ const buildCandidatePaths = (
 ```
 
 Update `src/server/handlers/get-documentation.ts` to integrate `docc-formatter`:
+
 ```typescript
 import {
 	formatDeclaration,
@@ -535,7 +589,9 @@ import {
 	formatDiscussion,
 } from '../../apple-client/docc-formatter.js';
 ```
+
 And assemble the markdown:
+
 ```typescript
 const content: string[] = [
 	header(1, title),
@@ -588,11 +644,13 @@ git commit -m "feat(server): integrate rich DocC AST formatting and framework sc
 ### Task 4: MCP Tool Schema & Description Streamlining
 
 **Files:**
+
 - Modify: `src/server/tools.ts`
 - Modify: `README.md`
 - Test: `test/mcp-protocol.test.js`
 
 **Interfaces:**
+
 - Consumes: `buildGetDocumentationHandler`
 - Produces: Updated MCP tool schemas with `framework` argument and clear agent-centric descriptions.
 
@@ -608,6 +666,7 @@ Expected: FAIL
 - [ ] **Step 3: Update `src/server/tools.ts`**
 
 Update `get_documentation` schema:
+
 ```typescript
 {
 	name: 'get_documentation',
@@ -652,10 +711,12 @@ git commit -m "feat(mcp): expose framework parameter and rich doc capabilities i
 ### Task 5: End-to-End Verification & Full Suite Pass
 
 **Files:**
+
 - Test: `test/e2e.test.js`
 - Test: `test/**/*.test.js`
 
 **Interfaces:**
+
 - Consumes: All updated tools and handlers
 - Produces: Green test suite across all 60+ tests.
 

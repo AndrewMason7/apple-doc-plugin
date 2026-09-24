@@ -77,9 +77,7 @@ test('formatParameters renders parameters list', () => {
 					content: [
 						{
 							type: 'paragraph',
-							inlineContent: [
-								{ type: 'text', text: 'An optional value.' },
-							],
+							inlineContent: [{ type: 'text', text: 'An optional value.' }],
 						},
 					],
 				},
@@ -116,9 +114,7 @@ test('formatDiscussion converts code listings, headings, and paragraphs', () => 
 					content: [
 						{
 							type: 'paragraph',
-							inlineContent: [
-								{ type: 'text', text: 'Critical caution note.' },
-							],
+							inlineContent: [{ type: 'text', text: 'Critical caution note.' }],
 						},
 					],
 				},
