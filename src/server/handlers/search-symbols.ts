@@ -63,11 +63,13 @@ const formatMatch = (match: SearchMatch): string[] => {
 	const platforms =
 		match.platforms.length > 0 ? match.platforms.join(', ') : 'All platforms';
 	const frameworkInfo = match.framework ? ` (${match.framework})` : '';
+	const fwArg = match.framework ? `, "framework": "${match.framework}"` : '';
 	const lines = [
 		`### ${match.title}${frameworkInfo}`,
 		`   • **Kind:** ${match.kind}`,
-		`   • **Path:** ${match.path}`,
+		`   • **Path:** \`${match.path}\``,
 		`   • **Platforms:** ${platforms}`,
+		`   • **Doc Call:** \`get_documentation({ "path": "${match.path}"${fwArg} })\``,
 		...(match.abstract ? [`   ${match.abstract}`] : []),
 	];
 
