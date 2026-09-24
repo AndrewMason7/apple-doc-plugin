@@ -461,30 +461,147 @@ export class AppleDocsDB {
 		}));
 	}
 
-	getSymbolByPath(path: string): DbSymbol | null {
-		const clean = path.startsWith('/') ? path.slice(1) : path;
-		const row = this.db
-			.prepare(
-				`
-      SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
-      FROM symbols
-      WHERE path = ? OR path = ? OR id = ?
-      LIMIT 1
-    `,
-			)
-			.get(clean, `/${clean}`, clean) as any;
+	resolveSymbol(
+		pathOrTitle: string,
+		framework?: string,
+	): { symbol?: DbSymbol; candidates?: DbSymbol[] } {
+		const raw = pathOrTitle.trim();
+		if (!raw) return {};
 
-		if (!row) return null;
-		return {
-			id: row.id,
-			framework: row.framework,
-			title: row.title,
-			kind: row.kind,
-			abstract: row.abstract,
-			path: row.path,
-			platforms: safeParsePlatforms(row.platforms),
-			isPrimaryType: Boolean(row.is_primary_type),
-		};
+		const clean = raw.startsWith('/') ? raw.slice(1) : raw;
+		const mapRow = (r: any): DbSymbol => ({
+			id: r.id,
+			framework: r.framework,
+			title: r.title,
+			kind: r.kind,
+			abstract: r.abstract,
+			path: r.path,
+			platforms: safeParsePlatforms(r.platforms),
+			isPrimaryType: Boolean(r.is_primary_type),
+		});
+
+		// 1. Exact path or ID match
+		let exactSql = `
+			SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+			FROM symbols
+			WHERE (path = ? OR path = ? OR id = ? OR id = ?)
+		`;
+		const exactParams: (string | number)[] = [
+			raw,
+			clean,
+			`/${clean}`,
+			`documentation/${clean}`,
+		];
+		if (framework) {
+			exactSql += ` AND framework = ? COLLATE NOCASE`;
+			exactParams.push(framework);
+		}
+		exactSql += ` LIMIT 1`;
+		try {
+			const exactRow = this.db.prepare(exactSql).get(...exactParams) as any;
+			if (exactRow) {
+				return { symbol: mapRow(exactRow) };
+			}
+		} catch {}
+
+		// 2. Case-insensitive path match
+		let caseSql = `
+			SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+			FROM symbols
+			WHERE (path = ? COLLATE NOCASE OR path = ? COLLATE NOCASE OR id = ? COLLATE NOCASE OR id = ? COLLATE NOCASE)
+		`;
+		const caseParams: (string | number)[] = [
+			raw,
+			clean,
+			`/${clean}`,
+			`documentation/${clean}`,
+		];
+		if (framework) {
+			caseSql += ` AND framework = ? COLLATE NOCASE`;
+			caseParams.push(framework);
+		}
+		caseSql += ` LIMIT 1`;
+		try {
+			const caseRow = this.db.prepare(caseSql).get(...caseParams) as any;
+			if (caseRow) {
+				return { symbol: mapRow(caseRow) };
+			}
+		} catch {}
+
+		// 3. Normalized <Framework>/<Symbol> path attempt (e.g. SwiftUI/NavigationStack)
+		const slashIdx = clean.indexOf('/');
+		if (slashIdx > 0 && !clean.toLowerCase().startsWith('documentation/')) {
+			const fwPart = clean.slice(0, slashIdx);
+			const symPart = clean.slice(slashIdx + 1);
+			const candidatePath = `/documentation/${fwPart.toLowerCase()}/${symPart.toLowerCase()}`;
+			let candSql = `
+				SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+				FROM symbols
+				WHERE path = ? COLLATE NOCASE
+			`;
+			const candParams: (string | number)[] = [candidatePath];
+			if (framework || fwPart) {
+				candSql += ` AND framework = ? COLLATE NOCASE`;
+				candParams.push(framework || fwPart);
+			}
+			candSql += ` LIMIT 1`;
+			try {
+				const candRow = this.db.prepare(candSql).get(...candParams) as any;
+				if (candRow) {
+					return { symbol: mapRow(candRow) };
+				}
+			} catch {}
+		}
+
+		// 4. Exact Title match (COLLATE NOCASE)
+		let titleSql = `
+			SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+			FROM symbols
+			WHERE title = ? COLLATE NOCASE
+		`;
+		const titleParams: (string | number)[] = [raw];
+		if (framework) {
+			titleSql += ` AND framework = ? COLLATE NOCASE`;
+			titleParams.push(framework);
+		}
+		titleSql += ` ORDER BY is_primary_type DESC, length(path) ASC LIMIT 10`;
+		try {
+			const titleRows = this.db.prepare(titleSql).all(...titleParams) as any[];
+			if (titleRows.length === 1) {
+				return { symbol: mapRow(titleRows[0]) };
+			}
+			if (titleRows.length > 1) {
+				return { candidates: titleRows.map(mapRow) };
+			}
+		} catch {}
+
+		// 5. Path Suffix match (e.g. NavigationStack or View at end of path)
+		let suffixSql = `
+			SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+			FROM symbols
+			WHERE path LIKE '%/' || ? COLLATE NOCASE
+		`;
+		const suffixParams: (string | number)[] = [clean];
+		if (framework) {
+			suffixSql += ` AND framework = ? COLLATE NOCASE`;
+			suffixParams.push(framework);
+		}
+		suffixSql += ` ORDER BY is_primary_type DESC, length(path) ASC LIMIT 10`;
+		try {
+			const suffixRows = this.db.prepare(suffixSql).all(...suffixParams) as any[];
+			if (suffixRows.length === 1) {
+				return { symbol: mapRow(suffixRows[0]) };
+			}
+			if (suffixRows.length > 1) {
+				return { candidates: suffixRows.map(mapRow) };
+			}
+		} catch {}
+
+		return {};
+	}
+
+	getSymbolByPath(path: string): DbSymbol | null {
+		return this.resolveSymbol(path).symbol || null;
 	}
 
 	getFrameworks(): string[] {

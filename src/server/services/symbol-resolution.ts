@@ -31,10 +31,17 @@ const buildCandidatePaths = (
 
 	if (normalizedPath && !normalizedPath.startsWith('documentation/')) {
 		candidates.add(`documentation/${frameworkName}/${normalizedPath}`);
+		candidates.add(
+			`documentation/${frameworkName.toLowerCase()}/${normalizedPath.toLowerCase()}`,
+		);
+		candidates.add(
+			`documentation/${frameworkName.toLowerCase()}/${normalizedPath}`,
+		);
 	}
 
 	if (normalizedPath) {
 		candidates.add(normalizedPath);
+		candidates.add(normalizedPath.toLowerCase());
 	}
 
 	return [...candidates];

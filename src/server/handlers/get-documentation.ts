@@ -5,6 +5,7 @@ import type {
 	Technology,
 	PlatformInfo,
 } from '../../apple-client.js';
+import type { DbSymbol } from '../db/database.js';
 import { bold, header, trimWithEllipsis } from '../markdown.js';
 import {
 	formatDeclaration,
@@ -82,9 +83,49 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 			};
 		}
 
+		let resolvedPath = path;
+		let localDbSymbol: DbSymbol | undefined;
+
+		// 1. First, check local SQLite database using multi-stage resolution
+		if (db) {
+			const resolution = db.resolveSymbol(path, frameworkArg);
+			if (resolution.candidates && resolution.candidates.length > 1) {
+				return {
+					isError: true,
+					content: [
+						{
+							type: 'text',
+							text: [
+								`UNRESOLVED: Multiple symbols match "${path}". Please disambiguate by passing the exact path or framework:`,
+								'',
+								...resolution.candidates.map(
+									(c) =>
+										`• **${c.title}** (${c.framework} ${c.kind})\n   Path: \`${c.path}\`\n   Call: \`get_documentation({ "path": "${c.path}", "framework": "${c.framework}" })\``,
+								),
+							].join('\n'),
+						},
+					],
+				};
+			}
+
+			if (resolution.symbol) {
+				localDbSymbol = resolution.symbol;
+				resolvedPath = resolution.symbol.path;
+			}
+		}
+
 		let activeTechnology = state.getActiveTechnology();
 
-		if (
+		if (localDbSymbol) {
+			activeTechnology = {
+				identifier: `doc://com.apple.documentation/documentation/${localDbSymbol.framework}`,
+				title: localDbSymbol.framework,
+				kind: 'symbol',
+				role: 'collection',
+				url: `/documentation/${localDbSymbol.framework.toLowerCase()}`,
+				abstract: [],
+			};
+		} else if (
 			frameworkArg &&
 			typeof frameworkArg === 'string' &&
 			frameworkArg.trim().length > 0
@@ -100,23 +141,10 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 			};
 		}
 
-		// If no technology is explicitly selected, check local database or path prefix
-		if (!activeTechnology && db) {
-			const dbSym = db.getSymbolByPath(path);
-			if (dbSym) {
-				activeTechnology = {
-					identifier: `doc://com.apple.documentation/documentation/${dbSym.framework}`,
-					title: dbSym.framework,
-					kind: 'symbol',
-					role: 'collection',
-					url: `/documentation/${dbSym.framework.toLowerCase()}`,
-					abstract: [],
-				};
-			}
-		}
-
 		if (!activeTechnology) {
-			const match = path.replace(/^\/+/, '').match(/^documentation\/([^/]+)/i);
+			const match = path
+				.replace(/^\/+/, '')
+				.match(/^documentation\/([^/]+)/i);
 			if (match) {
 				const fw = match[1];
 				activeTechnology = {
@@ -131,7 +159,22 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 		}
 
 		if (!activeTechnology) {
-			return noTechnology();
+			return {
+				isError: true,
+				content: [
+					{
+						type: 'text',
+						text: [
+							`UNRESOLVED: Could not resolve Apple technology or framework for "${path}".`,
+							'',
+							'**Suggestions:**',
+							`• Pass an explicit framework parameter: \`get_documentation({ "path": "${path}", "framework": "SwiftUI" })\``,
+							`• Search for the symbol first: \`search_symbols({ "query": "${path}" })\` or \`semantic_search({ "query": "${path}" })\``,
+							'• Run `discover_technologies()` to see indexed frameworks',
+						].join('\n'),
+					},
+				],
+			};
 		}
 
 		try {
@@ -158,7 +201,12 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 			}
 
 			const { data }: { data: SymbolData; targetPath: string } =
-				await resolveSymbol(client, activeTechnology, path, frameworkArg);
+				await resolveSymbol(
+					client,
+					activeTechnology,
+					resolvedPath,
+					frameworkArg,
+				);
 
 			const title = data.metadata?.title || 'Symbol';
 			const kind = data.metadata?.symbolKind || 'Unknown';
@@ -207,7 +255,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 			};
 		} catch (error) {
 			// If online fetch fails, check if local db has symbol metadata to return as graceful fallback
-			const dbSym = db?.getSymbolByPath(path);
+			const dbSym = localDbSymbol || db?.getSymbolByPath(resolvedPath);
 			if (dbSym) {
 				return {
 					content: [
@@ -234,12 +282,20 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 				};
 			}
 
+			const errorMsg =
+				error instanceof Error ? error.message : String(error);
 			return {
 				isError: true,
 				content: [
 					{
 						type: 'text',
-						text: `Failed to load documentation for "${path}": ${error instanceof Error ? error.message : String(error)}`,
+						text: [
+							`UNRESOLVED: Failed to load documentation for "${path}": ${errorMsg}`,
+							'',
+							'**Suggestions:**',
+							`• Verify the symbol spelling or query using \`search_symbols({ "query": "${path}" })\``,
+							`• Try passing the framework explicitly: \`get_documentation({ "path": "${path}", "framework": "SwiftUI" })\``,
+						].join('\n'),
 					},
 				],
 			};
