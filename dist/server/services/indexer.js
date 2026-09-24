@@ -1,4 +1,4 @@
-export function extractAbstract(abstractObj) {
+function extractAbstract(abstractObj) {
     if (!abstractObj)
         return '';
     if (typeof abstractObj === 'string')
@@ -18,7 +18,7 @@ export function extractAbstract(abstractObj) {
     }
     return '';
 }
-export const FRAMEWORK_DEFAULT_PLATFORMS = {
+const FRAMEWORK_DEFAULT_PLATFORMS = {
     SwiftUI: [
         'iOS',
         'iPadOS',

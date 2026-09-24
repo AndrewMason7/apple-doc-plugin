@@ -1,9 +1,7 @@
 import type { ServerContext, ToolResponse } from '../context.js';
 import type { Technology } from '../../apple-client.js';
-import { type LocalSymbolIndexEntry } from '../services/local-symbol-index.js';
 import { header, bold } from '../markdown.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
-import { buildNoTechnologyMessage } from './no-technology.js';
 
 type QueryMode = 'exact-symbol' | 'wildcard' | 'keyword';
 
@@ -113,7 +111,6 @@ const formatNoResults = (queryMode: QueryMode): string[] => {
 
 export const buildSearchSymbolsHandler = (context: ServerContext) => {
 	const { client, state, searchEngine } = context;
-	const noTechnology = buildNoTechnologyMessage(context);
 
 	return async (args: {
 		framework?: string;

@@ -15,15 +15,6 @@ export type FrameworkData = {
 	topicSections: TopicSection[];
 };
 
-export type SearchResult = {
-	description: string;
-	framework: string;
-	path: string;
-	platforms?: string;
-	symbolKind?: string;
-	title: string;
-};
-
 export type DocCToken = {
 	kind:
 		| 'keyword'

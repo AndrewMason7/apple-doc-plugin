@@ -1,6 +1,5 @@
 import { header, bold } from '../markdown.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
-import { buildNoTechnologyMessage } from './no-technology.js';
 const looksLikeExactSymbol = (query) => {
     if (query.includes('*') || query.includes('?') || query.includes(' ')) {
         return false;
@@ -60,7 +59,6 @@ const formatNoResults = (queryMode) => {
 };
 export const buildSearchSymbolsHandler = (context) => {
     const { client, state, searchEngine } = context;
-    const noTechnology = buildNoTechnologyMessage(context);
     return async (args) => {
         const { query, maxResults = 20, platform, symbolType } = args;
         if (typeof query !== 'string' || query.trim().length === 0) {

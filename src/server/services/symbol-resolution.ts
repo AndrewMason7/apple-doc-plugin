@@ -8,7 +8,7 @@ import type {
 const normalizePath = (path: string): string =>
 	path.startsWith('/') ? path.slice(1) : path;
 
-export const getFrameworkName = (technology: Technology): string => {
+const getFrameworkName = (technology: Technology): string => {
 	const frameworkName = technology.identifier.split('/').at(-1);
 	if (!frameworkName) {
 		throw new McpError(

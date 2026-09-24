@@ -1,6 +1,6 @@
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 const normalizePath = (path) => path.startsWith('/') ? path.slice(1) : path;
-export const getFrameworkName = (technology) => {
+const getFrameworkName = (technology) => {
     const frameworkName = technology.identifier.split('/').at(-1);
     if (!frameworkName) {
         throw new McpError(ErrorCode.InvalidRequest, `Invalid technology identifier: ${technology.identifier}`);

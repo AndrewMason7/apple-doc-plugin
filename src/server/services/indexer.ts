@@ -1,6 +1,6 @@
 import { AppleDocsDB } from '../db/database.js';
 
-export function extractAbstract(abstractObj: any): string {
+function extractAbstract(abstractObj: any): string {
 	if (!abstractObj) return '';
 	if (typeof abstractObj === 'string') return abstractObj.trim();
 	if (Array.isArray(abstractObj)) {
@@ -18,7 +18,7 @@ export function extractAbstract(abstractObj: any): string {
 	return '';
 }
 
-export const FRAMEWORK_DEFAULT_PLATFORMS: Record<string, string[]> = {
+const FRAMEWORK_DEFAULT_PLATFORMS: Record<string, string[]> = {
 	SwiftUI: [
 		'iOS',
 		'iPadOS',
@@ -184,7 +184,7 @@ export function extractMediaReferences(data: any): DocCMediaItem[] {
 	return items;
 }
 
-export interface DocCIndexNode {
+interface DocCIndexNode {
 	title?: string;
 	path?: string;
 	type?: string;

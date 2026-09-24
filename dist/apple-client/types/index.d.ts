@@ -16,14 +16,6 @@ export type FrameworkData = {
     references: Record<string, ReferenceData>;
     topicSections: TopicSection[];
 };
-export type SearchResult = {
-    description: string;
-    framework: string;
-    path: string;
-    platforms?: string;
-    symbolKind?: string;
-    title: string;
-};
 export type DocCToken = {
     kind: 'keyword' | 'attribute' | 'identifier' | 'text' | 'genericParameter' | 'typeIdentifier' | 'externalParam' | 'internalParam' | string;
     text: string;

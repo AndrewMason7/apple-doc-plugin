@@ -1,5 +1,5 @@
-import type { FrameworkData, SymbolData, Technology, SearchResult } from './apple-client/types/index.js';
-export type { PlatformInfo, FrameworkData, SearchResult, SymbolData, Technology, TopicSection, ReferenceData, } from './apple-client/types/index.js';
+import type { FrameworkData, SymbolData, Technology } from './apple-client/types/index.js';
+export type { PlatformInfo, FrameworkData, SymbolData, Technology, TopicSection, ReferenceData, } from './apple-client/types/index.js';
 export declare class AppleDevDocsClient {
     extractText: (abstract?: Array<{
         text: string;
@@ -10,21 +10,6 @@ export declare class AppleDevDocsClient {
     private readonly fileCache;
     constructor();
     getFramework(frameworkName: string): Promise<FrameworkData>;
-    refreshFramework(frameworkName: string): Promise<FrameworkData>;
     getSymbol(path: string): Promise<SymbolData>;
     getTechnologies(): Promise<Record<string, Technology>>;
-    refreshTechnologies(): Promise<Record<string, Technology>>;
-    private tokenizeSearchText;
-    private buildWildcardPattern;
-    private matchesSearchFilters;
-    private scoreWildcardReference;
-    private scoreKeywordReference;
-    private buildSearchResult;
-    private resolveSearchResultKind;
-    private enrichSearchResults;
-    searchFramework(frameworkName: string, query: string, options?: {
-        maxResults?: number;
-        platform?: string;
-        symbolType?: string;
-    }): Promise<SearchResult[]>;
 }
