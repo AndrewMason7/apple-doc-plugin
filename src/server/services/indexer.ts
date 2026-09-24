@@ -1,4 +1,22 @@
 import { AppleDocsDB } from '../db/database.js';
+import { CORE_FRAMEWORKS } from '../db/frameworks.js';
+
+export function resolveFrameworkFromPath(
+	path: string,
+	fallback: string,
+): string {
+	const match = path.replace(/^\/+/, '').match(/^documentation\/([^/]+)/i);
+	if (!match) return fallback;
+	const slug = match[1].toLowerCase();
+	if (slug === fallback.toLowerCase()) return fallback;
+	if (slug === 'swift') return 'Swift';
+	if (slug === 'synchronization') return 'Synchronization';
+	if (slug === 'regexbuilder') return 'RegexBuilder';
+	if (slug === 'distributed') return 'Distributed';
+	const known = CORE_FRAMEWORKS.find((cf) => cf.toLowerCase() === slug);
+	if (known) return known;
+	return match[1].charAt(0).toUpperCase() + match[1].slice(1);
+}
 
 function extractAbstract(abstractObj: any): string {
 	if (!abstractObj) return '';
@@ -107,10 +125,11 @@ export function indexFrameworkData(
 		);
 
 		const symbolPath = ref.url || id;
+		const targetFramework = resolveFrameworkFromPath(symbolPath, framework);
 
 		db.insertSymbol({
 			id: symbolPath,
-			framework,
+			framework: targetFramework,
 			title: ref.title,
 			kind,
 			abstract: abstractText,
@@ -214,9 +233,10 @@ export function indexFrameworkTree(
 				'enum',
 				'macro',
 			].includes(node.type.toLowerCase());
+			const targetFramework = resolveFrameworkFromPath(node.path, framework);
 			db.insertSymbol({
 				id: node.path,
-				framework,
+				framework: targetFramework,
 				title: node.title,
 				kind: node.type,
 				abstract: '', // Populated on-demand or during deep crawl
