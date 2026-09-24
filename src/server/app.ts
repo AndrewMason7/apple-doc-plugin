@@ -7,6 +7,7 @@ import { ServerState } from './state.js';
 import { registerTools } from './tools.js';
 import { AppleDocsDB } from './db/database.js';
 import { HybridSearchEngine } from './services/search/hybrid-search.js';
+import { loadEnvironment } from './env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -31,16 +32,8 @@ export const createServer = () => {
 	);
 
 	// Ensure .env is loaded if createServer is invoked directly
-	if (typeof process.loadEnvFile === 'function') {
-		const projectEnv = join(__dirname, '../../.env');
-		try {
-			if (existsSync(projectEnv)) {
-				process.loadEnvFile(projectEnv);
-			} else {
-				process.loadEnvFile();
-			}
-		} catch {}
-	}
+	const projectEnv = join(__dirname, '../../.env');
+	loadEnvironment(projectEnv);
 
 	const client = new AppleDevDocsClient();
 	const state = new ServerState();
