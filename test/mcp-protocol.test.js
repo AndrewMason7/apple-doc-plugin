@@ -187,3 +187,88 @@ test('semantic_search tool schema is registered and accepts query and framework'
 		await server.close();
 	}
 });
+
+test('tool schemas contract: choose_technology is optional, search_symbols is lexical, index_info registered', async () => {
+	const server = new Server(
+		{ name: 'apple-docs-test', version: '0.0.0' },
+		{ capabilities: { tools: {} } },
+	);
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: 'documentation/swiftui/button',
+		framework: 'SwiftUI',
+		title: 'Button',
+		kind: 'struct',
+		abstract: 'A button.',
+		path: '/documentation/swiftui/button',
+		platforms: ['iOS'],
+	});
+
+	let receivedOptions = null;
+	const mockSearchEngine = {
+		search: async (query, opts) => {
+			receivedOptions = opts;
+			return [];
+		},
+	};
+
+	registerTools(server, {
+		client: {},
+		state: new ServerState(),
+		db,
+		searchEngine: mockSearchEngine,
+	});
+
+	const [clientTransport, serverTransport] =
+		InMemoryTransport.createLinkedPair();
+	const client = new Client({ name: 'test-client', version: '0.0.0' });
+	await server.connect(serverTransport);
+	await client.connect(clientTransport);
+
+	try {
+		const listed = await client.listTools();
+		const chooseTool = listed.tools.find((t) => t.name === 'choose_technology');
+		assert.ok(chooseTool, 'choose_technology tool must be registered');
+		assert.ok(
+			chooseTool.description.toLowerCase().includes('optional'),
+			'choose_technology description must contain "optional"',
+		);
+		assert.ok(
+			chooseTool.description.includes('search_symbols') &&
+				chooseTool.description.includes('semantic_search') &&
+				chooseTool.description.includes('get_documentation'),
+			'choose_technology description must provide examples of passing framework',
+		);
+
+		const searchTool = listed.tools.find((t) => t.name === 'search_symbols');
+		assert.ok(searchTool, 'search_symbols tool must be registered');
+		assert.ok(
+			searchTool.description.includes('Lexical') &&
+				searchTool.description.includes('does not call Gemini'),
+			'search_symbols description must specify pure lexical search without Gemini',
+		);
+
+		const indexInfoTool = listed.tools.find((t) => t.name === 'index_info');
+		assert.ok(indexInfoTool, 'index_info tool must be registered');
+
+		// Execute search_symbols and verify lexicalOnly: true is passed without any Gemini credentials
+		await client.callTool({
+			name: 'search_symbols',
+			arguments: { query: 'Button', framework: 'SwiftUI' },
+		});
+		assert.ok(receivedOptions, 'searchEngine.search must be called');
+		assert.strictEqual(receivedOptions.lexicalOnly, true);
+
+		// Execute index_info and verify output
+		const infoRes = await client.callTool({
+			name: 'index_info',
+			arguments: {},
+		});
+		assert.strictEqual(infoRes.isError, undefined);
+		assert.ok(infoRes.content[0].text.includes('Indexed Symbols: 1'));
+	} finally {
+		db.close();
+		await client.close();
+		await server.close();
+	}
+});

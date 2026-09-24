@@ -25,7 +25,7 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'discover_technologies',
 			description:
-				'Explore and filter available Apple technologies/frameworks before choosing one',
+				'List and filter Apple frameworks that are indexed in the local database.',
 			inputSchema: {
 				type: 'object',
 				required: [],
@@ -49,8 +49,12 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'choose_technology',
 			description:
-				'(Optional / Legacy) Select the framework/technology to scope subsequent searches and documentation lookups. ' +
-				'In most cases, you can pass framework directly to search_symbols or get_documentation without setting session state.',
+				'Optional session default only. Sets the default framework for subsequent queries in this session. ' +
+				'Note: Every search and documentation tool already accepts an optional "framework" argument directly ' +
+				'(e.g., search_symbols({ query: "Button", framework: "SwiftUI" }), ' +
+				'semantic_search({ query: "sheet dismiss", framework: "SwiftUI" }), or ' +
+				'get_documentation({ path: "Button", framework: "SwiftUI" })). ' +
+				'Calling choose_technology is optional; passing framework on individual tool calls is preferred.',
 			inputSchema: {
 				type: 'object',
 				required: [],
@@ -74,7 +78,7 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'current_technology',
 			description:
-				'(Optional / Legacy) Report the currently selected technology in session state',
+				'Read the currently selected technology/framework from optional session default state.',
 			inputSchema: {
 				type: 'object',
 				required: [],
@@ -85,8 +89,9 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'get_documentation',
 			description:
-				'Get detailed documentation for specific symbols, including Swift syntax declarations, parameters, deprecation notices, and code examples. ' +
-				'Can be optionally scoped to a framework directly via the framework argument without needing choose_technology.',
+				'Point lookup for detailed symbol or article documentation (Swift syntax declarations, parameters, return types, deprecations). ' +
+				'Queries local SQLite database first, falling back to Apple DocC CDN. Not a search tool. ' +
+				'Pass framework directly (e.g. framework: "SwiftUI") if known.',
 			inputSchema: {
 				type: 'object',
 				required: ['path'],
@@ -111,8 +116,9 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'semantic_search',
 			description:
-				'[PRIMARY & PREFERRED] Search Apple Developer Documentation by natural language intent, behavioral description, concept, or symbol name (powered by Gemini hybrid embeddings + SQLite FTS5). ' +
-				'Always prefer this tool over search_symbols for discovering Apple APIs, modern replacements, UI patterns, and framework behavior (e.g. "prevent sheet swipe dismiss", "background location tracking when screen is off", "store auth token securely in keychain", "NavigationSplitView", "react useEffect on mount equivalent").',
+				'Hybrid search combining SQLite FTS5 lexical search and Gemini 3072-dim vector embeddings with Reciprocal Rank Fusion (RRF). ' +
+				'Search by natural language intent, conceptual query, or API name. ' +
+				'If Gemini credentials (GEMINI_API_KEY / ADC) are unavailable or circuit breaker is open, automatically falls back to lexical search with notice in result text.',
 			inputSchema: {
 				type: 'object',
 				required: ['query'],
@@ -154,13 +160,14 @@ export const registerTools = (server: Server, context: ServerContext) => {
 						symbolType?: string;
 					}),
 					preferSemantic: true,
+					lexicalOnly: false,
 				}),
 		},
 		{
 			name: 'search_symbols',
 			description:
-				'(Secondary / Wildcard Pattern Search) Direct symbol lookup and wildcard pattern matching (*, ?). ' +
-				'Always prefer semantic_search unless you specifically require raw wildcard globbing (e.g. "Grid*", "*Style").',
+				'Lexical symbol search using SQLite FTS5 BM25 with exact-title boosting and wildcard pattern matching (*, ?). ' +
+				'Accepts optional framework, platform, and symbolType. Purely local lexical search; does not call Gemini.',
 			inputSchema: {
 				type: 'object',
 				required: ['query'],
@@ -193,26 +200,38 @@ export const registerTools = (server: Server, context: ServerContext) => {
 				},
 			},
 			handler: (args) =>
-				buildSearchSymbolsHandler(context)(
-					args as {
+				buildSearchSymbolsHandler(context)({
+					...(args as {
 						framework?: string;
 						maxResults?: number;
 						platform?: string;
 						query: string;
 						symbolType?: string;
-					},
-				),
+					}),
+					lexicalOnly: true,
+				}),
 		},
 		{
 			name: 'get_version',
 			description:
-				'Get the current version information of the Apple Doc MCP server',
+				'Get the current server version and runtime index metadata (symbol count, indexed frameworks, snapshot build timestamp, embedding status)',
 			inputSchema: {
 				type: 'object',
 				required: [],
 				properties: {},
 			},
-			handler: () => buildVersionHandler()(),
+			handler: () => buildVersionHandler(context)(),
+		},
+		{
+			name: 'index_info',
+			description:
+				'Get runtime SQLite index metadata including symbol count, indexed frameworks, snapshot build timestamp, and embedding status',
+			inputSchema: {
+				type: 'object',
+				required: [],
+				properties: {},
+			},
+			handler: () => buildVersionHandler(context)(),
 		},
 	];
 

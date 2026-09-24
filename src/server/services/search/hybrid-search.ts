@@ -5,6 +5,7 @@ export interface SearchOptions {
 	framework?: string;
 	limit?: number;
 	preferSemantic?: boolean;
+	lexicalOnly?: boolean;
 }
 
 export interface SearchResultItem extends DbSymbol {
@@ -15,7 +16,15 @@ export interface SearchResultItem extends DbSymbol {
 }
 
 export class HybridSearchEngine {
-	private semanticSearch: GeminiSemanticSearch;
+	public readonly semanticSearch: GeminiSemanticSearch;
+
+	hasSemanticAuth(): boolean {
+		return this.semanticSearch.hasAuth();
+	}
+
+	isCircuitOpen(): boolean {
+		return this.semanticSearch.isCircuitOpen();
+	}
 
 	constructor(
 		private readonly db: AppleDocsDB,
@@ -110,6 +119,11 @@ export class HybridSearchEngine {
 				source: 'fts',
 			};
 		});
+
+		// Pure lexical search: skip Gemini vector embeddings completely
+		if (options.lexicalOnly) {
+			return scoredFTS.sort((a, b) => b.score - a.score).slice(0, limit);
+		}
 
 		// Check if semantic search is available (API key or ADC)
 		if (this.semanticSearch.hasAuth()) {

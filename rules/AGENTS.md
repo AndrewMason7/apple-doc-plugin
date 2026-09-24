@@ -23,5 +23,5 @@ When assisting with Apple platform development (iOS, macOS, watchOS, tvOS, visio
 - **Default / Primary Search**: `semantic_search(query: "NavigationSplitView")` or `semantic_search(query: "prevent sheet swipe dismiss")`.
 - **Behavioral & Conceptual Queries**: `semantic_search(query: "biometric face id login")` or `semantic_search(query: "three column sidebar split view diagram")`.
 - **Cross-Framework Mapping**: If thinking in React/Web or Android terminology, use `semantic_search(query: "react useEffect equivalent")` or `semantic_search(query: "shared preferences local storage")` to find Apple SDK equivalents.
-- **Framework Scoping**: Scope by framework (`framework: "SwiftUI"`) when looking for framework-specific implementations of common names (e.g. `Table` or `Button`).
+- **Framework Scoping**: Scope by framework (`framework: "SwiftUI"`) when looking for framework-specific implementations of common names (e.g. `Table` or `Button`). Pass `framework` directly on the tool call; `choose_technology` is optional and not required.
 - **Raw Wildcard Matching Only**: Use `search_symbols(query: "Grid*")` or `search_symbols(query: "*Style")` when globbing prefixes/suffixes.

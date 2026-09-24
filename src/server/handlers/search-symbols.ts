@@ -119,6 +119,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		query: string;
 		symbolType?: string;
 		preferSemantic?: boolean;
+		lexicalOnly?: boolean;
 	}): Promise<ToolResponse> => {
 		const {
 			query,
@@ -126,6 +127,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 			platform,
 			symbolType,
 			preferSemantic,
+			lexicalOnly,
 		} = args;
 
 		if (typeof query !== 'string' || query.trim().length === 0) {
@@ -159,6 +161,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 				framework: targetFramework,
 				limit: clampedMaxResults * 2,
 				preferSemantic,
+				lexicalOnly,
 			});
 
 			let filtered = results;
@@ -179,10 +182,39 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 			const topResults = filtered.slice(0, clampedMaxResults);
 
 			if (topResults.length > 0) {
+				let searchModeDesc: string;
+				if (lexicalOnly) {
+					searchModeDesc = 'Lexical only (SQLite FTS5)';
+				} else if (preferSemantic) {
+					const hasSemanticAuth = Boolean(
+						searchEngine?.semanticSearch.hasAuth(),
+					);
+					const isCircuitOpen = Boolean(
+						searchEngine?.semanticSearch.isCircuitOpen(),
+					);
+					const usedSemantic = results.some(
+						(r) => r.source === 'hybrid' || r.source === 'semantic',
+					);
+					if (usedSemantic) {
+						searchModeDesc = 'Hybrid (SQLite FTS5 + Gemini embeddings)';
+					} else if (!hasSemanticAuth) {
+						searchModeDesc =
+							'Lexical fallback (No Gemini credentials configured; running offline FTS5)';
+					} else if (isCircuitOpen) {
+						searchModeDesc =
+							'Lexical fallback (Gemini API circuit breaker is currently open)';
+					} else {
+						searchModeDesc = 'Lexical fallback (SQLite FTS5)';
+					}
+				} else {
+					searchModeDesc = 'Hybrid / Lexical (SQLite FTS5)';
+				}
+
 				const lines: string[] = [
 					header(1, `🔍 Search Results for "${query}"`),
 					'',
 					bold('Framework', targetFramework || 'All Apple Frameworks (Global)'),
+					bold('Search Mode', searchModeDesc),
 					bold('Query Mode', queryMode),
 					bold('Matches Found', String(topResults.length)),
 					'',
@@ -240,11 +272,19 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		}
 
 		// 2. Legacy fallback when searchEngine has no results or isn't initialized
+		const fallbackNotice =
+			preferSemantic && !searchEngine?.semanticSearch.hasAuth()
+				? '*Note: Running in lexical fallback mode because no Gemini API credentials are configured.*'
+				: preferSemantic && searchEngine?.semanticSearch.isCircuitOpen()
+					? '*Note: Running in lexical fallback mode because Gemini API circuit breaker is currently open.*'
+					: undefined;
+
 		if (!activeTechnology && !targetFramework) {
 			// If no technology is chosen and no searchEngine results, return clean suggestions
 			const lines = [
 				header(1, `🔍 No Results for "${query}"`),
 				'',
+				...(fallbackNotice ? [fallbackNotice, ''] : []),
 				'No symbols found in the index for this query.',
 				'',
 				'**Suggestions:**',
@@ -278,6 +318,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 						header(1, `🔍 Search Results for "${query}"`),
 						'',
 						bold('Framework', targetFramework || 'Unknown'),
+						...(fallbackNotice ? ['', fallbackNotice] : []),
 						'',
 						...formatNoResults(queryMode),
 					].join('\n'),
