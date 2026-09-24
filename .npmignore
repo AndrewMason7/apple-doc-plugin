@@ -4,7 +4,6 @@ src/
 .git/
 .github/
 node_modules/
-dist/tech/
 .cache/
 .DS_Store
 *.tgz
