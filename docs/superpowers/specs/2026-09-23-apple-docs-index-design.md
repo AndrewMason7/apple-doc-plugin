@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-This specification defines the architecture for transforming the `apple-doc-mcp-server` into a next-generation AI agent documentation plugin.
+This specification defines the architecture for transforming the `apple-doc-plugin` into a next-generation AI agent documentation plugin.
 
 Current limitations in upstream include:
 

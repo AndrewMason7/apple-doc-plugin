@@ -2,7 +2,7 @@
 
 ## 1. Intent & Scope
 
-This specification hardens the `apple-doc-mcp-server` based on findings from the Elite Code Review Tribunal (/roast):
+This specification hardens the `apple-doc-plugin` based on findings from the Elite Code Review Tribunal (/roast):
 
 1. **Secret Credential Hygiene (CWE-532)**: Move `GEMINI_API_KEY` from the URL query string (`?key=...`) to the standard `x-goog-api-key` HTTP header.
 2. **Buffer Alignment Safety (CWE-125 / RangeError)**: Eliminate `Float32Array` crashes on unaligned memory buffers from Node's pooled `Buffer` instances by copying to aligned `ArrayBuffer`.

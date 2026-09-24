@@ -4,7 +4,7 @@
 
 `gemini-embedding-2` natively maps text and image pixels into the exact same 3072-dimensional vector space. In Apple's Developer Documentation, diagrams, layout previews, and Human Interface Guidelines (HIG) screenshots carry critical architectural context that text alone misses.
 
-This specification designs the multimodal upgrade for `apple-doc-mcp-server`:
+This specification designs the multimodal upgrade for `apple-doc-plugin`:
 
 1. **Multimodal Media Ingestion**: Ephemerally downloads Apple layout preview images and diagrams during indexing, embeds their pixels alongside captions into the unified 3072-dimensional space, and stores the resulting vector + Apple CDN URL into SQLite.
 2. **Compact Database Schema**: Stores only the 3072-float vector and image CDN URL (`https://developer.apple.com/tutorials/images/...`), preventing binary image bloat in SQLite.
