@@ -402,3 +402,40 @@ test('get_documentation resolves using explicit framework argument without sessi
 	assert.strictEqual(requestedPath, 'documentation/SwiftUI/Color');
 	assert.strictEqual(state.getActiveTechnology(), undefined);
 });
+
+test('semantic_search handles natural language queries via searchSymbolsHandler', async () => {
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: 'documentation/swiftui/view/interactivedismissdisabled(_:)',
+		framework: 'SwiftUI',
+		title: 'interactiveDismissDisabled(_:)',
+		kind: 'func',
+		abstract:
+			'Specifies whether to prevent the user from dismissing a sheet with a swipe gesture.',
+		path: '/documentation/swiftui/view/interactivedismissdisabled(_:)',
+		platforms: ['iOS 15.0+'],
+		isPrimaryType: false,
+	});
+
+	const state = new ServerState();
+	const searchEngine = new HybridSearchEngine(db, { apiKey: null });
+	const client = new AppleDevDocsClient();
+
+	const handler = buildSearchSymbolsHandler({
+		client,
+		state,
+		db,
+		searchEngine,
+	});
+
+	const response = await handler({
+		query: 'prevent user from dismissing sheet swipe gesture',
+		framework: 'SwiftUI',
+	});
+
+	assert.strictEqual(response.isError, undefined);
+	const text = response.content[0].text;
+	assert.ok(text.includes('interactiveDismissDisabled'));
+	assert.ok(text.includes('SwiftUI'));
+	db.close();
+});

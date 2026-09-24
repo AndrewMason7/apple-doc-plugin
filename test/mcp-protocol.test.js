@@ -48,6 +48,7 @@ test('CallTool returns isError for an unknown tool and for a handler exception',
 	try {
 		const listed = await client.listTools();
 		assert.ok(listed.tools.some((tool) => tool.name === 'search_symbols'));
+		assert.ok(listed.tools.some((tool) => tool.name === 'semantic_search'));
 		assert.ok(listed.tools.some((tool) => tool.name === 'get_documentation'));
 
 		const unknown = await client.callTool({
@@ -142,6 +143,44 @@ test('get_documentation tool schema exposes optional framework property and rich
 		assert.strictEqual(
 			getDocTool.inputSchema.properties.framework.type,
 			'string',
+		);
+	} finally {
+		await client.close();
+		await server.close();
+	}
+});
+
+test('semantic_search tool schema is registered and accepts query and framework', async () => {
+	const server = new Server(
+		{ name: 'apple-docs-test', version: '0.0.0' },
+		{ capabilities: { tools: {} } },
+	);
+	registerTools(server, {
+		client: {},
+		state: new ServerState(),
+	});
+
+	const [clientTransport, serverTransport] =
+		InMemoryTransport.createLinkedPair();
+	const client = new Client({ name: 'test-client', version: '0.0.0' });
+	await server.connect(serverTransport);
+	await client.connect(clientTransport);
+
+	try {
+		const listed = await client.listTools();
+		const semanticTool = listed.tools.find((t) => t.name === 'semantic_search');
+		assert.ok(semanticTool, 'semantic_search tool must be registered');
+		assert.ok(
+			semanticTool.description.includes('Gemini'),
+			'description must mention Gemini hybrid embeddings',
+		);
+		assert.ok(
+			semanticTool.inputSchema.properties.query,
+			'inputSchema must include query property',
+		);
+		assert.ok(
+			semanticTool.inputSchema.properties.framework,
+			'inputSchema must include framework property',
 		);
 	} finally {
 		await client.close();

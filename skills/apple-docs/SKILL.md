@@ -31,7 +31,9 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 
 ### Grounding Workflow
 
-1. **Search Before Implementing**: Use `search_symbols` with exact or wildcard queries to locate the exact symbol name, parent framework, and minimum OS version.
+1. **Search Before Implementing**:
+   - **Known Symbol or Prefix**: Use `search_symbols` with exact names (`NavigationSplitView`) or wildcards (`Grid*`).
+   - **Unknown Symbol / Behavioral Intent**: Use `semantic_search` to describe what you want in plain English (e.g., `semantic_search(query: "prevent user from dragging sheet down to close")`). The underlying Gemini hybrid search engine matches behavioral descriptions to exact Apple APIs.
 2. **Verify Signatures & Labels**: Inspect the declaration signature returned by `get_documentation` to confirm parameter labels, closure signatures, and return types.
 3. **Check Availability & Deprecations**: Verify platform availability tags (iOS, macOS, watchOS, visionOS) to prevent proposing APIs unsupported on the user's target deployment.
 4. **Inspect Multimodal Previews**: When documentation contains Apple layout diagrams or visual previews, review and share them when discussing UI design.
@@ -40,20 +42,65 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 
 ## Available MCP Tools Reference
 
-The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 100,000+ symbols, wildcard matching, DocC Markdown extraction, and multimodal layout previews.
+The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 100,000+ symbols, wildcard matching, DocC Markdown extraction, and Gemini hybrid multimodal vector search.
 
-| Tool                    | Purpose                                                                             | Key Arguments                                                           |
-| :---------------------- | :---------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
-| `search_symbols`        | **Primary Tool**. Instant search across symbols with wildcard and semantic scoring. | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
-| `get_documentation`     | Fetches full DocC documentation and converts it to clean Markdown.                  | `path` (required)                                                       |
-| `discover_technologies` | Lists and filters available frameworks/technologies.                                | `query`, `page`, `pageSize`                                             |
-| `choose_technology`     | Scopes subsequent lookups to a specific framework.                                  | `name` or `identifier`                                                  |
-| `current_technology`    | Inspects currently scoped framework.                                                | None                                                                    |
-| `get_version`           | Checks MCP server version and features.                                             | None                                                                    |
+| Tool                    | Purpose                                                                                                                                              | Key Arguments                                                           |
+| :---------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| `search_symbols`        | **Symbol Lookup Tool**. Instant search across symbols with wildcard and exact-match boosting.                                                        | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
+| `semantic_search`       | **Intent & Concept Tool**. Natural language search powered by Gemini embeddings. Use when you describe behavior or don't know the exact symbol name. | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
+| `get_documentation`     | Fetches full DocC documentation (Swift declarations, parameters, deprecations) as clean Markdown.                                                    | `path` (required), `framework` (optional)                               |
+| `discover_technologies` | Lists and filters available frameworks/technologies.                                                                                                 | `query`, `page`, `pageSize`                                             |
+| `choose_technology`     | Scopes subsequent lookups to a specific framework.                                                                                                   | `name` or `identifier`                                                  |
+| `current_technology`    | Inspects currently scoped framework.                                                                                                                 | None                                                                    |
+| `get_version`           | Checks MCP server version and features.                                                                                                              | None                                                                    |
 
 ### Tool Invocation Examples
 
-#### 1. Search Exact Symbol or Prefix
+#### 1. Conceptual & Behavioral Intent Search (`semantic_search`)
+
+Use this whenever you know _what_ you want to accomplish, but not the exact Apple API identifier:
+
+```json
+{
+	"query": "prevent user from closing sheet by swiping down",
+	"framework": "SwiftUI"
+}
+```
+
+Resolves directly to `interactiveDismissDisabled(_:)`.
+
+```json
+{
+	"query": "store user auth token securely across app reinstalls"
+}
+```
+
+Resolves directly to Keychain Services (`kSecClassGenericPassword`, `SecItemAdd`).
+
+#### 2. Multimodal UI Layout Diagram Queries (`semantic_search`)
+
+Query Apple's official diagrams and layout behaviors:
+
+```json
+{
+	"query": "three column sidebar inspector split view layout diagram",
+	"framework": "SwiftUI"
+}
+```
+
+#### 3. Cross-Platform Terminology Translation (`semantic_search`)
+
+Translate concepts from React, Vue, or Android:
+
+```json
+{
+	"query": "react useEffect on mount equivalent in swiftui"
+}
+```
+
+Resolves to `.onAppear` and `.task`.
+
+#### 4. Search Exact Symbol or Prefix (`search_symbols`)
 
 ```json
 {
@@ -61,7 +108,7 @@ The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS
 }
 ```
 
-#### 2. Scoped Framework Search with Wildcards
+#### 5. Scoped Framework Search with Wildcards (`search_symbols`)
 
 ```json
 {
@@ -71,7 +118,7 @@ The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS
 }
 ```
 
-#### 3. Filtering by Symbol Kind
+#### 6. Filtering by Symbol Kind
 
 Available symbol types: `struct`, `class`, `protocol`, `enum`, `func`, `var`, `typealias`.
 
@@ -82,19 +129,20 @@ Available symbol types: `struct`, `class`, `protocol`, `enum`, `func`, `var`, `t
 }
 ```
 
-#### 4. Fetching Full DocC Documentation
+#### 7. Fetching Full DocC Documentation (`get_documentation`)
+
+```json
+{
+	"path": "NavigationStack",
+	"framework": "SwiftUI"
+}
+```
+
+or by full DocC path:
 
 ```json
 {
 	"path": "documentation/swiftui/navigationstack"
-}
-```
-
-or by direct symbol name:
-
-```json
-{
-	"path": "NavigationStack"
 }
 ```
 

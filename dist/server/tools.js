@@ -95,19 +95,51 @@ export const registerTools = (server, context) => {
                     },
                     maxResults: {
                         type: 'number',
-                        description: 'Optional maximum number of results (default 20)',
+                        description: 'Optional maximum number of results (default 20, max 100)',
                     },
                     platform: {
                         type: 'string',
-                        description: 'Optional platform filter (iOS, macOS, etc.)',
+                        description: 'Optional platform filter (iOS, macOS, watchOS, visionOS)',
                     },
                     query: {
                         type: 'string',
-                        description: 'Search keywords with wildcard support (* for any characters, ? for single character)',
+                        description: 'The search query: can be an exact symbol name ("NavigationSplitView"), wildcard pattern ("Grid*"), or conceptual natural language intent ("background location updates", "sheet dismiss gesture")',
                     },
                     symbolType: {
                         type: 'string',
-                        description: 'Optional symbol kind filter (class, protocol, etc.)',
+                        description: 'Optional symbol kind filter (struct, class, protocol, func, etc.)',
+                    },
+                },
+            },
+            handler: (args) => buildSearchSymbolsHandler(context)(args),
+        },
+        {
+            name: 'semantic_search',
+            description: 'Search Apple Developer Documentation by natural language intent, behavioral description, or UI concept (powered by Gemini hybrid embeddings). ' +
+                'Use this tool when you do not know the exact Apple API symbol name, or want to query layout patterns and conceptual behavior (e.g. "prevent sheet swipe dismiss", "background location tracking when screen is off", "store auth token securely in keychain", "react useEffect on mount equivalent").',
+            inputSchema: {
+                type: 'object',
+                required: ['query'],
+                properties: {
+                    framework: {
+                        type: 'string',
+                        description: 'Optional framework name to scope semantic search (e.g. "SwiftUI", "UIKit", "LocalAuthentication")',
+                    },
+                    maxResults: {
+                        type: 'number',
+                        description: 'Optional maximum number of results (default 20, max 100)',
+                    },
+                    platform: {
+                        type: 'string',
+                        description: 'Optional platform filter (iOS, macOS, watchOS, visionOS)',
+                    },
+                    query: {
+                        type: 'string',
+                        description: 'Natural language description of the desired behavior, UI pattern, or concept (e.g. "three column sidebar split view diagram", "biometric face id authentication")',
+                    },
+                    symbolType: {
+                        type: 'string',
+                        description: 'Optional symbol kind filter (struct, class, protocol, func, etc.)',
                     },
                 },
             },

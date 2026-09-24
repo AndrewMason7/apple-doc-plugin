@@ -29,7 +29,8 @@ A high-performance Model Context Protocol (MCP) server and Antigravity plugin pr
 
 | Tool                    | Parameters                                                                                                                                                                 | Description                                                                                                                                                                                                                                                  |
 | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `search_symbols`        | `query` (string, required)<br>`framework` (string, optional)<br>`platform` (string, optional)<br>`symbolType` (string, optional)<br>`maxResults` (number, optional, 1–100) | **Primary Tool**. Instant search across symbols with exact-name boosting, wildcard matching (`*`, `?`), and optional semantic intent queries.                                                                                                                |
+| `search_symbols`        | `query` (string, required)<br>`framework` (string, optional)<br>`platform` (string, optional)<br>`symbolType` (string, optional)<br>`maxResults` (number, optional, 1–100) | **Symbol Lookup Tool**. Instant search across symbols with exact-name boosting and wildcard matching (`*`, `?`).                                                                                                                                             |
+| `semantic_search`       | `query` (string, required)<br>`framework` (string, optional)<br>`platform` (string, optional)<br>`symbolType` (string, optional)<br>`maxResults` (number, optional, 1–100) | **Conceptual & Intent Tool**. Natural language search powered by Gemini hybrid vector embeddings. Use when describing behaviors, UI concepts, or when the exact symbol name is unknown.                                                                      |
 | `get_documentation`     | `path` (string, required)<br>`framework` (string, optional)                                                                                                                | Fetches rich documentation for a symbol or path (e.g., `NavigationStack` or `documentation/swiftui/view`), with Swift declarations, parameters, deprecation warnings, and discussion examples. Disambiguates symbols via the optional `framework` parameter. |
 | `discover_technologies` | `query` (string, optional)<br>`limit` (number, optional)                                                                                                                   | Browse and filter available Apple technologies and frameworks.                                                                                                                                                                                               |
 | `choose_technology`     | `name` (string, required)                                                                                                                                                  | Optionally scope subsequent searches and lookups to a specific framework (backward compatible).                                                                                                                                                              |
@@ -127,9 +128,14 @@ The server automatically loads `.env` natively at startup.
   ```json
   get_documentation({ "path": "NavigationStack", "framework": "SwiftUI" })
   ```
-- **Conceptual Intent / Natural Language Query**:
+- **Conceptual Intent / Behavioral Search (Gemini Semantic)**:
   ```json
-  search_symbols({ "query": "background location updates" })
+  semantic_search({ "query": "prevent user from dragging sheet down to close", "framework": "SwiftUI" })
+  semantic_search({ "query": "persist user login credentials securely across reboots" })
+  ```
+- **Multimodal Layout Diagram Queries**:
+  ```json
+  semantic_search({ "query": "three column sidebar split view diagram", "framework": "SwiftUI" })
   ```
 
 ---
