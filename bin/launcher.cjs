@@ -38,6 +38,17 @@ if (!fs.existsSync(distIndex)) {
 	}
 }
 
+// Sanitize environment variables if literal template strings were passed
+if (
+	process.env.APPLE_DOCS_DB_PATH &&
+	process.env.APPLE_DOCS_DB_PATH.includes('${extensionPath}')
+) {
+	process.env.APPLE_DOCS_DB_PATH = process.env.APPLE_DOCS_DB_PATH.replace(
+		/\$\{extensionPath\}/g,
+		pluginRoot,
+	);
+}
+
 // Launch the MCP server
 import(pathToFileURL(distIndex).href).catch((err) => {
 	process.stderr.write(

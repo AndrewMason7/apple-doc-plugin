@@ -39,8 +39,11 @@ export const createServer = () => {
     // Initialize database and hybrid search engine if database file exists
     let db;
     let searchEngine;
-    const dbPath = process.env.APPLE_DOCS_DB_PATH ||
+    let dbPath = process.env.APPLE_DOCS_DB_PATH ||
         join(__dirname, '../../data/apple-docs.db');
+    if (dbPath.includes('${extensionPath}')) {
+        dbPath = dbPath.replace(/\$\{extensionPath\}/g, join(__dirname, '../..'));
+    }
     if (existsSync(dbPath)) {
         try {
             db = new AppleDocsDB(dbPath, { readonly: true });
