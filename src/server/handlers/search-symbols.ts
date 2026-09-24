@@ -246,8 +246,11 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 					const usedSemantic = results.some(
 						(r) => r.source === 'hybrid' || r.source === 'semantic',
 					);
+					const semanticCount = context.db?.getSemanticItemCount() ?? 0;
 					if (usedSemantic) {
 						searchModeDesc = 'Hybrid (SQLite FTS5 + Gemini embeddings)';
+					} else if (semanticCount < 100) {
+						searchModeDesc = `Lexical fallback (semantic index has ${semanticCount} items; symbol embeddings require build:index)`;
 					} else if (!hasSemanticAuth) {
 						searchModeDesc =
 							'Lexical fallback (No Gemini credentials configured; running offline FTS5)';

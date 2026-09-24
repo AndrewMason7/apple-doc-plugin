@@ -208,6 +208,7 @@ test('HybridSearchEngine elevates semantic matches over lexical matches when pre
 			apiKey: 'test-key',
 			baseUrl: `http://127.0.0.1:${port}`,
 			modelName: 'models/test-model',
+			minSemanticItems: 1,
 		});
 
 		const results = await engine.search('trigger action', {

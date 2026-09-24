@@ -6,6 +6,7 @@ export interface SearchOptions {
 	limit?: number;
 	preferSemantic?: boolean;
 	lexicalOnly?: boolean;
+	minSemanticItems?: number;
 }
 
 export interface SearchResultItem extends DbSymbol {
@@ -17,6 +18,7 @@ export interface SearchResultItem extends DbSymbol {
 
 export class HybridSearchEngine {
 	public readonly semanticSearch: GeminiSemanticSearch;
+	public readonly minSemanticItems: number;
 
 	hasSemanticAuth(): boolean {
 		return this.semanticSearch.hasAuth();
@@ -34,6 +36,7 @@ export class HybridSearchEngine {
 			baseUrl?: string;
 			googleAuth?: any;
 			expectedDimensions?: number;
+			minSemanticItems?: number;
 		} = {},
 	) {
 		this.semanticSearch = new GeminiSemanticSearch(
@@ -43,6 +46,7 @@ export class HybridSearchEngine {
 			options.googleAuth,
 			options.expectedDimensions ?? 3072,
 		);
+		this.minSemanticItems = options.minSemanticItems ?? 100;
 	}
 
 	searchSemanticWithVector(
@@ -122,6 +126,13 @@ export class HybridSearchEngine {
 
 		// Pure lexical search: skip Gemini vector embeddings completely
 		if (options.lexicalOnly) {
+			return scoredFTS.sort((a, b) => b.score - a.score).slice(0, limit);
+		}
+
+		// Check if semantic index has enough vectors (symbols require build:index; <100 means only overview/media rows exist)
+		const minSemanticItems = options.minSemanticItems ?? this.minSemanticItems;
+		const semanticItemCount = this.db.getSemanticItemCount();
+		if (semanticItemCount < minSemanticItems) {
 			return scoredFTS.sort((a, b) => b.score - a.score).slice(0, limit);
 		}
 

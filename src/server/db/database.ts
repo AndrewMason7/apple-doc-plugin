@@ -140,6 +140,19 @@ export class AppleDocsDB {
 		}
 	}
 
+	getSemanticItemCount(): number {
+		try {
+			const row = this.db
+				.prepare(`SELECT count(*) as count FROM semantic_items`)
+				.get() as {
+				count: number;
+			};
+			return row?.count ?? 0;
+		} catch {
+			return 0;
+		}
+	}
+
 	rebuildFTS(): void {
 		this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')");
 	}
