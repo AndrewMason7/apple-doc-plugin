@@ -194,3 +194,56 @@ test('Handler: clamps maxResults (including NaN and negatives) and validates que
 
 	db.close();
 });
+
+test('Wildcards: infix wildcard Navigation*View and prefix wildcard Grid* match via LIKE pattern', () => {
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: 'documentation/swiftui/navigationsplitview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView',
+		kind: 'struct',
+		abstract: 'A view that presents views in two or three columns.',
+		path: '/documentation/swiftui/navigationsplitview',
+		platforms: ['iOS 16.0+'],
+		isPrimaryType: true,
+	});
+	db.insertSymbol({
+		id: 'documentation/swiftui/navigationstack',
+		framework: 'SwiftUI',
+		title: 'NavigationStack',
+		kind: 'struct',
+		abstract: 'A view that displays a root view.',
+		path: '/documentation/swiftui/navigationstack',
+		platforms: ['iOS 16.0+'],
+		isPrimaryType: true,
+	});
+	db.insertSymbol({
+		id: 'documentation/swiftui/gridrow',
+		framework: 'SwiftUI',
+		title: 'GridRow',
+		kind: 'struct',
+		abstract: 'A row container in a Grid.',
+		path: '/documentation/swiftui/gridrow',
+		platforms: ['iOS 16.0+'],
+		isPrimaryType: true,
+	});
+
+	// 1. Navigation*View should match NavigationSplitView but NOT NavigationStack
+	const navResults = db.queryFTS('Navigation*View');
+	const navTitles = navResults.map((r) => r.title);
+	assert.ok(
+		navTitles.includes('NavigationSplitView'),
+		'Navigation*View must match NavigationSplitView',
+	);
+	assert.ok(
+		!navTitles.includes('NavigationStack'),
+		'Navigation*View must NOT match NavigationStack',
+	);
+
+	// 2. Grid* matches GridRow
+	const gridResults = db.queryFTS('Grid*');
+	const gridTitles = gridResults.map((r) => r.title);
+	assert.ok(gridTitles.includes('GridRow'), 'Grid* must match GridRow');
+
+	db.close();
+});

@@ -294,8 +294,17 @@ export class AppleDocsDB {
 		const trimmed = query.trim();
 		if (!trimmed) return [];
 
-		// If query has suffix wildcard (*Item) or single-char wildcard (?)
-		if (trimmed.startsWith('*') || trimmed.includes('?')) {
+		// Queries with pure punctuation/wildcards and no alphanumeric characters return empty
+		if (!/[a-zA-Z0-9]/.test(trimmed)) {
+			return [];
+		}
+
+		// If query has wildcards (* or ?) attached to tokens or as single-token patterns
+		if (
+			/\w[*?]|[*?]\w/.test(trimmed) ||
+			(!trimmed.includes(' ') &&
+				(trimmed.includes('*') || trimmed.includes('?')))
+		) {
 			const pattern = trimmed
 				.replace(/\*/g, '%')
 				.replace(/\?/g, '_')
