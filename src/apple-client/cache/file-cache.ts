@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FrameworkData, SymbolData, Technology } from '../types/index.js';
+import { logger } from '../../server/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,19 +18,49 @@ export class FileCache {
 		this.technologiesCachePath = join(this.docsDir, 'technologies.json');
 	}
 
+	private async atomicWriteJson(
+		filePath: string,
+		data: unknown,
+	): Promise<void> {
+		await this.ensureCacheDir();
+		const randomSuffix = Math.random().toString(36).slice(2, 8);
+		const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}.${randomSuffix}`;
+		try {
+			await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf8');
+			await fs.rename(tmpPath, filePath);
+		} catch (err) {
+			await fs.unlink(tmpPath).catch(() => {});
+			logger.warn(`Failed atomic write to ${filePath}:`, err);
+			throw err;
+		}
+	}
+
 	async loadFramework(
 		frameworkName: string,
 	): Promise<FrameworkData | undefined> {
 		await this.ensureCacheDir();
+		const cachePath = this.getCachePath(frameworkName);
 		try {
-			const raw = await fs.readFile(this.getCachePath(frameworkName), 'utf8');
+			const raw = await fs.readFile(cachePath, 'utf8');
 			return JSON.parse(raw) as FrameworkData;
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
 				return undefined;
 			}
 
-			throw error;
+			if (error instanceof SyntaxError) {
+				logger.warn(
+					`Corrupted framework cache at ${cachePath}. Purging cache file.`,
+				);
+				await fs.unlink(cachePath).catch(() => {});
+				return undefined;
+			}
+
+			logger.warn(
+				`Failed reading framework cache for ${frameworkName}:`,
+				error,
+			);
+			return undefined;
 		}
 	}
 
@@ -37,37 +68,36 @@ export class FileCache {
 		frameworkName: string,
 		data: FrameworkData,
 	): Promise<void> {
-		await this.ensureCacheDir();
-		await fs.writeFile(
-			this.getCachePath(frameworkName),
-			JSON.stringify(data, null, 2),
-		);
+		await this.atomicWriteJson(this.getCachePath(frameworkName), data);
 	}
 
 	async loadSymbol(path: string): Promise<SymbolData | undefined> {
+		const safePath = path.replaceAll('/', '__');
+		const symbolCachePath = join(this.docsDir, `${safePath}.json`);
 		try {
-			const safePath = path.replaceAll('/', '__');
-			const raw = await fs.readFile(
-				join(this.docsDir, `${safePath}.json`),
-				'utf8',
-			);
+			const raw = await fs.readFile(symbolCachePath, 'utf8');
 			return JSON.parse(raw) as SymbolData;
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
 				return undefined;
 			}
 
-			throw error;
+			if (error instanceof SyntaxError) {
+				logger.warn(
+					`Corrupted symbol cache at ${symbolCachePath}. Purging cache file.`,
+				);
+				await fs.unlink(symbolCachePath).catch(() => {});
+				return undefined;
+			}
+
+			logger.warn(`Failed reading symbol cache for ${path}:`, error);
+			return undefined;
 		}
 	}
 
 	async saveSymbol(path: string, data: SymbolData): Promise<void> {
-		await this.ensureCacheDir();
 		const safePath = path.replaceAll('/', '__');
-		await fs.writeFile(
-			join(this.docsDir, `${safePath}.json`),
-			JSON.stringify(data, null, 2),
-		);
+		await this.atomicWriteJson(join(this.docsDir, `${safePath}.json`), data);
 	}
 
 	async loadTechnologies(): Promise<Record<string, Technology> | undefined> {
@@ -104,7 +134,7 @@ export class FileCache {
 			}
 
 			// If we got here, the cache might be corrupted or empty
-			console.warn(
+			logger.warn(
 				'Technologies cache exists but appears invalid, will refetch',
 			);
 			return undefined;
@@ -113,19 +143,23 @@ export class FileCache {
 				return undefined;
 			}
 
-			console.error('Error loading technologies cache:', error);
-			throw error;
+			if (error instanceof SyntaxError) {
+				logger.warn(
+					`Corrupted technologies cache at ${this.technologiesCachePath}. Purging cache file.`,
+				);
+				await fs.unlink(this.technologiesCachePath).catch(() => {});
+				return undefined;
+			}
+
+			logger.warn('Error loading technologies cache:', error);
+			return undefined;
 		}
 	}
 
 	async saveTechnologies(
 		technologies: Record<string, Technology>,
 	): Promise<void> {
-		await this.ensureCacheDir();
-		await fs.writeFile(
-			this.technologiesCachePath,
-			JSON.stringify(technologies, null, 2),
-		);
+		await this.atomicWriteJson(this.technologiesCachePath, technologies);
 	}
 
 	private sanitizeFrameworkName(name: string): string {
