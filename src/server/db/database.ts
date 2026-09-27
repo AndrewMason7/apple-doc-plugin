@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from './schema.js';
+import { logger } from '../logger.js';
 
 export interface DbSymbol {
 	id: string;
@@ -43,7 +44,8 @@ function safeParsePlatforms(val: unknown): string[] {
 	try {
 		const parsed = JSON.parse(val);
 		return Array.isArray(parsed) ? parsed : [];
-	} catch {
+	} catch (err) {
+		logger.debug('Failed to parse platforms JSON:', err);
 		return [];
 	}
 }
@@ -62,10 +64,20 @@ export class AppleDocsDB {
 			// Safe column migrations for existing databases
 			try {
 				this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
-			} catch {}
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
+				if (!msg.includes('duplicate column name')) {
+					logger.warn('Failed to apply media_url migration:', msg);
+				}
+			}
 			try {
 				this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_type TEXT');
-			} catch {}
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
+				if (!msg.includes('duplicate column name')) {
+					logger.warn('Failed to apply media_type migration:', msg);
+				}
+			}
 		}
 	}
 
@@ -83,7 +95,11 @@ export class AppleDocsDB {
 				.prepare(`SELECT value FROM meta WHERE key = ?`)
 				.get(key) as { value: string } | undefined;
 			return row?.value;
-		} catch {
+		} catch (err) {
+			logger.warn(
+				`Failed to get meta for key "${key}":`,
+				err instanceof Error ? err.message : String(err),
+			);
 			return undefined;
 		}
 	}
@@ -96,7 +112,11 @@ export class AppleDocsDB {
 				count: number;
 			};
 			return row?.count ?? 0;
-		} catch {
+		} catch (err) {
+			logger.warn(
+				'Failed to get symbol count:',
+				err instanceof Error ? err.message : String(err),
+			);
 			return 0;
 		}
 	}
@@ -109,7 +129,11 @@ export class AppleDocsDB {
 				)
 				.all() as Array<{ framework: string }>;
 			return rows.map((r) => r.framework);
-		} catch {
+		} catch (err) {
+			logger.warn(
+				'Failed to get indexed frameworks:',
+				err instanceof Error ? err.message : String(err),
+			);
 			return [];
 		}
 	}
@@ -122,7 +146,11 @@ export class AppleDocsDB {
 				)
 				.all() as Array<{ framework: string; count: number }>;
 			return rows;
-		} catch {
+		} catch (err) {
+			logger.warn(
+				'Failed to get framework symbol counts:',
+				err instanceof Error ? err.message : String(err),
+			);
 			return [];
 		}
 	}
@@ -135,7 +163,11 @@ export class AppleDocsDB {
 				count: number;
 			};
 			return (row?.count ?? 0) > 0;
-		} catch {
+		} catch (err) {
+			logger.warn(
+				'Failed to check embeddings count:',
+				err instanceof Error ? err.message : String(err),
+			);
 			return false;
 		}
 	}
@@ -148,7 +180,11 @@ export class AppleDocsDB {
 				count: number;
 			};
 			return row?.count ?? 0;
-		} catch {
+		} catch (err) {
+			logger.warn(
+				'Failed to get semantic item count:',
+				err instanceof Error ? err.message : String(err),
+			);
 			return 0;
 		}
 	}
@@ -368,7 +404,9 @@ export class AppleDocsDB {
 						score: 1000.0,
 					});
 				}
-			} catch {}
+			} catch (err) {
+				logger.debug('queryFTS exact match query step failed:', err);
+			}
 		}
 
 		let sql = `
@@ -443,12 +481,14 @@ export class AppleDocsDB {
 							});
 						}
 					}
-				} catch {}
+				} catch (err) {
+					logger.debug('queryFTS OR fallback step failed:', err);
+				}
 			}
 
 			return combined.slice(0, limit);
 		} catch (err) {
-			console.error(
+			logger.warn(
 				'Warning: SQLite FTS5 MATCH failed, falling back to LIKE query:',
 				err instanceof Error ? err.message : err,
 			);
@@ -482,18 +522,26 @@ export class AppleDocsDB {
 		sql += ` LIMIT ?`;
 		params.push(limit);
 
-		const rows = this.db.prepare(sql).all(...params) as any[];
-		return rows.map((r) => ({
-			id: r.id,
-			framework: r.framework,
-			title: r.title,
-			kind: r.kind,
-			abstract: r.abstract,
-			path: r.path,
-			platforms: safeParsePlatforms(r.platforms),
-			isPrimaryType: Boolean(r.is_primary_type),
-			score: 1.0,
-		}));
+		try {
+			const rows = this.db.prepare(sql).all(...params) as any[];
+			return rows.map((r) => ({
+				id: r.id,
+				framework: r.framework,
+				title: r.title,
+				kind: r.kind,
+				abstract: r.abstract,
+				path: r.path,
+				platforms: safeParsePlatforms(r.platforms),
+				isPrimaryType: Boolean(r.is_primary_type),
+				score: 1.0,
+			}));
+		} catch (err) {
+			logger.warn(
+				'queryLike failed:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return [];
+		}
 	}
 
 	resolveSymbol(
@@ -537,7 +585,9 @@ export class AppleDocsDB {
 			if (exactRow) {
 				return { symbol: mapRow(exactRow) };
 			}
-		} catch {}
+		} catch (err) {
+			logger.debug('resolveSymbol exact match step failed:', err);
+		}
 
 		// 2. Case-insensitive path match
 		let caseSql = `
@@ -561,7 +611,9 @@ export class AppleDocsDB {
 			if (caseRow) {
 				return { symbol: mapRow(caseRow) };
 			}
-		} catch {}
+		} catch (err) {
+			logger.debug('resolveSymbol case-insensitive match step failed:', err);
+		}
 
 		// 3. Normalized <Framework>/<Symbol> path attempt (e.g. SwiftUI/NavigationStack)
 		const slashIdx = clean.indexOf('/');
@@ -585,7 +637,9 @@ export class AppleDocsDB {
 				if (candRow) {
 					return { symbol: mapRow(candRow) };
 				}
-			} catch {}
+			} catch (err) {
+				logger.debug('resolveSymbol framework/symbol candidate step failed:', err);
+			}
 		}
 
 		// 4. Exact Title match (COLLATE NOCASE)
@@ -608,7 +662,9 @@ export class AppleDocsDB {
 			if (titleRows.length > 1) {
 				return { candidates: titleRows.map(mapRow) };
 			}
-		} catch {}
+		} catch (err) {
+			logger.debug('resolveSymbol exact title match step failed:', err);
+		}
 
 		// 5. Path Suffix match (e.g. NavigationStack or View at end of path)
 		let suffixSql = `
@@ -632,7 +688,9 @@ export class AppleDocsDB {
 			if (suffixRows.length > 1) {
 				return { candidates: suffixRows.map(mapRow) };
 			}
-		} catch {}
+		} catch (err) {
+			logger.debug('resolveSymbol suffix match step failed:', err);
+		}
 
 		return {};
 	}
