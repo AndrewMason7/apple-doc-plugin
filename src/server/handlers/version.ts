@@ -7,13 +7,16 @@ const __dirname = dirname(__filename);
 
 // Read version from package.json
 const packageJsonPath = join(__dirname, '../../../package.json');
-const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-	version: string;
-	name: string;
-	description: string;
-	author: string;
-	repository?: { url: string };
+let packageJson = {
+	version: '1.0.0',
+	name: 'apple-doc-plugin',
+	description: 'Apple Developer Documentation MCP Server',
+	author: 'Andrew Mason',
+	repository: { url: 'https://github.com/AndrewMason7/apple-doc-plugin' },
 };
+try {
+	packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+} catch {}
 
 import type { ServerContext, ToolResponse } from '../context.js';
 import { CORE_FRAMEWORKS } from '../db/frameworks.js';

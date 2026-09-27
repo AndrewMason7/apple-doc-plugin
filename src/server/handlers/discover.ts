@@ -2,6 +2,7 @@ import type { ServerContext, ToolResponse } from '../context.js';
 import { bold, header, trimWithEllipsis } from '../markdown.js';
 import { CORE_FRAMEWORKS } from '../db/frameworks.js';
 import type { Technology } from '../../apple-client.js';
+import { logger } from '../logger.js';
 
 const formatPagination = (
 	query: string | undefined,
@@ -38,10 +39,27 @@ export const buildDiscoverHandler =
 	}): Promise<ToolResponse> => {
 		const { query, page = 1, pageSize = 25 } = args;
 
+		const rawPage =
+			typeof page === 'number' && Number.isFinite(page)
+				? Math.floor(page)
+				: 1;
+		const safePage = Math.max(1, rawPage);
+
+		const rawPageSize =
+			typeof pageSize === 'number' && Number.isFinite(pageSize)
+				? Math.floor(pageSize)
+				: 25;
+		const safePageSize = Math.min(100, Math.max(1, rawPageSize));
+
 		let technologies: Record<string, Technology> = {};
 		try {
 			technologies = await client.getTechnologies();
-		} catch {}
+		} catch (err) {
+			logger.warn(
+				'Failed to fetch remote technologies during discovery:',
+				err,
+			);
+		}
 
 		const dbCounts = db ? db.getFrameworkSymbolCounts() : [];
 		const dbCountMap = new Map<string, number>(
@@ -99,10 +117,10 @@ export const buildDiscoverHandler =
 			);
 		}
 
-		const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-		const currentPage = Math.min(Math.max(page, 1), totalPages);
-		const start = (currentPage - 1) * pageSize;
-		const pageItems = filtered.slice(start, start + pageSize);
+		const totalPages = Math.max(1, Math.ceil(filtered.length / safePageSize));
+		const currentPage = Math.min(Math.max(safePage, 1), totalPages);
+		const start = (currentPage - 1) * safePageSize;
+		const pageItems = filtered.slice(start, start + safePageSize);
 
 		state.setLastDiscovery({ query, results: pageItems as any });
 

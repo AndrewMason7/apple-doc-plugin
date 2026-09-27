@@ -14,15 +14,21 @@ const __dirname = dirname(__filename);
 
 // Read version from package.json
 const packageJsonPath = join(__dirname, '../../package.json');
-const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-	version: string;
-};
+let packageVersion = '1.0.0';
+try {
+	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+		version: string;
+	};
+	if (packageJson?.version) {
+		packageVersion = packageJson.version;
+	}
+} catch {}
 
 export const createServer = () => {
 	const server = new Server(
 		{
 			name: 'apple-dev-docs-mcp',
-			version: packageJson.version,
+			version: packageVersion,
 		},
 		{
 			capabilities: {

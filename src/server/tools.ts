@@ -10,6 +10,7 @@ import { buildCurrentTechnologyHandler } from './handlers/current-technology.js'
 import { buildGetDocumentationHandler } from './handlers/get-documentation.js';
 import { buildSearchSymbolsHandler } from './handlers/search-symbols.js';
 import { buildVersionHandler } from './handlers/version.js';
+import { logger } from './logger.js';
 
 type ToolDefinition = {
 	name: string;
@@ -259,6 +260,7 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		try {
 			return await tool.handler(request.params.arguments ?? {});
 		} catch (error) {
+			logger.error(`Error executing tool ${request.params.name}:`, error);
 			return {
 				isError: true,
 				content: [

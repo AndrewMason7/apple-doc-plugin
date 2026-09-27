@@ -104,6 +104,7 @@ export const buildChooseTechnologyHandler =
 			];
 
 			return {
+				isError: true,
 				content: [{ text: lines.join('\n'), type: 'text' }],
 			};
 		}
