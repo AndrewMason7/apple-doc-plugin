@@ -13,9 +13,7 @@ import {
 	formatParameters,
 	formatDiscussion,
 } from '../../apple-client/docc-formatter.js';
-import { loadActiveFrameworkData } from '../services/framework-loader.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
-import { buildNoTechnologyMessage } from './no-technology.js';
 
 const formatIdentifiers = (
 	identifiers: string[],
@@ -63,8 +61,7 @@ const formatTopicSections = (
 };
 
 export const buildGetDocumentationHandler = (context: ServerContext) => {
-	const { client, state, db } = context;
-	const noTechnology = buildNoTechnologyMessage(context);
+	const { client, db } = context;
 
 	return async (args: {
 		path: string;
@@ -114,7 +111,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 			}
 		}
 
-		let activeTechnology = state.getActiveTechnology();
+		let activeTechnology: Technology | undefined;
 
 		if (localDbSymbol) {
 			activeTechnology = {
@@ -176,24 +173,14 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 		}
 
 		try {
-			const effectiveContext = state.getActiveTechnology()
-				? context
-				: {
-						...context,
-						state: new Proxy(state, {
-							get(target, prop, receiver) {
-								if (prop === 'getActiveTechnology') {
-									return () => activeTechnology;
-								}
-								return Reflect.get(target, prop, receiver);
-							},
-						}),
-					};
-
 			let frameworkPlatforms: PlatformInfo[] = [];
 			try {
-				const framework = await loadActiveFrameworkData(effectiveContext);
-				frameworkPlatforms = framework.metadata?.platforms ?? [];
+				const identifierParts = activeTechnology.identifier.split('/');
+				const frameworkName = identifierParts.at(-1);
+				if (frameworkName) {
+					const framework = await client.getFramework(frameworkName);
+					frameworkPlatforms = framework.metadata?.platforms ?? [];
+				}
 			} catch {
 				// Fall back gracefully if full framework metadata isn't available
 			}

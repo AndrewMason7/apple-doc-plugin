@@ -2,10 +2,9 @@ import assert from 'node:assert';
 import test from 'node:test';
 import { AppleDocsDB } from '../dist/server/db/database.js';
 import { buildSearchSymbolsHandler } from '../dist/server/handlers/search-symbols.js';
-import { buildChooseTechnologyHandler } from '../dist/server/handlers/choose-technology.js';
 import { ServerState } from '../dist/server/state.js';
 
-test('search_symbols without framework executes globally across all frameworks even if choose_technology was called', async () => {
+test('search_symbols without framework executes globally across all frameworks in stateless mode', async () => {
 	const db = new AppleDocsDB(':memory:');
 	db.insertSymbol({
 		id: 'documentation/appkit/nsbutton',
@@ -37,18 +36,6 @@ test('search_symbols without framework executes globally across all frameworks e
 		isCircuitOpen: () => false,
 	};
 
-	// 1. Session selects "AppKit" in state
-	state.setActiveTechnology({
-		identifier: 'doc://com.apple.documentation/documentation/AppKit',
-		title: 'AppKit',
-		kind: 'symbol',
-		role: 'collection',
-		url: '/documentation/appkit',
-		abstract: [],
-	});
-	assert.strictEqual(state.getActiveTechnology()?.title, 'AppKit');
-
-	// 2. Later, agent searches "NavigationStack" without passing framework
 	const searchHandler = buildSearchSymbolsHandler({
 		client: {},
 		state,
@@ -59,11 +46,11 @@ test('search_symbols without framework executes globally across all frameworks e
 	const res = await searchHandler({ query: 'NavigationStack' });
 	const text = res.content[0].text;
 
-	// Search must NOT be scoped to AppKit! options.framework must be undefined
+	// Search must execute globally: options.framework must be undefined
 	assert.strictEqual(
 		capturedFramework,
 		undefined,
-		'Global search must NOT inherit sticky session framework',
+		'Global search must not set framework scope',
 	);
 	assert.ok(
 		text.includes('NavigationStack'),

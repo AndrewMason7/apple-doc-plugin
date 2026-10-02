@@ -40,9 +40,7 @@ export const buildDiscoverHandler =
 		const { query, page = 1, pageSize = 25 } = args;
 
 		const rawPage =
-			typeof page === 'number' && Number.isFinite(page)
-				? Math.floor(page)
-				: 1;
+			typeof page === 'number' && Number.isFinite(page) ? Math.floor(page) : 1;
 		const safePage = Math.max(1, rawPage);
 
 		const rawPageSize =
@@ -55,10 +53,7 @@ export const buildDiscoverHandler =
 		try {
 			technologies = await client.getTechnologies();
 		} catch (err) {
-			logger.warn(
-				'Failed to fetch remote technologies during discovery:',
-				err,
-			);
+			logger.warn('Failed to fetch remote technologies during discovery:', err);
 		}
 
 		const dbCounts = db ? db.getFrameworkSymbolCounts() : [];
@@ -155,7 +150,7 @@ export const buildDiscoverHandler =
 		lines.push(
 			...formatPagination(query, currentPage, totalPages),
 			'\n## Next Step',
-			'Pass `framework: "<FrameworkName>"` directly to `semantic_search`, `search_symbols`, or `get_documentation`. Setting session state via `choose_technology` is optional.',
+			'Pass `framework: "<FrameworkName>"` directly to `semantic_search`, `search_symbols`, or `get_documentation`.',
 		);
 
 		return {

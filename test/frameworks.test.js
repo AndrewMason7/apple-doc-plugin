@@ -37,5 +37,5 @@ test('discover_technologies lists the indexed frameworks even when offline', asy
 	assert.ok(text.includes('### SwiftUI'));
 	assert.ok(text.includes('### UIKit'));
 	assert.ok(text.includes('### Foundation'));
-	assert.ok(text.includes('optional'));
+	assert.ok(text.includes('Pass `framework: "<FrameworkName>"` directly'));
 });

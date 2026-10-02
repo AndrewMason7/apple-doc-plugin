@@ -87,14 +87,13 @@ Omit `GEMINI_API_KEY` for offline-only. You can also run `bin/launcher.cjs` if y
 
 Use the smallest tool that answers the question.
 
-| Tool                                       | Use when                                                                                | Notes                                                                                                                                                                                             |
-| ------------------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `semantic_search`                          | You know the _behavior_ or UI concept, not the symbol (`"prevent sheet swipe dismiss"`) | Preferred for agents. Needs Gemini for the vector half; lexical still runs if the circuit breaker is open or creds missing. Guards against demoting symbols when vectors are sparse (<100 items). |
-| `search_symbols`                           | You know a name or pattern (`Grid*`, `*Style`, `Navigation*View`)                       | Always purely local lexical. Exact title match gets a large score boost. Includes runnable copy-paste `get_documentation` calls and kind aliases (`symbolType: "func"` matches `method`).         |
-| `get_documentation`                        | You already have a symbol or DocC path (`NavigationStack`, `SwiftUI/View`)              | Point lookup: local SQLite first, Apple DocC CDN if missing. Resolves by title or path. Returns disambiguation candidates if ambiguous and `isError: true` if unresolvable.                       |
-| `discover_technologies`                    | You need the list of indexed frameworks                                                 | Database-backed discovery showing exact symbol counts per framework with valid tool JSON pagination.                                                                                              |
-| `choose_technology` / `current_technology` | You want an optional session-wide default framework                                     | Optional. Prefer passing `framework` directly on each tool call instead. Global search is never hijacked by session state.                                                                        |
-| `get_version` / `index_info`               | You want server version or snapshot freshness                                           | Reports runtime symbol count, indexed frameworks, snapshot build timestamp, and embedding availability.                                                                                           |
+| Tool                         | Use when                                                                                | Notes                                                                                                                                                                                             |
+| ---------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `semantic_search`            | You know the _behavior_ or UI concept, not the symbol (`"prevent sheet swipe dismiss"`) | Preferred for agents. Needs Gemini for the vector half; lexical still runs if the circuit breaker is open or creds missing. Guards against demoting symbols when vectors are sparse (<100 items). |
+| `search_symbols`             | You know a name or pattern (`Grid*`, `*Style`, `Navigation*View`)                       | Always purely local lexical. Exact title match gets a large score boost. Includes runnable copy-paste `get_documentation` calls and kind aliases (`symbolType: "func"` matches `method`).         |
+| `get_documentation`          | You already have a symbol or DocC path (`NavigationStack`, `SwiftUI/View`)              | Point lookup: local SQLite first, Apple DocC CDN if missing. Resolves by title or path. Returns disambiguation candidates if ambiguous and `isError: true` if unresolvable.                       |
+| `discover_technologies`      | You need the list of indexed frameworks                                                 | Database-backed discovery showing exact symbol counts per framework with valid tool JSON pagination.                                                                                              |
+| `get_version` / `index_info` | You want server version or snapshot freshness                                           | Reports runtime symbol count, indexed frameworks, snapshot build timestamp, and embedding availability.                                                                                           |
 
 ### Agent examples
 
@@ -203,7 +202,6 @@ npm run build:index   # rebuild the snapshot (network)
 - Hybrid quality depends on whatever was embedded the last time you ran `build:index` with Gemini credentials.
 - Visual previews are derived from media references in Apple’s docs. Treat them as lookup aids, not a HIG replacement.
 - Native addon (`better-sqlite3`) requires C++ compilation tools during install.
-- `choose_technology` is optional session state. Prefer passing `framework` directly on the tool call.
 
 ## License
 

@@ -33,7 +33,6 @@ test('End-to-End: shipped index ranks exact names, suffix wildcards, and platfor
 
 	console.log(`Global search took ${(t1 - t0).toFixed(2)}ms`);
 	assert.ok(textGlobal.includes('### NavigationSplitView (SwiftUI)'));
-	assert.strictEqual(state.getActiveTechnology(), undefined);
 
 	const resUIKit = await searchHandler({
 		query: 'ViewController',

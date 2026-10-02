@@ -25,10 +25,7 @@ export class HttpClient {
 		this.cache = new MemoryCache();
 	}
 
-	async makeRequest<T>(
-		path: string,
-		options: RetryOptions = {},
-	): Promise<T> {
+	async makeRequest<T>(path: string, options: RetryOptions = {}): Promise<T> {
 		const url = `${baseUrl}/${path}`;
 
 		// Simple cache check
@@ -98,10 +95,7 @@ export class HttpClient {
 		}
 	}
 
-	async getDocumentation<T>(
-		path: string,
-		options?: RetryOptions,
-	): Promise<T> {
+	async getDocumentation<T>(path: string, options?: RetryOptions): Promise<T> {
 		return this.makeRequest<T>(`${path}.json`, options);
 	}
 

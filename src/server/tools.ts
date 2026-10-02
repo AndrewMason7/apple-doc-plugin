@@ -5,8 +5,6 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { ServerContext } from './context.js';
 import { buildDiscoverHandler } from './handlers/discover.js';
-import { buildChooseTechnologyHandler } from './handlers/choose-technology.js';
-import { buildCurrentTechnologyHandler } from './handlers/current-technology.js';
 import { buildGetDocumentationHandler } from './handlers/get-documentation.js';
 import { buildSearchSymbolsHandler } from './handlers/search-symbols.js';
 import { buildVersionHandler } from './handlers/version.js';
@@ -46,46 +44,6 @@ export const registerTools = (server: Server, context: ServerContext) => {
 				},
 			},
 			handler: (args) => buildDiscoverHandler(context)(args),
-		},
-		{
-			name: 'choose_technology',
-			description:
-				'Optional session default only. Sets the default framework for subsequent queries in this session. ' +
-				'Note: Every search and documentation tool already accepts an optional "framework" argument directly ' +
-				'(e.g., search_symbols({ query: "Button", framework: "SwiftUI" }), ' +
-				'semantic_search({ query: "sheet dismiss", framework: "SwiftUI" }), or ' +
-				'get_documentation({ path: "Button", framework: "SwiftUI" })). ' +
-				'Calling choose_technology is optional; passing framework on individual tool calls is preferred.',
-			inputSchema: {
-				type: 'object',
-				required: [],
-				properties: {
-					identifier: {
-						type: 'string',
-						description:
-							'Optional technology identifier (e.g. doc://.../SwiftUI)',
-					},
-					name: {
-						type: 'string',
-						description: 'Technology name/title (e.g. SwiftUI)',
-					},
-				},
-			},
-			handler: (args) =>
-				buildChooseTechnologyHandler(context)(
-					args as { identifier?: string; name?: string },
-				),
-		},
-		{
-			name: 'current_technology',
-			description:
-				'Read the currently selected technology/framework from optional session default state.',
-			inputSchema: {
-				type: 'object',
-				required: [],
-				properties: {},
-			},
-			handler: () => buildCurrentTechnologyHandler(context)(),
 		},
 		{
 			name: 'get_documentation',

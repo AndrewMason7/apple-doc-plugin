@@ -156,7 +156,6 @@ test('get_documentation resolves using local db when no technology is selected',
 			'A control that initiates an action.',
 		].join('\n'),
 	);
-	assert.strictEqual(state.getActiveTechnology(), undefined);
 
 	db.close();
 });
@@ -202,12 +201,6 @@ test('get_documentation does not leak or mutate session state active technology'
 	});
 
 	const state = new ServerState();
-	assert.strictEqual(
-		state.getActiveTechnology(),
-		undefined,
-		'Initially no technology should be active',
-	);
-
 	const handler = buildGetDocumentationHandler({
 		client: offlineClient,
 		state,
@@ -220,11 +213,6 @@ test('get_documentation does not leak or mutate session state active technology'
 		res.content[0].text.includes(
 			'A view that displays one or more lines of read-only text.',
 		),
-	);
-	assert.strictEqual(
-		state.getActiveTechnology(),
-		undefined,
-		'State active technology must remain undefined',
 	);
 
 	db.close();
@@ -400,7 +388,6 @@ test('get_documentation resolves using explicit framework argument without sessi
 	const res = await handler({ path: 'Color', framework: 'SwiftUI' });
 	assert.strictEqual(res.isError, undefined);
 	assert.strictEqual(requestedPath, 'documentation/SwiftUI/Color');
-	assert.strictEqual(state.getActiveTechnology(), undefined);
 });
 
 test('semantic_search handles natural language queries via searchSymbolsHandler', async () => {

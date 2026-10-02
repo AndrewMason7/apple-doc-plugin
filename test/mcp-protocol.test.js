@@ -188,7 +188,7 @@ test('semantic_search tool schema is registered and accepts query and framework'
 	}
 });
 
-test('tool schemas contract: choose_technology is optional, search_symbols is lexical, index_info registered', async () => {
+test('tool schemas contract: choose_technology and current_technology removed, stateless tools registered', async () => {
 	const server = new Server(
 		{ name: 'apple-docs-test', version: '0.0.0' },
 		{ capabilities: { tools: {} } },
@@ -227,17 +227,30 @@ test('tool schemas contract: choose_technology is optional, search_symbols is le
 
 	try {
 		const listed = await client.listTools();
-		const chooseTool = listed.tools.find((t) => t.name === 'choose_technology');
-		assert.ok(chooseTool, 'choose_technology tool must be registered');
-		assert.ok(
-			chooseTool.description.toLowerCase().includes('optional'),
-			'choose_technology description must contain "optional"',
+		const toolNames = listed.tools.map((t) => t.name);
+		assert.strictEqual(
+			toolNames.includes('choose_technology'),
+			false,
+			'choose_technology must not be registered',
 		);
-		assert.ok(
-			chooseTool.description.includes('search_symbols') &&
-				chooseTool.description.includes('semantic_search') &&
-				chooseTool.description.includes('get_documentation'),
-			'choose_technology description must provide examples of passing framework',
+		assert.strictEqual(
+			toolNames.includes('current_technology'),
+			false,
+			'current_technology must not be registered',
+		);
+
+		const expectedTools = [
+			'discover_technologies',
+			'get_documentation',
+			'semantic_search',
+			'search_symbols',
+			'get_version',
+			'index_info',
+		];
+		assert.deepStrictEqual(
+			toolNames.sort(),
+			expectedTools.sort(),
+			'Registered tools must match expected stateless catalog',
 		);
 
 		const searchTool = listed.tools.find((t) => t.name === 'search_symbols');

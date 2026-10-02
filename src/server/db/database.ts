@@ -638,7 +638,10 @@ export class AppleDocsDB {
 					return { symbol: mapRow(candRow) };
 				}
 			} catch (err) {
-				logger.debug('resolveSymbol framework/symbol candidate step failed:', err);
+				logger.debug(
+					'resolveSymbol framework/symbol candidate step failed:',
+					err,
+				);
 			}
 		}
 
