@@ -4,6 +4,11 @@
 	"version": "1.0.0",
 	"description": "Instant offline access to Apple Developer Documentation with smart SQLite FTS5 search, wildcard matching, multimodal UI layout previews, and DocC markdown extraction.",
 	"logo": "assets/logo.png",
+	"suggestedPrompts": [
+		"Search Apple documentation for NavigationSplitView and its toolbar modifiers",
+		"How do I prevent interactive sheet dismissal in SwiftUI on iOS 18?",
+		"Look up modern SwiftData @Model relationship options and delete rules"
+	],
 	"author": {
 		"name": "Andrew Mason",
 		"url": "https://github.com/AndrewMason7"
