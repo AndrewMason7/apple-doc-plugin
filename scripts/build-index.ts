@@ -8,7 +8,7 @@ import {
 	indexFrameworkTree,
 	extractMediaReferences,
 } from '../src/server/services/indexer.js';
-import { GeminiSemanticSearch } from '../src/server/services/search/semantic-search.js';
+import { resolveEmbeddingProvider } from '../src/server/services/search/provider-factory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -56,15 +56,15 @@ async function buildIndex() {
 	console.error(`🚀 Initializing database at ${dbPath}...`);
 	const db = new AppleDocsDB(dbPath);
 
-	const semantic = new GeminiSemanticSearch();
-	const canEmbed = semantic.hasAuth();
+	const semantic = resolveEmbeddingProvider();
+	const canEmbed = semantic.isAvailable();
 	if (canEmbed) {
 		console.error(
-			'✨ Mode: Hybrid (Gemini credentials detected, multimodal vector embeddings enabled).',
+			`✨ Mode: Hybrid (${semantic.id === 'local-gguf' ? 'Local EmbeddingGemma 2 GGUF' : 'Gemini'} detected, ${semantic.dimensions}-d vector embeddings enabled).`,
 		);
 	} else {
 		console.error(
-			'ℹ️ Mode: FTS-only (No Gemini credentials; offline SQLite indexing).',
+			'ℹ️ Mode: FTS-only (No local model or Gemini credentials; offline SQLite indexing).',
 		);
 	}
 
@@ -134,11 +134,15 @@ async function buildIndex() {
 									timeout: 10000,
 								});
 								const base64 = Buffer.from(imgRes.data).toString('base64');
-								const vec = await semantic.embedMultimodal(
-									item.alt,
-									base64,
-									item.mimeType,
-								);
+								const vec =
+									'embedMultimodal' in semantic &&
+									typeof (semantic as any).embedMultimodal === 'function'
+										? await (semantic as any).embedMultimodal(
+												item.alt,
+												base64,
+												item.mimeType,
+											)
+										: await semantic.embedDocument(item.alt, item.identifier);
 								if (vec) {
 									db.insertSemanticItem({
 										id: `media-${item.identifier}`,

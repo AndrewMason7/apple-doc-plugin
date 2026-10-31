@@ -2,6 +2,7 @@ import axios from 'axios';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { GoogleAuth } from 'google-auth-library';
+import type { EmbeddingProvider } from './embedding-provider.js';
 
 export interface SemanticMatch {
 	id: string;
@@ -48,7 +49,8 @@ function stripMultimodalTaskPrefix(text: string): string {
 	return text.replace(/^task:\s*[^|]*\|\s*query:\s*/i, '').trim();
 }
 
-export class GeminiSemanticSearch {
+export class GeminiSemanticSearch implements EmbeddingProvider {
+	public readonly id = 'gemini' as const;
 	private readonly apiKey?: string;
 	private readonly modelName: string;
 	private readonly baseUrl: string;
@@ -90,6 +92,14 @@ export class GeminiSemanticSearch {
 			});
 			this.hasInjectedAuth = false;
 		}
+	}
+
+	get dimensions(): number {
+		return this.expectedDimensions ?? 3072;
+	}
+
+	isAvailable(): boolean {
+		return this.hasAuth();
 	}
 
 	hasApiKey(): boolean {

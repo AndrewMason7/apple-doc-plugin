@@ -237,26 +237,25 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 				if (lexicalOnly) {
 					searchModeDesc = 'Lexical only (SQLite FTS5)';
 				} else if (preferSemantic) {
-					const hasSemanticAuth = Boolean(
-						searchEngine?.semanticSearch.hasAuth(),
-					);
-					const isCircuitOpen = Boolean(
-						searchEngine?.semanticSearch.isCircuitOpen(),
-					);
+					const hasSemanticAuth = Boolean(searchEngine?.hasSemanticAuth());
+					const isCircuitOpen = Boolean(searchEngine?.isCircuitOpen());
+					const providerId = searchEngine?.embeddingProvider?.id;
 					const usedSemantic = results.some(
 						(r) => r.source === 'hybrid' || r.source === 'semantic',
 					);
 					const semanticCount = context.db?.getSemanticItemCount() ?? 0;
 					if (usedSemantic) {
-						searchModeDesc = 'Hybrid (SQLite FTS5 + Gemini embeddings)';
+						searchModeDesc =
+							providerId === 'local-gguf'
+								? 'Hybrid (SQLite FTS5 + Local EmbeddingGemma embeddings)'
+								: 'Hybrid (SQLite FTS5 + Gemini embeddings)';
 					} else if (semanticCount < 100) {
 						searchModeDesc = `Lexical fallback (semantic index has ${semanticCount} items; symbol embeddings require build:index)`;
 					} else if (!hasSemanticAuth) {
 						searchModeDesc =
-							'Lexical fallback (No Gemini credentials configured; running offline FTS5)';
+							'Lexical fallback (No local model or Gemini credentials configured; running offline FTS5)';
 					} else if (isCircuitOpen) {
-						searchModeDesc =
-							'Lexical fallback (Gemini API circuit breaker is currently open)';
+						searchModeDesc = `Lexical fallback (${providerId === 'local-gguf' ? 'Local model' : 'Gemini API'} circuit breaker is currently open)`;
 					} else {
 						searchModeDesc = 'Lexical fallback (SQLite FTS5)';
 					}
@@ -328,10 +327,10 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 
 		// 2. Legacy fallback when searchEngine has no results or isn't initialized
 		const fallbackNotice =
-			preferSemantic && !searchEngine?.semanticSearch.hasAuth()
-				? '*Note: Running in lexical fallback mode because no Gemini API credentials are configured.*'
-				: preferSemantic && searchEngine?.semanticSearch.isCircuitOpen()
-					? '*Note: Running in lexical fallback mode because Gemini API circuit breaker is currently open.*'
+			preferSemantic && !searchEngine?.hasSemanticAuth()
+				? '*Note: Running in lexical fallback mode because no local model or Gemini credentials are configured.*'
+				: preferSemantic && searchEngine?.isCircuitOpen()
+					? '*Note: Running in lexical fallback mode because embedding provider circuit breaker is currently open.*'
 					: undefined;
 
 		if (!targetFramework) {

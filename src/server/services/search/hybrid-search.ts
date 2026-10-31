@@ -1,5 +1,7 @@
 import { AppleDocsDB, DbSymbol } from '../../db/database.js';
 import { GeminiSemanticSearch, SemanticMatch } from './semantic-search.js';
+import type { EmbeddingProvider } from './embedding-provider.js';
+import { resolveEmbeddingProvider } from './provider-factory.js';
 
 export interface SearchOptions {
 	framework?: string;
@@ -16,36 +18,78 @@ export interface SearchResultItem extends DbSymbol {
 	mediaType?: string;
 }
 
+export interface HybridSearchEngineOptions {
+	apiKey?: string | null;
+	modelName?: string;
+	baseUrl?: string;
+	googleAuth?: any;
+	expectedDimensions?: number;
+	minSemanticItems?: number;
+	embeddingProvider?: EmbeddingProvider;
+}
+
 export class HybridSearchEngine {
+	public readonly embeddingProvider: EmbeddingProvider;
 	public readonly semanticSearch: GeminiSemanticSearch;
 	public readonly minSemanticItems: number;
 
 	hasSemanticAuth(): boolean {
-		return this.semanticSearch.hasAuth();
+		return this.embeddingProvider.isAvailable();
 	}
 
 	isCircuitOpen(): boolean {
+		if (
+			'isCircuitOpen' in this.embeddingProvider &&
+			typeof (this.embeddingProvider as any).isCircuitOpen === 'function'
+		) {
+			return (this.embeddingProvider as any).isCircuitOpen();
+		}
 		return this.semanticSearch.isCircuitOpen();
 	}
 
 	constructor(
 		private readonly db: AppleDocsDB,
-		options: {
-			apiKey?: string | null;
-			modelName?: string;
-			baseUrl?: string;
-			googleAuth?: any;
-			expectedDimensions?: number;
-			minSemanticItems?: number;
-		} = {},
+		options: HybridSearchEngineOptions = {},
 	) {
-		this.semanticSearch = new GeminiSemanticSearch(
-			options.apiKey,
-			options.modelName,
-			options.baseUrl,
-			options.googleAuth,
-			options.expectedDimensions ?? 3072,
-		);
+		if (options.embeddingProvider) {
+			this.embeddingProvider = options.embeddingProvider;
+			this.semanticSearch =
+				options.embeddingProvider instanceof GeminiSemanticSearch
+					? options.embeddingProvider
+					: new GeminiSemanticSearch(
+							options.apiKey,
+							options.modelName,
+							options.baseUrl,
+							options.googleAuth,
+							options.expectedDimensions ?? 3072,
+						);
+		} else if (
+			options.apiKey !== undefined ||
+			options.googleAuth !== undefined ||
+			options.baseUrl !== undefined ||
+			options.modelName !== undefined
+		) {
+			this.semanticSearch = new GeminiSemanticSearch(
+				options.apiKey,
+				options.modelName,
+				options.baseUrl,
+				options.googleAuth,
+				options.expectedDimensions ?? 3072,
+			);
+			this.embeddingProvider = this.semanticSearch;
+		} else {
+			this.embeddingProvider = resolveEmbeddingProvider();
+			this.semanticSearch =
+				this.embeddingProvider instanceof GeminiSemanticSearch
+					? this.embeddingProvider
+					: new GeminiSemanticSearch(
+							options.apiKey,
+							options.modelName,
+							options.baseUrl,
+							options.googleAuth,
+							options.expectedDimensions ?? 3072,
+						);
+		}
 		this.minSemanticItems = options.minSemanticItems ?? 100;
 	}
 
@@ -136,9 +180,9 @@ export class HybridSearchEngine {
 			return scoredFTS.sort((a, b) => b.score - a.score).slice(0, limit);
 		}
 
-		// Check if semantic search is available (API key or ADC)
-		if (this.semanticSearch.hasAuth()) {
-			const queryVec = await this.semanticSearch.embedQuery(query);
+		// Check if semantic search is available
+		if (this.embeddingProvider.isAvailable()) {
+			const queryVec = await this.embeddingProvider.embedQuery(query);
 			if (queryVec) {
 				const minSim = options.preferSemantic ? 0.55 : 0.65;
 				const semanticMatches = this.searchSemanticWithVector(

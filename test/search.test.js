@@ -222,3 +222,49 @@ test('HybridSearchEngine elevates semantic matches over lexical matches when pre
 		db.close();
 	}
 });
+
+test('HybridSearchEngine works seamlessly with 768-dimensional local provider', async () => {
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: 'documentation/swiftui/navigationsplitview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView',
+		kind: 'struct',
+		abstract: 'A view that presents views in two or three columns.',
+		path: '/documentation/swiftui/navigationsplitview',
+		platforms: ['iOS 16.0+'],
+		isPrimaryType: true,
+	});
+
+	const mock768 = new Float32Array(768);
+	mock768[0] = 1.0;
+	db.insertSemanticItem({
+		id: 'documentation/swiftui/navigationsplitview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView',
+		kind: 'struct',
+		summary: 'A view that presents views in two or three columns.',
+		path: '/documentation/swiftui/navigationsplitview',
+		embedding: mock768,
+	});
+
+	const mockLocal = {
+		id: 'local-gguf',
+		dimensions: 768,
+		isAvailable: () => true,
+		embedQuery: async () => mock768,
+		embedDocument: async () => mock768,
+	};
+
+	const engine = new HybridSearchEngine(db, {
+		embeddingProvider: mockLocal,
+		minSemanticItems: 1,
+	});
+	const results = await engine.search('column layout', {
+		preferSemantic: true,
+	});
+	assert.ok(Array.isArray(results));
+	assert.ok(results.length > 0);
+	assert.equal(results[0].title, 'NavigationSplitView');
+	db.close();
+});

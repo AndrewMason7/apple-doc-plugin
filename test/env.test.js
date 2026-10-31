@@ -20,6 +20,14 @@ test('.env.example exists and documents environment variables', () => {
 		content.includes('APPLE_DOCS_DB_PATH='),
 		'.env.example must document APPLE_DOCS_DB_PATH',
 	);
+	assert(
+		content.includes('APPLE_DOCS_EMBEDDING_MODEL_PATH='),
+		'.env.example must document APPLE_DOCS_EMBEDDING_MODEL_PATH',
+	);
+	assert(
+		content.includes('APPLE_DOCS_EMBEDDING_PROVIDER='),
+		'.env.example must document APPLE_DOCS_EMBEDDING_PROVIDER',
+	);
 });
 
 test('.env is ignored by git', () => {

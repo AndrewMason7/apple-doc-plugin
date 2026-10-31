@@ -10,10 +10,10 @@ Local SQLite FTS5 over 65,787 symbols across SwiftUI, UIKit, Foundation, SwiftDa
 
 **Two modes, same binary:**
 
-| Mode        | What you need                            | What you get                                                                               |
-| ----------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Offline** | Node 22+ and `data/apple-docs.db`        | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing |
-| **Hybrid**  | Offline + `GEMINI_API_KEY` or Google ADC | Same lexical path, plus vector search, RRF fusion, and UI-layout preview cards             |
+| Mode        | What you need                             | What you get                                                                                            |
+| ----------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing              |
+| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search, RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
 
 No API key? It still works offline without a key. That is the point.
 
@@ -156,11 +156,13 @@ Override the db location with `APPLE_DOCS_DB_PATH`.
 cp .env.example .env
 ```
 
-| Variable                         | Required | Purpose                                                                                    |
-| -------------------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `GEMINI_API_KEY`                 | No       | Gemini embeddings (`gemini-embedding-2`). [Google AI Studio](https://aistudio.google.com/) |
-| `GOOGLE_APPLICATION_CREDENTIALS` | No       | Service-account JSON for ADC. `gcloud auth application-default login` also works           |
-| `APPLE_DOCS_DB_PATH`             | No       | Alternate path to the SQLite file (default `data/apple-docs.db`)                           |
+| Variable                          | Required | Purpose                                                                                        |
+| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | No       | Local path to `embeddinggemma-2-Q8_0.gguf` for 100% offline in-process Metal vector embeddings |
+| `APPLE_DOCS_EMBEDDING_PROVIDER`   | No       | Force provider: `local` (in-process GGUF) or `gemini` (cloud API)                              |
+| `GEMINI_API_KEY`                  | No       | Gemini embeddings (`gemini-embedding-2`). [Google AI Studio](https://aistudio.google.com/)     |
+| `GOOGLE_APPLICATION_CREDENTIALS`  | No       | Service-account JSON for ADC. `gcloud auth application-default login` also works               |
+| `APPLE_DOCS_DB_PATH`              | No       | Alternate path to the SQLite file (default `data/apple-docs.db`)                               |
 
 The process loads `.env` at startup. Credentials are not logged.
 

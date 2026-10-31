@@ -75,9 +75,9 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'semantic_search',
 			description:
-				'Hybrid search combining SQLite FTS5 lexical search and Gemini 3072-dim vector embeddings with Reciprocal Rank Fusion (RRF). ' +
+				'Hybrid search combining SQLite FTS5 lexical search and vector embeddings (local in-process EmbeddingGemma 2 or cloud Gemini) with Reciprocal Rank Fusion (RRF). ' +
 				'Search by natural language intent, conceptual query, or API name. ' +
-				'If Gemini credentials (GEMINI_API_KEY / ADC) are unavailable or circuit breaker is open, automatically falls back to lexical search with notice in result text.',
+				'If vector embedding provider is unavailable or circuit breaker is open, automatically falls back to lexical search with notice in result text.',
 			inputSchema: {
 				type: 'object',
 				required: ['query'],

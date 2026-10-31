@@ -426,3 +426,63 @@ test('semantic_search handles natural language queries via searchSymbolsHandler'
 	assert.ok(text.includes('SwiftUI'));
 	db.close();
 });
+
+test('search_symbols formats Local EmbeddingGemma mode string when using local provider', async () => {
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: 'documentation/swiftui/navigationsplitview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView',
+		kind: 'struct',
+		abstract: 'A view that presents views in two or three columns.',
+		path: '/documentation/swiftui/navigationsplitview',
+		platforms: ['iOS 16.0+'],
+		isPrimaryType: true,
+	});
+
+	const mock768 = new Float32Array(768).fill(0.01);
+	db.insertSemanticItem({
+		id: 'documentation/swiftui/navigationsplitview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView',
+		kind: 'struct',
+		summary: 'A view that presents views in two or three columns.',
+		path: '/documentation/swiftui/navigationsplitview',
+		embedding: mock768,
+	});
+
+	const mockLocal = {
+		id: 'local-gguf',
+		dimensions: 768,
+		isAvailable: () => true,
+		embedQuery: async () => mock768,
+		embedDocument: async () => mock768,
+	};
+
+	const searchEngine = new HybridSearchEngine(db, {
+		embeddingProvider: mockLocal,
+		minSemanticItems: 1,
+	});
+	const state = new ServerState();
+	const client = new AppleDevDocsClient();
+
+	const handler = buildSearchSymbolsHandler({
+		client,
+		state,
+		db,
+		searchEngine,
+	});
+
+	const response = await handler({
+		query: 'multi column split view layout',
+		framework: 'SwiftUI',
+		preferSemantic: true,
+	});
+
+	assert.strictEqual(response.isError, undefined);
+	const text = response.content[0].text;
+	assert.ok(
+		text.includes('Hybrid (SQLite FTS5 + Local EmbeddingGemma embeddings)'),
+	);
+	db.close();
+});
