@@ -50,6 +50,17 @@ npm run build
 
 ## Install
 
+### Hermes Agent plugin (Native)
+
+Install directly into Hermes Agent via CLI or catalog:
+
+```bash
+hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git
+hermes plugins enable apple-doc-plugin
+```
+
+This uses native Hermes manifest v2 (`plugin.yaml`) and exposes `search_symbols`, `semantic_search`, `get_documentation`, `discover_technologies`, `get_version`, and `index_info` directly in Hermes conversations.
+
 ### Antigravity plugin
 
 ```bash
