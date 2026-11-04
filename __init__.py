@@ -6,6 +6,7 @@ and Apple DocC extraction.
 """
 
 from typing import Any, Callable, Dict, Optional
+
 try:
     from .hermes_bridge import get_bridge
 except ImportError:
@@ -143,11 +144,18 @@ TOOL_DEFINITIONS = [
 
 def _make_handler(tool_name: str) -> Callable[..., str]:
     def handler(*args: Any, **kwargs: Any) -> str:
-        call_args: Dict[str, Any] = {}
-        if args and isinstance(args[0], dict):
-            call_args.update(args[0])
-        call_args.update(kwargs)
-        return get_bridge().call_tool(tool_name, call_args)
+        try:
+            call_args: Dict[str, Any] = {}
+            if args:
+                if isinstance(args[0], dict):
+                    call_args.update(args[0])
+                elif isinstance(args[0], str):
+                    primary_key = "path" if tool_name == "get_documentation" else "query"
+                    call_args[primary_key] = args[0]
+            call_args.update(kwargs)
+            return get_bridge().call_tool(tool_name, call_args)
+        except Exception as err:
+            return f"Error executing {tool_name}: {err}"
 
     handler.__name__ = tool_name
     return handler
