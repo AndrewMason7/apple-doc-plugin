@@ -278,7 +278,16 @@ test('tool schemas contract: choose_technology and current_technology removed, s
 			arguments: {},
 		});
 		assert.strictEqual(infoRes.isError, undefined);
-		assert.ok(infoRes.content[0].text.includes('Indexed Symbols: 1'));
+		const infoText = infoRes.content[0].text;
+		assert.ok(
+			infoText.includes('Index Health'),
+			'index_info must report index health',
+		);
+		assert.ok(/\*\*Symbols:\*\* 1/.test(infoText), 'index_info must report the symbol total');
+		assert.ok(
+			infoText.includes('Unclassified symbols'),
+			'index_info must report unclassified symbol count',
+		);
 	} finally {
 		db.close();
 		await client.close();

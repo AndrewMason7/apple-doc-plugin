@@ -161,6 +161,46 @@ Expect this to take a while and to hit Apple’s CDN. Hybrid rebuilds also cost 
 
 Override the db location with `APPLE_DOCS_DB_PATH`.
 
+## Repair an existing index (no re-crawl)
+
+`build:index` re-downloads everything. When a snapshot has classification
+defects — unclassified symbol kinds, or rows attributed to the wrong framework —
+repair them in place instead:
+
+```bash
+npm run repair-index            # dry run: shows what would change
+npm run repair-index -- --apply # writes, rebuilds FTS5, stamps repaired_at
+```
+
+`repair-index` does two things:
+
+1. **Framework attribution** — any row whose `framework` column contradicts the
+   framework segment of its own path is re-attributed (`/documentation/uikit/nsview`
+   filed under `Foundation` becomes `UIKit`).
+2. **Symbol kinds** — rows stored with the generic `symbol`/`unknown` kind are
+   re-fetched from Apple's DocC CDN and written back from the authoritative
+   `metadata.symbolKind` / `metadata.roleHeading`. Responses are cached under
+   `.cache/repair/`, so repeat runs are free.
+
+Both counts are reported by the `index_info` tool under **Index Health**.
+
+## Reading the status tools honestly
+
+| Tool | Answers | Key fields |
+|---|---|---|
+| `get_version` | what is this server | version, symbol count, **real** search mode, freshness + provenance |
+| `index_info` | can I trust this index | kind distribution, unclassified count, framework/path mismatches, filter reliability |
+
+`Search Capability` reports `Lexical only` until at least **100** semantic items
+exist, because the hybrid engine refuses to fuse vectors below that threshold.
+A non-empty `semantic_items` table is *not* the same claim as hybrid search, and
+the status line says so.
+
+`symbolType` filters never silently relax: if a filter matches nothing, the
+response states that the results are **UNFILTERED**. Rows without a classified
+kind are shown as `Kind: unknown` — never as `symbol` — and never satisfy a
+concrete kind filter.
+
 ## Environment
 
 ```bash

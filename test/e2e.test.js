@@ -132,7 +132,9 @@ test('End-to-End: get_documentation retrieves local symbols and formats cleanly'
 	const text = res.content[0].text;
 	assert.ok(text.includes('# View'));
 	assert.ok(text.includes('**Technology:** SwiftUI'));
-	assert.ok(text.includes('**Type:** symbol'));
+	// `View` is a protocol; the index previously stored it as a generic
+	// "symbol" kind, and this assertion used to pin that wrong value.
+	assert.ok(text.includes('**Type:** protocol'));
 	assert.ok(text.includes('## Overview'));
 
 	db.close();

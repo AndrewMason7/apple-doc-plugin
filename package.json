@@ -42,6 +42,7 @@
 	"scripts": {
 		"build": "tsc && chmod +x dist/index.js",
 		"build:index": "tsx scripts/build-index.ts",
+		"repair-index": "tsx scripts/repair-index.ts",
 		"test": "npm run build && node --test test/**/*.test.js",
 		"typecheck": "tsc --noEmit",
 		"format": "prettier --write .",
