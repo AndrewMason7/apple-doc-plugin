@@ -341,6 +341,79 @@ export class AppleDocsDB {
 		}>;
 	}
 
+	/**
+	 * Default embedding selection: primary types plus anything Apple documented.
+	 * Documented symbols sort first so a limited run spends its budget on the
+	 * rows that carry real meaning.
+	 */
+	getEmbeddingCandidateSymbols(): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         WHERE is_primary_type = 1
+            OR lower(kind) IN ('struct', 'class', 'protocol', 'enum', 'macro')
+            OR (abstract IS NOT NULL AND abstract != '')
+         ORDER BY is_primary_type DESC,
+                  (CASE WHEN abstract IS NOT NULL AND abstract != '' THEN 0 ELSE 1 END) ASC,
+                  title ASC`,
+			)
+			.all() as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/** Every symbol, for an exhaustive embedding pass. */
+	getAllSymbolsForEmbedding(): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         ORDER BY is_primary_type DESC, title ASC`,
+			)
+			.all() as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/** Ids already present in the semantic layer — the resume key set. */
+	getSemanticItemIds(): Set<string> {
+		const rows = this.db
+			.prepare(`SELECT id FROM semantic_items`)
+			.all() as Array<{ id: string }>;
+		return new Set(rows.map((row) => row.id));
+	}
+
+	updateSymbolAbstract(id: string, abstract: string): void {
+		this.db
+			.prepare(`UPDATE symbols SET abstract = ? WHERE id = ?`)
+			.run(abstract, id);
+	}
+
 	/** Rows stored with a generic `symbol`/`unknown` kind. */
 	getUnclassifiedSymbols(): Array<{
 		id: string;

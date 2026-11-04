@@ -1,0 +1,153 @@
+import type { AppleDocsDB } from '../db/database.js';
+import type { EmbeddingProvider } from './search/embedding-provider.js';
+
+/** A symbol row shaped for embedding (subset of the symbols table). */
+export interface EmbeddingCandidate {
+	id: string;
+	title: string;
+	kind: string;
+	framework: string;
+	abstract: string;
+	path: string;
+}
+
+export interface EmbedSymbolsOptions {
+	/** Embed every symbol, not just primary types + documented ones. */
+	all?: boolean;
+	/** Stop after N symbols (useful for smoke tests). Default: no limit. */
+	limit?: number;
+	/** Log cadence, in symbols. Default 250. */
+	batchSize?: number;
+	onProgress?: (progress: {
+		done: number;
+		total: number;
+		embedded: number;
+	}) => void;
+}
+
+export interface EmbedSymbolsResult {
+	total: number;
+	embedded: number;
+	skipped: number;
+	failed: number;
+}
+
+/**
+ * Semantic items are keyed separately from symbols so a rebuild of the symbol
+ * layer never collides with technology-card or media vectors.
+ */
+export const semanticIdForSymbol = (symbolId: string): string =>
+	`sym-${symbolId}`;
+
+/**
+ * Document text handed to the embedding model. Title and classification carry
+ * the meaning when Apple has no abstract for a symbol, so they are always
+ * present rather than being conditional filler.
+ */
+export function buildSymbolEmbeddingText(sym: {
+	title: string;
+	kind: string;
+	framework: string;
+	abstract?: string | null;
+}): string {
+	const headline = `${sym.title} — ${sym.kind} in ${sym.framework}.`;
+	const abstract = (sym.abstract ?? '').trim();
+	return abstract ? `${headline} ${abstract}` : headline;
+}
+
+/**
+ * Default selection: primary types (the symbols people actually search for
+ * conceptually) plus any symbol Apple documented. Undocumented members with no
+ * abstract are skipped — a bare signature embeds to noise, not meaning.
+ */
+export function selectEmbeddingCandidates(
+	db: AppleDocsDB,
+	options: { all?: boolean } = {},
+): EmbeddingCandidate[] {
+	const rows: EmbeddingCandidate[] = options.all
+		? db.getAllSymbolsForEmbedding()
+		: db.getEmbeddingCandidateSymbols();
+
+	return rows.map((row) => ({
+		id: row.id,
+		title: row.title,
+		kind: row.kind,
+		framework: row.framework,
+		abstract: row.abstract ?? '',
+		path: row.path,
+	}));
+}
+
+/**
+ * Embed the symbol layer into `semantic_items`, resuming automatically: items
+ * that already exist are skipped, so an interrupted run can be restarted.
+ */
+export async function embedSymbols(
+	db: AppleDocsDB,
+	provider: EmbeddingProvider,
+	options: EmbedSymbolsOptions = {},
+): Promise<EmbedSymbolsResult> {
+	if (!provider.isAvailable()) {
+		throw new Error(
+			'No embedding provider available: install a local GGUF model (APPLE_DOCS_EMBEDDING_MODEL_PATH) or configure embedding credentials.',
+		);
+	}
+	if (provider.dimensions <= 0) {
+		throw new Error(
+			`Embedding provider "${provider.id}" reports ${provider.dimensions} dimensions; refusing to write unusable vectors.`,
+		);
+	}
+
+	const batchSize = options.batchSize && options.batchSize > 0 ? options.batchSize : 250;
+	const candidates = selectEmbeddingCandidates(db, { all: options.all });
+	const existing = db.getSemanticItemIds();
+
+	let pending = candidates.filter(
+		(candidate) => !existing.has(semanticIdForSymbol(candidate.id)),
+	);
+	const skipped = candidates.length - pending.length;
+
+	if (typeof options.limit === 'number' && options.limit > 0) {
+		pending = pending.slice(0, options.limit);
+	}
+
+	let embedded = 0;
+	let failed = 0;
+
+	for (const [index, candidate] of pending.entries()) {
+		const text = buildSymbolEmbeddingText(candidate);
+		let vector: Float32Array | null = null;
+		try {
+			vector = await provider.embedDocument(text, candidate.title);
+		} catch (err) {
+			failed++;
+			console.error(
+				`   ⚠ ${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
+			);
+			continue;
+		}
+
+		if (!vector || vector.length !== provider.dimensions) {
+			failed++;
+			continue;
+		}
+
+		db.insertSemanticItem({
+			id: semanticIdForSymbol(candidate.id),
+			framework: candidate.framework,
+			title: candidate.title,
+			kind: candidate.kind,
+			summary: candidate.abstract || candidate.title,
+			path: candidate.path,
+			embedding: vector,
+		});
+		embedded++;
+
+		const done = index + 1;
+		if (done % batchSize === 0 || done === pending.length) {
+			options.onProgress?.({ done, total: pending.length, embedded });
+		}
+	}
+
+	return { total: candidates.length, embedded, skipped, failed };
+}

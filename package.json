@@ -50,7 +50,8 @@
 		"check": "npm run typecheck && npm run format:check",
 		"start": "node dist/index.js",
 		"plugin:validate": "agy plugin validate .",
-		"plugin:install": "agy plugin install ."
+		"plugin:install": "agy plugin install .",
+		"embed-index": "tsx scripts/embed-index.ts"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",

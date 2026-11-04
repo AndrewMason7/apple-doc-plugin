@@ -152,7 +152,7 @@ What `build:index` does:
 1. Open SQLite in WAL mode, ensure tables + FTS5 exist
 2. For each configured framework, pull the symbol tree + overview DocC from Apple’s CDN
 3. Upsert symbols and abstracts
-4. If Gemini auth is present: embed documents (asymmetric title/abstract prompts) and referenced UI media
+4. If an embedding provider is available: embed framework overviews, referenced UI media, **and the symbol layer** (`title`, kind, framework, abstract) — the symbol vectors are what `semantic_search` actually needs
 5. If not: log that this pass is FTS5-only
 6. `INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')`
 7. `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM`
@@ -160,6 +160,34 @@ What `build:index` does:
 Expect this to take a while and to hit Apple’s CDN. Hybrid rebuilds also cost Gemini embeddings. Run it on a machine with network, then copy the db if you want.
 
 Override the db location with `APPLE_DOCS_DB_PATH`.
+
+## Enable hybrid search with a local model
+
+Hybrid search needs **100+** semantic items. The symbol layer is what gets you
+there, and it can be built with a local EmbeddingGemma GGUF — no API key, no
+per-token cost:
+
+```bash
+# 1. Place the model (309 MB) where the server looks for it by default
+mkdir -p ~/.cache/apple-docs/models
+hf download unsloth/embeddinggemma-2-GGUF embeddinggemma-2-Q8_0.gguf \
+  --local-dir ~/.cache/apple-docs/models
+
+# 2. Embed the symbol layer (resumable — re-run to continue)
+npm run embed-index                 # primary types + documented symbols
+npm run embed-index -- --enrich     # fetch missing abstracts first (better recall)
+npm run embed-index -- --limit 25   # smoke test
+npm run embed-index -- --all        # every symbol (slow, exhaustive)
+```
+
+Override the model location with `APPLE_DOCS_EMBEDDING_MODEL_PATH`. Provider
+precedence: an available local GGUF wins; Gemini (API key or ADC) is the
+fallback; `APPLE_DOCS_EMBEDDING_PROVIDER=gemini` forces Gemini.
+
+Progress is reported per batch, and completed items are skipped on the next run,
+so an interrupted embedding pass costs nothing. `get_version` flips from
+`Lexical only` to `Hybrid` once the threshold is crossed — restart the MCP
+server afterwards so the new vectors are loaded.
 
 ## Repair an existing index (no re-crawl)
 
