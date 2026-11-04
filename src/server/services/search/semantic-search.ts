@@ -51,6 +51,9 @@ function stripMultimodalTaskPrefix(text: string): string {
 
 export class GeminiSemanticSearch implements EmbeddingProvider {
 	public readonly id = 'gemini' as const;
+	/** Gemini's score distribution differs from a local model's; keep its floor. */
+	public readonly minSimilarity = 0.65;
+	public readonly minSimilarityPreferred = 0.55;
 	private readonly apiKey?: string;
 	private readonly modelName: string;
 	private readonly baseUrl: string;

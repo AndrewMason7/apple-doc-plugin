@@ -184,6 +184,12 @@ Override the model location with `APPLE_DOCS_EMBEDDING_MODEL_PATH`. Provider
 precedence: an available local GGUF wins; Gemini (API key or ADC) is the
 fallback; `APPLE_DOCS_EMBEDDING_PROVIDER=gemini` forces Gemini.
 
+The similarity floor is per-provider, not inherited from Gemini: the local GGUF
+uses **0.68** (0.62 when a caller prefers semantic matches), because measured on
+Apple symbol text, on-topic pairs score 0.688-0.719 while unrelated pairs top out
+near 0.66 — Gemini's 0.65 floor let that noise through. See
+`resolveMinSimilarity()` in `hybrid-search.ts`.
+
 Progress is reported per batch, and completed items are skipped on the next run,
 so an interrupted embedding pass costs nothing. `get_version` flips from
 `Lexical only` to `Hybrid` once the threshold is crossed — restart the MCP

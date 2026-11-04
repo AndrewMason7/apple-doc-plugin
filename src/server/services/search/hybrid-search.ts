@@ -1,6 +1,21 @@
 import { AppleDocsDB, DbSymbol } from '../../db/database.js';
 import { GeminiSemanticSearch, SemanticMatch } from './semantic-search.js';
 import type { EmbeddingProvider } from './embedding-provider.js';
+
+/**
+ * Pick the cosine floor for a provider. Each embedding model has its own score
+ * distribution, so a floor tuned against one model quietly admits noise when
+ * swapped for another.
+ */
+export const resolveMinSimilarity = (
+	provider: EmbeddingProvider,
+	preferSemantic: boolean,
+): number => {
+	if (preferSemantic) {
+		return provider.minSimilarityPreferred ?? 0.55;
+	}
+	return provider.minSimilarity ?? 0.65;
+};
 import { resolveEmbeddingProvider } from './provider-factory.js';
 
 export interface SearchOptions {
@@ -184,7 +199,10 @@ export class HybridSearchEngine {
 		if (this.embeddingProvider.isAvailable()) {
 			const queryVec = await this.embeddingProvider.embedQuery(query);
 			if (queryVec) {
-				const minSim = options.preferSemantic ? 0.55 : 0.65;
+				const minSim = resolveMinSimilarity(
+					this.embeddingProvider,
+					Boolean(options.preferSemantic),
+				);
 				const semanticMatches = this.searchSemanticWithVector(
 					queryVec,
 					options.framework,

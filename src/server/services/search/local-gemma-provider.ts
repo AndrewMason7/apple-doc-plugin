@@ -32,6 +32,13 @@ function l2Normalize(values: ArrayLike<number>): Float32Array {
 export class LocalGemmaEmbeddingProvider implements EmbeddingProvider {
 	public readonly id = 'local-gguf' as const;
 	public readonly dimensions = 768;
+	/**
+	 * Measured with embeddinggemma-2 Q8_0 on Apple symbol text: on-topic pairs
+	 * score 0.688-0.719, unrelated pairs top out near 0.66. 0.68 keeps the
+	 * relevant band and drops the noise that Gemini's 0.65 floor let through.
+	 */
+	public readonly minSimilarity = 0.68;
+	public readonly minSimilarityPreferred = 0.62;
 	public readonly modelPath: string;
 
 	private llamaInstance: any = null;
