@@ -184,6 +184,23 @@ Override the model location with `APPLE_DOCS_EMBEDDING_MODEL_PATH`. Provider
 precedence: an available local GGUF wins; Gemini (API key or ADC) is the
 fallback; `APPLE_DOCS_EMBEDDING_PROVIDER=gemini` forces Gemini.
 
+### Truncating vector size (MRL)
+
+Gemini's embedding family supports Matryoshka truncation, and the API re-normalises
+truncated output, so direction — which is all cosine similarity uses — is preserved.
+Google's own MTEB numbers put 768 dims within ~0.2 points of 1536, at a quarter of the
+storage of the 3072 default:
+
+```bash
+APPLE_DOCS_EMBEDDING_DIMENSIONS=768   # 128 | 256 | 512 | 768 | 1024 | 1536 | 2048 | 3072
+npm run embed-index -- --force         # re-embed: existing vectors are the old shape
+```
+
+Changing the dimension count invalidates every stored vector (a 768-d query cannot be
+scored against a 3072-d corpus), so clear `semantic_items` or run `--force` and verify
+`get_version` before trusting results. Unsupported values are ignored rather than
+guessed, so you keep the native 3072 instead of writing incomparable vectors.
+
 The similarity floor is per-provider, not inherited from Gemini: the local GGUF
 uses **0.68** (0.62 when a caller prefers semantic matches), because measured on
 Apple symbol text, on-topic pairs score 0.688-0.719 while unrelated pairs top out
