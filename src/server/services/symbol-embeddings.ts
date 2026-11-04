@@ -18,6 +18,8 @@ export interface EmbedSymbolsOptions {
 	limit?: number;
 	/** Log cadence, in symbols. Default 250. */
 	batchSize?: number;
+	/** Re-embed symbols that already have a vector (use after changing doc text). */
+	force?: boolean;
 	onProgress?: (progress: {
 		done: number;
 		total: number;
@@ -40,9 +42,13 @@ export const semanticIdForSymbol = (symbolId: string): string =>
 	`sym-${symbolId}`;
 
 /**
- * Document text handed to the embedding model. Title and classification carry
- * the meaning when Apple has no abstract for a symbol, so they are always
- * present rather than being conditional filler.
+ * Document text handed to the embedding model.
+ *
+ * Apple's abstract IS the document — the provider already prefixes the title
+ * (`title: X | text: Y`), so adding a classification headline on top dilutes a
+ * short abstract and measurably lowers its cosine against intent-style queries
+ * (`task` fell from 0.7034 to 0.6725, dropping under the local floor). Only fall
+ * back to the headline when there is no abstract at all.
  */
 export function buildSymbolEmbeddingText(sym: {
 	title: string;
@@ -50,9 +56,9 @@ export function buildSymbolEmbeddingText(sym: {
 	framework: string;
 	abstract?: string | null;
 }): string {
-	const headline = `${sym.title} — ${sym.kind} in ${sym.framework}.`;
 	const abstract = (sym.abstract ?? '').trim();
-	return abstract ? `${headline} ${abstract}` : headline;
+	if (abstract) return abstract;
+	return `${sym.title} — ${sym.kind} in ${sym.framework}.`;
 }
 
 /**
@@ -102,10 +108,12 @@ export async function embedSymbols(
 	const candidates = selectEmbeddingCandidates(db, { all: options.all });
 	const existing = db.getSemanticItemIds();
 
-	let pending = candidates.filter(
-		(candidate) => !existing.has(semanticIdForSymbol(candidate.id)),
-	);
-	const skipped = candidates.length - pending.length;
+	let pending = options.force
+		? [...candidates]
+		: candidates.filter(
+				(candidate) => !existing.has(semanticIdForSymbol(candidate.id)),
+			);
+	const skipped = options.force ? 0 : candidates.length - pending.length;
 
 	if (typeof options.limit === 'number' && options.limit > 0) {
 		pending = pending.slice(0, options.limit);

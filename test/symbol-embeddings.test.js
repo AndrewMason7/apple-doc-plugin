@@ -49,18 +49,23 @@ const stubProvider = (dims = 768) => ({
 	},
 });
 
-test('buildSymbolEmbeddingText describes title, kind, framework and abstract', () => {
+test('buildSymbolEmbeddingText uses the abstract verbatim', () => {
+	const abstract = 'A description of a row or a column in a lazy grid.';
 	const text = buildSymbolEmbeddingText({
 		title: 'GridItem',
 		kind: 'struct',
 		framework: 'SwiftUI',
-		abstract: 'A description of a row or a column in a lazy grid.',
+		abstract,
 	});
 
-	assert.ok(text.includes('GridItem'));
-	assert.ok(/struct/.test(text));
-	assert.ok(/SwiftUI/.test(text));
-	assert.ok(/lazy grid/.test(text));
+	// The provider already prefixes `title: GridItem | text: ...`; adding a
+	// classification headline on top measurably lowered cosine scores, so the
+	// document text must be exactly Apple's abstract.
+	assert.strictEqual(text, abstract);
+	assert.ok(
+		!/struct in SwiftUI/.test(text),
+		'the classification headline must not be prepended to a real abstract',
+	);
 });
 
 test('buildSymbolEmbeddingText stays useful when the abstract is missing', () => {
@@ -73,6 +78,7 @@ test('buildSymbolEmbeddingText stays useful when the abstract is missing', () =>
 
 	assert.ok(text.includes('GridItem'));
 	assert.ok(/struct/.test(text));
+	assert.ok(/SwiftUI/.test(text));
 	assert.ok(
 		!/undefined|null|\|\s*$/.test(text),
 		`no empty placeholder should leak into the document text, got: ${text}`,
@@ -251,4 +257,31 @@ test('getMemberSymbolsForEnrichment targets undocumented members of reachable fr
 	assert.deepStrictEqual(titles, ['task']);
 	assert.strictEqual(members[0].framework, 'SwiftUI');
 	assert.strictEqual(members[0].kind, 'method');
+});
+
+test('force re-embeds rows that already have a vector', async () => {
+	const db = makeDb();
+	for (let i = 0; i < 3; i++) {
+		addSymbol(db, {
+			id: `/documentation/swiftui/type${i}`,
+			title: `Type${i}`,
+			path: `/documentation/swiftui/type${i}`,
+			abstract: `Type ${i} does something useful.`,
+		});
+	}
+
+	const provider = stubProvider();
+	await embedSymbols(db, provider, {});
+	const before = provider.calls;
+
+	// Resume semantics: nothing to do.
+	const skipped = await embedSymbols(db, provider, {});
+	assert.strictEqual(skipped.embedded, 0);
+	assert.strictEqual(provider.calls, before);
+
+	// After a document-text change the vectors are stale, so they must be redone.
+	const forced = await embedSymbols(db, provider, { force: true });
+	assert.strictEqual(forced.embedded, 3);
+	assert.strictEqual(forced.skipped, 0);
+	assert.strictEqual(provider.calls, before + 3);
 });

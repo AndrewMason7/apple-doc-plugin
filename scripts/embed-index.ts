@@ -10,6 +10,7 @@
  *   npm run embed-index -- --enrich           # fetch missing abstracts first
  *   npm run embed-index -- --enrich --enrich-scope members   # document members too
  *   npm run embed-index -- --limit 25         # smoke test
+ *   npm run embed-index -- --force            # re-embed (after text/prefix changes)
  *   npm run embed-index -- --all               # every symbol (slow)
  *   npm run embed-index -- --all --limit 5000  # exhaustive but bounded
  */
@@ -39,6 +40,8 @@ const flagValue = (flag: string): number | undefined => {
 const ALL = hasFlag('--all');
 const ENRICH = hasFlag('--enrich');
 const LIMIT = flagValue('--limit');
+/** Re-embed existing rows (needed after a document-text change). */
+const FORCE = hasFlag('--force');
 /** Which rows the --enrich pass walks: default selection, or member symbols. */
 const ENRICH_SCOPE = args.includes('--enrich-scope')
 	? (args[args.indexOf('--enrich-scope') + 1] ?? 'candidates')
@@ -197,6 +200,7 @@ async function main(): Promise<void> {
 	const started = Date.now();
 	const result = await embedSymbols(db, provider, {
 		all: ALL,
+		force: FORCE,
 		limit: LIMIT,
 		batchSize: BATCH,
 		onProgress: ({ done, total, embedded }) => {
