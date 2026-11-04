@@ -1,0 +1,34 @@
+name: apple-doc-plugin
+label: Apple Developer Documentation
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+author: Andrew Mason <https://github.com/AndrewMason7>
+license: MIT
+homepage: https://github.com/AndrewMason7/apple-doc-plugin
+repository: https://github.com/AndrewMason7/apple-doc-plugin.git
+description: >
+  Instant offline access to 65,000+ Apple Developer Documentation symbols with
+  smart SQLite FTS5 search, wildcard matching, multimodal UI layout previews,
+  and DocC markdown extraction.
+tags:
+  - apple
+  - ios
+  - macos
+  - swiftui
+  - swift
+  - documentation
+  - mcp
+platforms:
+  - macos
+  - linux
+external_dependencies:
+  - name: node
+    install_hint: "Node.js >= 22 is required. Install via brew install node or fnm install 22."
+provides_tools:
+  - search_symbols
+  - semantic_search
+  - get_documentation
+  - discover_technologies
+  - get_version
+  - index_info
