@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { GoogleAuth } from 'google-auth-library';
 import type { EmbeddingProvider } from './embedding-provider.js';
+import { withRetry } from './retry.js';
 
 export interface SemanticMatch {
 	id: string;
@@ -197,6 +198,23 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 		return null;
 	}
 
+	/** Sleep until the breaker closes, so a bulk run waits rather than failing fast. */
+	private async waitForCircuitClosed(maxWaitMs = 40_000): Promise<void> {
+		const started = Date.now();
+		while (this.isCircuitOpen()) {
+			if (Date.now() - started > maxWaitMs) return;
+			await new Promise((resolve) => setTimeout(resolve, 1_000));
+		}
+	}
+
+	/** 429, 5xx, timeouts and network errors are worth retrying; 4xx are not. */
+	private isRetryableError(error: unknown): boolean {
+		if (!axios.isAxiosError(error)) return true;
+		const status = error.response?.status;
+		if (!status) return true; // timeout / ECONNRESET / DNS
+		return status === 429 || status >= 500;
+	}
+
 	isCircuitOpen(): boolean {
 		return Date.now() < this.circuitOpenUntil;
 	}
@@ -375,6 +393,97 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 			this.handleApiError(err, 'embedDocument');
 			return null;
 		}
+	}
+
+	/**
+	 * Batched document embedding via :batchEmbedContents (max 100 per request).
+	 * Failures are returned as nulls rather than thrown, so the caller can retry
+	 * individual items; a chunk-level failure leaves the whole chunk null.
+	 */
+	async embedDocuments(
+		items: Array<{ content: string; title?: string }>,
+	): Promise<Array<Float32Array | null>> {
+		const results: Array<Float32Array | null> = new Array(items.length).fill(null);
+		if (items.length === 0) return results;
+		if (this.isCircuitOpen()) return results;
+
+		const authHeaders = await this.getAuthHeaders();
+		if (!authHeaders) return results;
+
+		const outputDims = this.requestedDimensions();
+		const chunkSize = 100;
+
+		for (let start = 0; start < items.length; start += chunkSize) {
+			const chunk = items.slice(start, start + chunkSize);
+			const requests = chunk.map((item) => {
+				const formattedText = this.isEmbedding2()
+					? GeminiSemanticSearch.prepareDocument(item.content, item.title)
+					: item.content.trim();
+
+				const request: Record<string, unknown> = {
+					model: this.modelName,
+					content: { parts: [{ text: formattedText }] },
+					output_dimensionality: outputDims,
+				};
+
+				if (!this.isEmbedding2()) {
+					request.task_type = 'RETRIEVAL_DOCUMENT';
+					if (item.title && item.title.trim().length > 0) {
+						request.title = item.title.trim();
+					}
+				}
+				return request;
+			});
+
+			try {
+				const response = await withRetry(
+					async () => {
+						await this.waitForCircuitClosed();
+						return axios.post<{
+							embeddings?: Array<{ values?: number[] }>;
+						}>(
+							`${this.baseUrl}/${this.modelName}:batchEmbedContents`,
+							{ requests },
+							{
+								headers: {
+									'Content-Type': 'application/json',
+									...authHeaders,
+								},
+								timeout: 30000,
+							},
+						);
+					},
+					{
+						attempts: 5,
+						baseDelayMs: 1_000,
+						maxDelayMs: 20_000,
+						shouldRetry: (error) => this.isRetryableError(error),
+						onRetry: (attempt, error, delayMs) => {
+							const status = axios.isAxiosError(error)
+								? error.response?.status
+								: undefined;
+							console.error(
+								`   ⚠ batch retry ${attempt}/5 after HTTP ${status ?? 'network error'} (waiting ${delayMs}ms)`,
+							);
+							this.handleApiError(error, 'embedDocuments');
+						},
+					},
+				);
+
+				const embeddings = response.data?.embeddings ?? [];
+				embeddings.forEach((embedding, offset) => {
+					const vector = this.embeddingFromValues(embedding?.values, outputDims);
+					if (vector && vector.length === this.dimensions) {
+						results[start + offset] = vector;
+					}
+				});
+			} catch (err) {
+				this.handleApiError(err, 'embedDocuments');
+				// Leave the chunk as nulls: the caller retries per item.
+			}
+		}
+
+		return results;
 	}
 
 	async embedMultimodal(

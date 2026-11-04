@@ -12,6 +12,15 @@ export interface EmbeddingProvider {
 	isAvailable(): boolean;
 	embedQuery(text: string): Promise<Float32Array | null>;
 	embedDocument(content: string, title?: string): Promise<Float32Array | null>;
+	/**
+	 * Optional batched document embedding. Providers with a batch endpoint
+	 * (Gemini exposes batchEmbedContents) implement this so a 19k backfill
+	 * costs ~200 requests instead of 19k. A null in the result means that slot
+	 * failed and the caller should retry it individually.
+	 */
+	embedDocuments?(
+		items: Array<{ content: string; title?: string }>,
+	): Promise<Array<Float32Array | null>>;
 }
 
 export function isEmbeddingProvider(obj: unknown): obj is EmbeddingProvider {

@@ -122,24 +122,7 @@ export async function embedSymbols(
 	let embedded = 0;
 	let failed = 0;
 
-	for (const [index, candidate] of pending.entries()) {
-		const text = buildSymbolEmbeddingText(candidate);
-		let vector: Float32Array | null = null;
-		try {
-			vector = await provider.embedDocument(text, candidate.title);
-		} catch (err) {
-			failed++;
-			console.error(
-				`   ⚠ ${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
-			);
-			continue;
-		}
-
-		if (!vector || vector.length !== provider.dimensions) {
-			failed++;
-			continue;
-		}
-
+	const persist = (candidate: EmbeddingCandidate, vector: Float32Array): void => {
 		db.insertSemanticItem({
 			id: semanticIdForSymbol(candidate.id),
 			framework: candidate.framework,
@@ -149,11 +132,94 @@ export async function embedSymbols(
 			path: candidate.path,
 			embedding: vector,
 		});
-		embedded++;
+	};
 
-		const done = index + 1;
+	const report = (done: number): void => {
 		if (done % batchSize === 0 || done === pending.length) {
 			options.onProgress?.({ done, total: pending.length, embedded });
+		}
+	};
+
+	const canBatch =
+		typeof provider.embedDocuments === 'function' &&
+		provider.id !== 'local-gguf';
+
+	if (canBatch) {
+		// Providers with a batch endpoint: one request per API_BATCH_LIMIT items.
+		const API_BATCH_LIMIT = 100;
+		let done = 0;
+
+		for (let start = 0; start < pending.length; start += API_BATCH_LIMIT) {
+			const chunk = pending.slice(start, start + API_BATCH_LIMIT);
+			let vectors: Array<Float32Array | null> = new Array(chunk.length).fill(
+				null,
+			);
+
+			try {
+				vectors =
+					(await provider.embedDocuments!(
+						chunk.map((candidate) => ({
+							content: buildSymbolEmbeddingText(candidate),
+							title: candidate.title,
+						})),
+					)) ?? vectors;
+			} catch (err) {
+				console.error(
+					`   ⚠ batch failed (${chunk.length} items): ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+
+			for (const [offset, candidate] of chunk.entries()) {
+				let vector = vectors[offset] ?? null;
+
+				// Retry a failed slot individually so one bad item cannot sink a batch.
+				if (!vector || vector.length !== provider.dimensions) {
+					try {
+						vector = await provider.embedDocument(
+							buildSymbolEmbeddingText(candidate),
+							candidate.title,
+						);
+					} catch (err) {
+						vector = null;
+						console.error(
+							`   ⚠ ${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					}
+				}
+
+				if (!vector || vector.length !== provider.dimensions) {
+					failed++;
+				} else {
+					persist(candidate, vector);
+					embedded++;
+				}
+
+				done++;
+				report(done);
+			}
+		}
+	} else {
+		for (const [index, candidate] of pending.entries()) {
+			const text = buildSymbolEmbeddingText(candidate);
+			let vector: Float32Array | null = null;
+			try {
+				vector = await provider.embedDocument(text, candidate.title);
+			} catch (err) {
+				failed++;
+				console.error(
+					`   ⚠ ${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
+				);
+				continue;
+			}
+
+			if (!vector || vector.length !== provider.dimensions) {
+				failed++;
+				continue;
+			}
+
+			persist(candidate, vector);
+			embedded++;
+			report(index + 1);
 		}
 	}
 
