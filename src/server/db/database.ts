@@ -400,6 +400,40 @@ export class AppleDocsDB {
 		}>;
 	}
 
+	/**
+	 * Members (methods, properties, initializers…) of the frameworks people
+	 * actually reach for, that still have no abstract. Cheap ingestion only ever
+	 * documented top-level types, which leaves conceptual queries about view
+	 * modifiers with nothing to match against.
+	 */
+	getMemberSymbolsForEnrichment(frameworks: string[] = ['SwiftUI', 'UIKit']): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		const frameworkPlaceholders = frameworks.map(() => '?').join(', ');
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         WHERE framework IN (${frameworkPlaceholders})
+           AND lower(kind) IN ('method', 'property', 'init', 'subscript', 'case', 'op', 'func', 'var')
+           AND (abstract IS NULL OR abstract = '')
+         ORDER BY framework ASC, path ASC`,
+			)
+			.all(...frameworks) as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
 	/** Ids already present in the semantic layer — the resume key set. */
 	getSemanticItemIds(): Set<string> {
 		const rows = this.db

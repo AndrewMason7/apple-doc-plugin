@@ -211,3 +211,44 @@ test('updateSymbolAbstract backfills an abstract, making the symbol embeddable',
 	assert.match(candidates[0].abstract, /drag-and-drop/);
 	assert.strictEqual(db.countUnknownKind(), 0, 'kind must remain classified');
 });
+
+test('getMemberSymbolsForEnrichment targets undocumented members of reachable frameworks only', () => {
+	const db = makeDb();
+	// Documented primary type: already covered by the default embedding pass.
+	addSymbol(db, { id: '/documentation/swiftui/griditem', title: 'GridItem', abstract: 'A grid row.' });
+	// Undocumented SwiftUI member: the thing conceptual queries miss.
+	addSymbol(db, {
+		id: '/documentation/swiftui/view/task',
+		title: 'task',
+		kind: 'method',
+		abstract: '',
+		isPrimaryType: false,
+		path: '/documentation/swiftui/view/task',
+	});
+	// Already documented member: nothing to fetch.
+	addSymbol(db, {
+		id: '/documentation/swiftui/view/onappear',
+		title: 'onAppear',
+		kind: 'method',
+		abstract: 'Adds an action to perform before this view appears.',
+		isPrimaryType: false,
+		path: '/documentation/swiftui/view/onappear',
+	});
+	// Undocumented member outside the default scope.
+	addSymbol(db, {
+		id: '/documentation/foundation/urlsession/datatask',
+		title: 'dataTask',
+		kind: 'method',
+		abstract: '',
+		isPrimaryType: false,
+		path: '/documentation/foundation/urlsession/datatask',
+		framework: 'Foundation',
+	});
+
+	const members = db.getMemberSymbolsForEnrichment();
+	const titles = members.map((m) => m.title);
+
+	assert.deepStrictEqual(titles, ['task']);
+	assert.strictEqual(members[0].framework, 'SwiftUI');
+	assert.strictEqual(members[0].kind, 'method');
+});

@@ -8,6 +8,7 @@
  *
  *   npm run embed-index                       # primary types + documented symbols
  *   npm run embed-index -- --enrich           # fetch missing abstracts first
+ *   npm run embed-index -- --enrich --enrich-scope members   # document members too
  *   npm run embed-index -- --limit 25         # smoke test
  *   npm run embed-index -- --all               # every symbol (slow)
  *   npm run embed-index -- --all --limit 5000  # exhaustive but bounded
@@ -38,6 +39,10 @@ const flagValue = (flag: string): number | undefined => {
 const ALL = hasFlag('--all');
 const ENRICH = hasFlag('--enrich');
 const LIMIT = flagValue('--limit');
+/** Which rows the --enrich pass walks: default selection, or member symbols. */
+const ENRICH_SCOPE = args.includes('--enrich-scope')
+	? (args[args.indexOf('--enrich-scope') + 1] ?? 'candidates')
+	: 'candidates';
 const BATCH = flagValue('--batch') ?? 250;
 
 const CONCURRENCY = 6;
@@ -116,7 +121,10 @@ const mapWithConcurrency = async <T, R>(
 };
 
 async function enrichAbstracts(db: AppleDocsDB): Promise<void> {
-	const candidates = selectEmbeddingCandidates(db, { all: ALL });
+	const candidates =
+		ENRICH_SCOPE === 'members'
+			? db.getMemberSymbolsForEnrichment()
+			: selectEmbeddingCandidates(db, { all: ALL });
 	const missing = candidates.filter((candidate) => !candidate.abstract.trim());
 
 	if (LIMIT) missing.splice(LIMIT);
@@ -126,7 +134,7 @@ async function enrichAbstracts(db: AppleDocsDB): Promise<void> {
 	}
 
 	console.error(
-		`📝 Abstracts: fetching ${missing.length} missing abstract(s) from Apple DocC...`,
+		`📝 Abstracts: fetching ${missing.length} missing abstract(s) from Apple DocC (scope: ${ENRICH_SCOPE})...`,
 	);
 
 	let filled = 0;
