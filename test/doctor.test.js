@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,20 +10,40 @@ import {
 } from '../dist/server/db/database.js';
 import { runDoctor } from '../dist/server/services/doctor.js';
 
+const ALL_CHECK_IDS = [
+	'node_version',
+	'database_file',
+	'database_readable',
+	'fts_index',
+	'kind_integrity',
+	'attribution_integrity',
+	'provider_available',
+	'semantic_layer',
+	'dimension_consistency',
+	'snapshot_freshness',
+];
+
+// One temp root for the whole file, removed once every test has run.
+const TEMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-doctor-'));
+after(() => fs.rmSync(TEMP_DIR, { recursive: true, force: true }));
+
+let dbCounter = 0;
+
+const BASE_PROVIDER = {
+	id: 'unavailable',
+	dimensions: 0,
+	isAvailable: () => false,
+	embedQuery: async () => null,
+	embedDocument: async () => null,
+};
+
 const makeContext = (overrides = {}) => {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-doctor-'));
-	const db = new AppleDocsDB(path.join(dir, 'test.db'));
+	const db = new AppleDocsDB(path.join(TEMP_DIR, `test-${dbCounter++}.db`));
 	return {
 		db,
 		dbPath: db.dbPath,
 		nodeVersion: 'v22.0.0',
-		provider: {
-			id: 'unavailable',
-			dimensions: 0,
-			isAvailable: () => false,
-			embedQuery: async () => null,
-			embedDocument: async () => null,
-		},
+		provider: { ...BASE_PROVIDER },
 		...overrides,
 	};
 };
@@ -40,12 +60,15 @@ const addSymbol = (db, i, over = {}) =>
 		isPrimaryType: true,
 	});
 
-test('a healthy empty index reports ok checks and no failures', () => {
+const idList = (report) => report.checks.map((c) => c.id);
+
+test('a healthy single-symbol index reports all ten checks ok', () => {
 	const ctx = makeContext();
 	addSymbol(ctx.db, 0);
 
 	const report = runDoctor(ctx);
 	assert.strictEqual(report.ok, true, 'warns are not failures');
+	assert.deepStrictEqual(idList(report), ALL_CHECK_IDS);
 
 	const byId = Object.fromEntries(report.checks.map((c) => [c.id, c]));
 	assert.strictEqual(byId['node_version'].status, 'ok');
@@ -54,9 +77,14 @@ test('a healthy empty index reports ok checks and no failures', () => {
 	assert.strictEqual(byId['fts_index'].status, 'ok');
 	assert.strictEqual(byId['kind_integrity'].status, 'ok');
 	assert.strictEqual(byId['attribution_integrity'].status, 'ok');
+	assert.match(
+		byId['database_file'].detail,
+		/\d KB\)$/,
+		'sub-megabyte indexes must not render as 0 MB',
+	);
 });
 
-test('an unavailable provider is a warning, not a failure', () => {
+test('an unavailable provider is a warning that names a runnable command', () => {
 	const ctx = makeContext();
 	addSymbol(ctx.db, 0);
 
@@ -64,14 +92,16 @@ test('an unavailable provider is a warning, not a failure', () => {
 		(c) => c.id === 'provider_available',
 	);
 	assert.strictEqual(provider.status, 'warn');
-	assert.match(provider.nextStep, /embed-index/, 'must name the exact command');
-	assert.match(provider.nextStep, /APPLE_DOCS_EMBEDDING|GEMINI_API_KEY/);
+	assert.match(
+		provider.nextStep,
+		/^export GEMINI_API_KEY=\S+ && npm run embed-index$/,
+	);
 });
 
 test('vectors below the hybrid threshold warn and point at embed-index', () => {
 	const ctx = makeContext({
 		provider: {
-			...makeContext().provider,
+			...BASE_PROVIDER,
 			id: 'gemini',
 			dimensions: 768,
 			isAvailable: () => true,
@@ -97,7 +127,7 @@ test('vectors below the hybrid threshold warn and point at embed-index', () => {
 test('a vector width mismatch is a failure with the re-embed command', () => {
 	const ctx = makeContext({
 		provider: {
-			...makeContext().provider,
+			...BASE_PROVIDER,
 			id: 'gemini',
 			dimensions: 1536,
 			isAvailable: () => true,
@@ -121,10 +151,70 @@ test('a vector width mismatch is a failure with the re-embed command', () => {
 	assert.match(check.nextStep, /--force/);
 });
 
-test('a missing database file is a failure that names build:index', () => {
+test('a missing database file still yields all ten checks', () => {
 	const ctx = makeContext({ dbPath: '/nonexistent/apple-docs.db' });
 
-	const check = runDoctor(ctx).checks.find((c) => c.id === 'database_file');
-	assert.strictEqual(check.status, 'fail');
-	assert.match(check.nextStep, /npm run build:index/);
+	const report = runDoctor(ctx);
+	const byId = Object.fromEntries(report.checks.map((c) => [c.id, c]));
+
+	assert.deepStrictEqual(idList(report), ALL_CHECK_IDS);
+	assert.strictEqual(byId['database_file'].status, 'fail');
+	assert.match(byId['database_file'].nextStep, /npm run build:index/);
+
+	for (const id of ALL_CHECK_IDS.slice(2)) {
+		assert.strictEqual(
+			byId[id].status,
+			'warn',
+			`${id} must be skipped, not missing`,
+		);
+		assert.match(byId[id].detail, /skipped — no readable index/);
+		assert.match(byId[id].nextStep, /npm run build:index/);
+	}
+});
+
+test('broken inputs yield a report instead of an exception', () => {
+	const ctx = makeContext();
+	addSymbol(ctx.db, 0);
+
+	const throwingProvider = {
+		...BASE_PROVIDER,
+		id: 'exploding',
+		isAvailable: () => {
+			throw new Error('provider exploded');
+		},
+	};
+	const providerReport = runDoctor({ ...ctx, provider: throwingProvider });
+	assert.deepStrictEqual(idList(providerReport), ALL_CHECK_IDS);
+	const provider = providerReport.checks.find(
+		(c) => c.id === 'provider_available',
+	);
+	assert.strictEqual(provider.status, 'fail');
+	assert.match(provider.detail, /provider exploded/);
+
+	const oldNodeReport = runDoctor({ ...ctx, nodeVersion: 'v20.11.0' });
+	const node = oldNodeReport.checks.find((c) => c.id === 'node_version');
+	assert.strictEqual(node.status, 'fail');
+	assert.strictEqual(node.nextStep, 'brew install node');
+
+	// A path under a regular file cannot be stat'ed: ENOTDIR.
+	const unstatable = path.join(ctx.dbPath, 'nested', 'apple-docs.db');
+	const brokenReport = runDoctor({ ...ctx, dbPath: unstatable });
+	assert.deepStrictEqual(idList(brokenReport), ALL_CHECK_IDS);
+	assert.strictEqual(brokenReport.ok, false);
+	assert.strictEqual(
+		brokenReport.checks.find((c) => c.id === 'database_file').status,
+		'fail',
+	);
+});
+
+test('a future-dated build stamp clamps to zero days and stays ok', () => {
+	const ctx = makeContext();
+	addSymbol(ctx.db, 0);
+	ctx.db.setMeta('built_at', new Date(Date.now() + 86_400_000).toISOString());
+
+	const check = runDoctor(ctx).checks.find(
+		(c) => c.id === 'snapshot_freshness',
+	);
+	assert.strictEqual(check.status, 'ok');
+	assert.match(check.detail, /^0 days old/);
 });
