@@ -68,9 +68,9 @@ const SYMBOL_KIND_ALIASES: Record<string, string> = {
 	article: 'article',
 	collection: 'collection',
 	'ui preview': 'ui_preview',
-	'guide': 'guide',
-	'tutorial': 'tutorial',
-	'overview': 'overview',
+	guide: 'guide',
+	tutorial: 'tutorial',
+	overview: 'overview',
 	'sample code': 'sampleCode',
 	samplecode: 'sampleCode',
 };
@@ -116,7 +116,6 @@ const PRIMARY_TYPE_KINDS = ['struct', 'class', 'protocol', 'enum', 'macro'];
 
 export const isPrimaryTypeKind = (kind: string): boolean =>
 	PRIMARY_TYPE_KINDS.includes(kind.toLowerCase());
-
 
 function extractAbstract(abstractObj: any): string {
 	if (!abstractObj) return '';

@@ -117,7 +117,6 @@ const normalizeKindTargets = (symbolType: string): string[] => {
 	return Array.from(new Set(targets));
 };
 
-
 const formatMatch = (match: SearchMatch): string[] => {
 	const platforms =
 		match.platforms.length > 0 ? match.platforms.join(', ') : 'All platforms';
@@ -249,7 +248,9 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 					const droppedUnknown = unknownRequested
 						? 0
 						: results.filter(
-								(r) => !targetKinds.includes(displayKind(r.kind)) && isUnknownKind(r.kind),
+								(r) =>
+									!targetKinds.includes(displayKind(r.kind)) &&
+									isUnknownKind(r.kind),
 							).length;
 					if (droppedUnknown > 0) {
 						kindNotice = `${droppedUnknown} result(s) with unknown kind were excluded by this filter — the index lacks kind data for them (run "npm run repair-index -- --apply" to backfill).`;

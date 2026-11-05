@@ -403,7 +403,9 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 	async embedDocuments(
 		items: Array<{ content: string; title?: string }>,
 	): Promise<Array<Float32Array | null>> {
-		const results: Array<Float32Array | null> = new Array(items.length).fill(null);
+		const results: Array<Float32Array | null> = new Array(items.length).fill(
+			null,
+		);
 		if (items.length === 0) return results;
 		if (this.isCircuitOpen()) return results;
 
@@ -472,7 +474,10 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 
 				const embeddings = response.data?.embeddings ?? [];
 				embeddings.forEach((embedding, offset) => {
-					const vector = this.embeddingFromValues(embedding?.values, outputDims);
+					const vector = this.embeddingFromValues(
+						embedding?.values,
+						outputDims,
+					);
 					if (vector && vector.length === this.dimensions) {
 						results[start + offset] = vector;
 					}

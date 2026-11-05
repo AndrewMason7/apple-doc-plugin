@@ -104,7 +104,8 @@ export async function embedSymbols(
 		);
 	}
 
-	const batchSize = options.batchSize && options.batchSize > 0 ? options.batchSize : 250;
+	const batchSize =
+		options.batchSize && options.batchSize > 0 ? options.batchSize : 250;
 	const candidates = selectEmbeddingCandidates(db, { all: options.all });
 	const existing = db.getSemanticItemIds();
 
@@ -122,7 +123,10 @@ export async function embedSymbols(
 	let embedded = 0;
 	let failed = 0;
 
-	const persist = (candidate: EmbeddingCandidate, vector: Float32Array): void => {
+	const persist = (
+		candidate: EmbeddingCandidate,
+		vector: Float32Array,
+	): void => {
 		db.insertSemanticItem({
 			id: semanticIdForSymbol(candidate.id),
 			framework: candidate.framework,
