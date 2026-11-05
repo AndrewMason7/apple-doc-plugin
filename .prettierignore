@@ -1,0 +1,2 @@
+# Prettier has no parser for dotless env templates (.env.example).
+.env.example
