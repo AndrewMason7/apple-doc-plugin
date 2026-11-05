@@ -26,6 +26,22 @@ import type {
 	KindCount,
 } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
+import { runDoctor } from '../services/doctor.js';
+import type { EmbeddingProvider } from '../services/search/embedding-provider.js';
+
+/**
+ * `index_info` is read-only and runs on every call inside the MCP server, so it
+ * must never construct a real embedding provider (that can load a 300 MB GGUF).
+ * When the caller has no live search engine we hand the doctor an honest
+ * "nothing configured" stub instead.
+ */
+const UNAVAILABLE_PROVIDER: EmbeddingProvider = {
+	id: 'unavailable',
+	dimensions: 0,
+	isAvailable: () => false,
+	embedQuery: async () => null,
+	embedDocument: async () => null,
+};
 
 /**
  * Frameworks with fewer symbols than this are cross-reference targets (a
@@ -172,6 +188,25 @@ export const buildIndexInfoHandler =
 				? 'OK — every row is attributed to the framework named by its own path.'
 				: `DEGRADED — ${meta.frameworkMismatchCount} rows are attributed to a framework that contradicts their path, producing cross-framework false positives and framework-scoped false negatives. Run "npm run repair-index -- --apply" to re-attribute them.`;
 
+		// Same checks as `npm run doctor`, so the tool and the CLI cannot drift.
+		// Cheap by design: `runDoctor` is pure apart from existsSync/statSync.
+		const db = context?.db;
+		const doctor = db
+			? runDoctor({
+					db,
+					dbPath: db.dbPath,
+					provider:
+						context.searchEngine?.embeddingProvider ?? UNAVAILABLE_PROVIDER,
+					nodeVersion: process.version,
+				})
+			: undefined;
+
+		const doctorResult = doctor
+			? doctor.failures === 0
+				? `all checks passed (${doctor.warnings} warning${doctor.warnings === 1 ? '' : 's'})`
+				: `${doctor.failures} failure(s) — run \`npm run doctor\``
+			: 'unavailable (no database)';
+
 		const text = `# Apple Docs Index Health
 
 **Server:** ${meta.serverName} v${meta.version}
@@ -198,6 +233,9 @@ ${kindLines.join('\n')}
 • **Framework/path mismatches:** ${meta.frameworkMismatchCount}
 • **Kind filter reliability:** ${filterReliability}
 • **Framework attribution:** ${attribution}
+
+## Doctor
+• **Result:** ${doctorResult}
 
 ## Recommended Actions
 ${meta.unknownKindCount > 0 || meta.frameworkMismatchCount > 0 ? '• `npm run repair-index -- --apply` to fix kinds and attribution in place' : '• No repair required'}

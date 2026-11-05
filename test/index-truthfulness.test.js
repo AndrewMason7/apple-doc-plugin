@@ -463,3 +463,19 @@ test('insertSymbol never downgrades a classified kind to an unclassified one', (
 		'a classified pass must upgrade an unclassified row',
 	);
 });
+
+// ---------------------------------------------------------------------------
+// Fix E: index_info must share the CLI's doctor checks, not re-derive them.
+// ---------------------------------------------------------------------------
+
+test('index_info surfaces doctor failures so the tool and CLI cannot disagree', async () => {
+	const { db } = makeDb();
+	addSymbol(db);
+
+	const infoOut = textOf(await buildIndexInfoHandler({ db })());
+	assert.match(
+		infoOut,
+		/Doctor/i,
+		'index_info must include the shared doctor summary',
+	);
+});
