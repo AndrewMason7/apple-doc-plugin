@@ -25,7 +25,7 @@ No API key? It still works offline without a key. That is the point.
 | framework attribution | 0 rows contradicting their own path                    |
 | semantic vectors      | 19,473 at 768 dims (Gemini `gemini-embedding-2`)       |
 | search mode           | Hybrid — verified from the running server, not assumed |
-| tests                 | 154 (151 pass, 3 skipped)                              |
+| tests                 | 193 (190 pass, 3 skipped)                              |
 
 Status claims here are measured, not aspirational: `get_version` reports the
 search mode it can actually serve, and `index_info` reports the classification
@@ -272,9 +272,11 @@ npm run embed-index -- --force         # re-embed: existing vectors are the old 
 ```
 
 Changing the dimension count invalidates every stored vector (a 768-d query cannot be
-scored against a 3072-d corpus), so clear `semantic_items` or run `--force` and verify
-`get_version` before trusting results. Unsupported values are ignored rather than
-guessed, so you keep the configured width instead of writing incomparable vectors.
+scored against a 3072-d corpus), so clear `semantic_items` or run `--force`, then verify
+with `npm run doctor` — the `dimension_consistency` check compares the stored width with
+the provider's. `get_version` reports the search mode, not the width. Unsupported values
+are ignored rather than guessed, so a bad value falls back to the **768** default instead
+of writing incomparable vectors.
 
 The similarity floor is per-provider, not inherited from Gemini: the local GGUF
 uses **0.68** (0.62 when a caller prefers semantic matches), because measured on
@@ -320,7 +322,9 @@ Both counts are reported by the `index_info` tool under **Index Health**.
 `Search Capability` reports `Lexical only` until at least **100** semantic items
 exist, because the hybrid engine refuses to fuse vectors below that threshold.
 A non-empty `semantic_items` table is _not_ the same claim as hybrid search, and
-the status line says so.
+the status line says so. It also names a stored/query width mismatch instead of
+claiming hybrid: 3072-d vectors cannot be scored against 768-d queries, so the
+semantic pass is skipped (one warning, not one per row) until you re-embed.
 
 `symbolType` filters never silently relax: if a filter matches nothing, the
 response states that the results are **UNFILTERED**. Rows without a classified
@@ -355,6 +359,7 @@ apple-doc-plugin/
 ├── scripts/build-index.ts    # corpus rebuild
 ├── scripts/repair-index.ts   # in-place kind + attribution repair
 ├── scripts/embed-index.ts    # symbol vector backfill (resumable)
+├── scripts/doctor.ts         # ten-check health report (exit 1 on failure)
 ├── src/
 │   ├── index.ts              # stdio MCP entry
 │   ├── apple-client/         # HTTP + DocC AST → Markdown
@@ -370,9 +375,10 @@ apple-doc-plugin/
 ```bash
 npm install
 npm run build
-npm test              # Node native runner; currently 154 tests
+npm test              # Node native runner; currently 193 tests
 npm run check         # tsc --noEmit + prettier
 npm run format
+npm run doctor        # ten health checks; exits 1 on a failure
 npm run build:index   # rebuild the snapshot (network)
 npm run repair-index  # fix kinds + attribution in place (dry run; --apply to write)
 npm run embed-index   # build/refresh the symbol vector layer (resumable)
