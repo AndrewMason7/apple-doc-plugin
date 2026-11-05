@@ -33,6 +33,39 @@ defects that degrade filtering. How this state was reached — including three
 hypotheses that measurement rejected — is recorded in
 [docs/SESSION-2026-11-04-semantic-search.md](docs/SESSION-2026-11-04-semantic-search.md).
 
+## Quickstart (5 minutes)
+
+```bash
+git clone https://github.com/AndrewMason7/apple-doc-plugin.git
+cd apple-doc-plugin
+npm install && npm run build     # ~1 min; better-sqlite3 compiles once
+npm run doctor                   # ← the only command you need to trust
+```
+
+`doctor` prints one line per concern and, when something is off, the exact
+command that fixes it:
+
+```
+✔ Node.js                v24.22.2
+✔ Index file             /…/data/apple-docs.db (108.0 MB)
+✔ Symbols                65787 rows
+✔ FTS index              65787 rows
+✔ Symbol kinds           every row classified
+✔ Framework attribution  consistent with paths
+✔ Embedding provider     gemini (768-d)
+✔ Semantic layer         19473 vectors (threshold 100)
+✔ Vector dimensions      768-d
+✔ Snapshot age           1 day old (from the index file timestamp)
+
+All checks passed.
+```
+
+- Exit code **0** = usable. **1** = a check failed, and the failing line names the fix.
+- `npm run doctor -- --json` prints the same report as JSON for scripting; add `--strict` to exit 1 on warnings too.
+- **No API key is fine.** Without a provider, search stays lexical and the provider row only warns. Set `GEMINI_API_KEY` (or point `APPLE_DOCS_EMBEDDING_MODEL_PATH` at the offline GGUF) and run `npm run embed-index` to add conceptual search.
+
+Then wire it into your agent: `hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git` (or `agy plugin install .`), restart the client, and ask it an Apple API question. If any row is ⚠ or ✖, [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) maps every check to its fix.
+
 ## Why this exists
 
 Coding agents hallucinate deprecated Apple APIs. Live doc scrapers are accurate until the CDN rate-limits you. This repo keeps a local index for the hot path and only hits Apple or Gemini when it has to.
