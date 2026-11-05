@@ -77,6 +77,31 @@ test('--json emits a parseable report and no icons', async () => {
 	const parsed = JSON.parse(printed);
 	assert.strictEqual(parsed.ok, true);
 	assert.ok(Array.isArray(parsed.checks));
+	// The name promises 'no icons': assert the absence, or an implementation
+	// that leaks the human formatter into --json would still pass.
+	assert.ok(
+		!/[✔⚠✖]/.test(printed),
+		'--json output must not contain status icons',
+	);
+});
+
+test('runDoctorCli exits 1 when the index exists but cannot be opened', async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-cli-bad-'));
+	const dbPath = path.join(dir, 'apple-docs.db');
+	fs.writeFileSync(dbPath, 'this is not a sqlite database');
+
+	let printed = '';
+	const code = await runDoctorCli({
+		argv: [],
+		dbPath,
+		provider: unavailable,
+		nodeVersion: 'v22.0.0',
+		print: (s) => (printed += s),
+	});
+
+	assert.strictEqual(code, 1, 'a corrupt index must not exit 0');
+	assert.match(printed, /✖ Symbols/);
+	assert.doesNotMatch(printed, /All checks passed/);
 });
 
 test('--strict turns warnings into a non-zero exit', async () => {

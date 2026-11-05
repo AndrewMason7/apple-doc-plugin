@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
-import type { AppleDocsDB } from '../db/database.js';
+import type { AppleDocsDB, FreshnessInfo } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
 import type { EmbeddingProvider } from './search/embedding-provider.js';
 
@@ -31,6 +31,13 @@ export interface DoctorReport {
 }
 
 const STALE_AFTER_DAYS = 30;
+
+/** Provenance as user-facing prose: internal enums must never reach the CLI. */
+const FRESHNESS_SOURCE_LABELS: Record<FreshnessInfo['source'], string> = {
+	meta: 'from build metadata',
+	'db-file-mtime': 'from the index file timestamp',
+	unknown: 'unknown',
+};
 
 /** Every check the report must carry, whatever the state of the install. */
 const SKIPPED_IDS: Array<[string, string]> = [
@@ -130,16 +137,26 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 
 	if (!context.db || exists.status !== 'ok') {
 		// Without a readable index every remaining probe is meaningless, but the
-		// report still owes consumers all ten rows.
+		// report still owes consumers all ten rows. A present-but-unopenable
+		// index is a failure; only a genuinely absent file may be skipped.
+		const presentButUnopenable = exists.status === 'ok';
 		for (const [id, title] of SKIPPED_IDS) {
 			checks.push(
-				check(
-					id,
-					title,
-					'warn',
-					'skipped — no readable index',
-					'npm run build:index',
-				),
+				presentButUnopenable
+					? check(
+							id,
+							title,
+							'fail',
+							`${context.dbPath} could not be opened — the index is unreadable or corrupt`,
+							'npm run build:index',
+						)
+					: check(
+							id,
+							title,
+							'warn',
+							'skipped — no readable index',
+							'npm run build:index',
+						),
 			);
 		}
 		return summarise(checks);
@@ -321,6 +338,8 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 					)
 				: Number.NaN;
 			const staleAfter = context.staleAfterDays ?? STALE_AFTER_DAYS;
+			const ageLabel = `${ageDays} ${ageDays === 1 ? 'day' : 'days'} old`;
+			const source = FRESHNESS_SOURCE_LABELS[freshness.source];
 			return !Number.isFinite(ageDays)
 				? check(
 						'snapshot_freshness',
@@ -334,14 +353,14 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 							'snapshot_freshness',
 							'Snapshot age',
 							'warn',
-							`${ageDays} days old (${freshness.source}) — new Apple APIs may be missing`,
+							`${ageLabel} (${source}) — new Apple APIs may be missing`,
 							'npm run build:index',
 						)
 					: check(
 							'snapshot_freshness',
 							'Snapshot age',
 							'ok',
-							`${ageDays} days old (${freshness.source})`,
+							`${ageLabel} (${source})`,
 						);
 		}),
 	);

@@ -222,6 +222,59 @@ test('a future-dated build stamp clamps to zero days and stays ok', () => {
 	assert.match(check.detail, /^0 days old/);
 });
 
+test('a one-day-old snapshot reads "1 day old" and names its provenance in prose', () => {
+	const ctx = makeContext();
+	addSymbol(ctx.db, 0);
+	// Just over 24h ago: floor() lands on exactly one day.
+	ctx.db.setMeta('built_at', new Date(Date.now() - 90_000_000).toISOString());
+
+	const check = runDoctor(ctx).checks.find(
+		(c) => c.id === 'snapshot_freshness',
+	);
+	assert.strictEqual(check.status, 'ok');
+	assert.match(check.detail, /^1 day old \(from build metadata\)$/);
+	assert.doesNotMatch(check.detail, /1 days/);
+
+	// No build stamp: the file mtime fallback must be named in words, not as
+	// the internal 'db-file-mtime' enum.
+	const fallbackCtx = makeContext();
+	addSymbol(fallbackCtx.db, 0);
+	const fallback = runDoctor(fallbackCtx).checks.find(
+		(c) => c.id === 'snapshot_freshness',
+	);
+	assert.match(fallback.detail, /\(from the index file timestamp\)$/);
+	assert.doesNotMatch(fallback.detail, /db-file-mtime/);
+});
+
+test('a present but unopenable index is a failure, never a pass', () => {
+	const ctx = makeContext({ db: undefined });
+	const decoy = path.join(TEMP_DIR, 'decoy-apple-docs.db');
+	fs.writeFileSync(decoy, 'this is not a sqlite database');
+
+	const report = runDoctor({ ...ctx, dbPath: decoy });
+
+	assert.strictEqual(report.ok, false, 'an unreadable index must fail');
+	assert.deepStrictEqual(idList(report), ALL_CHECK_IDS);
+
+	const byId = Object.fromEntries(report.checks.map((c) => [c.id, c]));
+	assert.strictEqual(byId['database_file'].status, 'ok');
+
+	for (const id of ALL_CHECK_IDS.slice(2)) {
+		assert.strictEqual(
+			byId[id].status,
+			'fail',
+			`${id} must fail when the index exists but cannot be opened`,
+		);
+		assert.match(byId[id].detail, /could not be opened/);
+		assert.match(byId[id].nextStep, /npm run build:index/);
+	}
+	assert.doesNotMatch(
+		JSON.stringify(report),
+		/skipped — no readable index/,
+		'skipped rows are only for a genuinely absent file',
+	);
+});
+
 test('formatDoctorReport marks every check and prints next steps only when needed', () => {
 	const report = {
 		ok: false,
