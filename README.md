@@ -10,22 +10,22 @@ Local SQLite FTS5 over 65,787 symbols across SwiftUI, UIKit, Foundation, SwiftDa
 
 **Two modes, same binary:**
 
-| Mode        | What you need                             | What you get                                                                                                                                                            |
-| ----------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing                                                                              |
-| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search (768-d default, matching the shipped vectors; MRL-configurable), RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
+| Mode        | What you need                             | What you get                                                                                                                              |
+| ----------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing                                                |
+| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search (768-d default; MRL-configurable), RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
 
 No API key? It still works offline without a key. That is the point.
 
 ### What the shipped index actually contains
 
-|                       |                                                        |
-| --------------------- | ------------------------------------------------------ |
-| symbols               | 65,787 (kind-classified, 0 unclassified)               |
-| framework attribution | 0 rows contradicting their own path                    |
-| semantic vectors      | 19,473 at 768 dims (Gemini `gemini-embedding-2`)       |
-| search mode           | Hybrid — verified from the running server, not assumed |
-| tests                 | 193 (190 pass, 3 skipped)                              |
+|                       |                                                                              |
+| --------------------- | ---------------------------------------------------------------------------- |
+| symbols               | 65,787 (kind-classified, 0 unclassified)                                     |
+| framework attribution | 0 rows contradicting their own path                                          |
+| semantic vectors      | none in the shipped snapshot — `npm run embed-index` adds 19,473 at 768 dims |
+| search mode           | Lexical on clone; Hybrid once you embed (Gemini `gemini-embedding-2`)        |
+| tests                 | 193 (190 pass, 3 skipped)                                                    |
 
 Status claims here are measured, not aspirational: `get_version` reports the
 search mode it can actually serve, and `index_info` reports the classification
@@ -54,28 +54,25 @@ exact command that fixes it:
 
 ```
 ✔ Node.js                v24.22.2
-✔ Index file             /…/data/apple-docs.db (108.0 MB)
+✔ Index file             /…/data/apple-docs.db (30.3 MB)
 ✔ Symbols                65787 rows
 ✔ FTS index              65787 rows
 ✔ Symbol kinds           every row classified
 ✔ Framework attribution  consistent with paths
-✔ Embedding provider     gemini (768-d)
-✔ Semantic layer         19473 vectors (threshold 100)
-✔ Vector dimensions      768-d
-✔ Snapshot age           1 day old (from the index file timestamp)
-
-All checks passed.
-```
-
-That output is from a configured install. Without a key, a **bare clone** warns
-on the provider row instead — lexical search is fully functional either way:
-
-```
 ⚠ Embedding provider     none configured — hybrid search stays off, lexical still works
    → Set GEMINI_API_KEY (or APPLE_DOCS_EMBEDDING_MODEL_PATH) in .env, then run: npm run embed-index
-⚠ Semantic layer         24/100 vectors — hybrid search cannot engage; queries stay lexical
+⚠ Semantic layer         0/100 vectors — hybrid search cannot engage; queries stay lexical
    → npm run embed-index
+✔ Vector dimensions      no vectors stored
+✔ Snapshot age           0 days old (from the index file timestamp)
+
+All checks passed (2 warnings).
 ```
+
+That is a **clone's** report, verbatim. Two warnings, exit code 0: warnings are not
+failures. Lexical search over all 65,787 symbols works immediately —the only thing
+keeping hybrid off is that the shipped snapshot carries no vectors. Add a key and
+run `npm run embed-index` (step 4) and both rows flip to ✔.
 
 | Flag          | Behaviour                                                              |
 | ------------- | ---------------------------------------------------------------------- |
@@ -122,7 +119,7 @@ npm run embed-index
 npm run doctor                            # semantic_layer should flip to ✔
 ```
 
-The default width is **768-d**, matching the vectors shipped in this repo. If you
+The default width is **768-d**. If you
 deliberately re-embed at 3072, set `APPLE_DOCS_EMBEDDING_DIMENSIONS=3072` and run
 `npm run embed-index -- --force`; a width that disagrees with the stored vectors
 fails `dimension_consistency` and disables semantic scoring.
