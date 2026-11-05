@@ -354,3 +354,18 @@ function summarise(checks: DoctorCheck[]): DoctorReport {
 	const warnings = checks.filter((c) => c.status === 'warn').length;
 	return { ok: failures === 0, checks, failures, warnings };
 }
+
+const ICONS: Record<DoctorStatus, string> = { ok: '✔', warn: '⚠', fail: '✖' };
+
+export function formatDoctorReport(report: DoctorReport): string {
+	const lines = report.checks.map((c) => {
+		const head = `${ICONS[c.status]} ${c.title.padEnd(22)} ${c.detail}`;
+		return c.nextStep ? `${head}\n   → ${c.nextStep}` : head;
+	});
+
+	const summary = report.ok
+		? `\nAll checks passed${report.warnings > 0 ? ` (${report.warnings} warning${report.warnings === 1 ? '' : 's'})` : ''}.`
+		: `\n${report.failures} failure${report.failures === 1 ? '' : 's'}, ${report.warnings} warning${report.warnings === 1 ? '' : 's'}.`;
+
+	return [...lines, summary].join('\n');
+}

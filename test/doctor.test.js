@@ -218,3 +218,43 @@ test('a future-dated build stamp clamps to zero days and stays ok', () => {
 	assert.strictEqual(check.status, 'ok');
 	assert.match(check.detail, /^0 days old/);
 });
+
+import { formatDoctorReport } from '../dist/server/services/doctor.js';
+
+test('formatDoctorReport marks every check and prints next steps only when needed', () => {
+	const report = {
+		ok: false,
+		failures: 1,
+		warnings: 1,
+		checks: [
+			{
+				id: 'node_version',
+				title: 'Node.js',
+				status: 'ok',
+				detail: 'v22.0.0',
+				nextStep: '',
+			},
+			{
+				id: 'semantic_layer',
+				title: 'Semantic layer',
+				status: 'warn',
+				detail: '12/100 vectors',
+				nextStep: 'npm run embed-index',
+			},
+			{
+				id: 'fts_index',
+				title: 'FTS index',
+				status: 'fail',
+				detail: '0 vs 65787',
+				nextStep: 'npm run build:index',
+			},
+		],
+	};
+
+	const text = formatDoctorReport(report);
+	assert.match(text, /✔ Node\.js/);
+	assert.match(text, /⚠ Semantic layer/);
+	assert.match(text, /✖ FTS index/);
+	assert.match(text, /→ npm run build:index/);
+	assert.match(text, /1 failure/);
+});
