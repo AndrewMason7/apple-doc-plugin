@@ -26,7 +26,7 @@ export const SUPPORTED_EMBEDDING_DIMENSIONS = [
 
 /**
  * Parse a requested dimension count. Anything unsupported returns undefined so
- * the provider keeps its native 3072 instead of silently writing vectors that a
+ * the provider default (768) applies instead of silently writing vectors that a
  * query vector cannot be compared against.
  */
 export function resolveRequestedDimensions(

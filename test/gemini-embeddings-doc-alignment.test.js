@@ -6,7 +6,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GeminiSemanticSearch } from '../dist/server/services/search/semantic-search.js';
 
-const fullEmbedding = () => new Array(3072).fill(0.01);
+// The shipped index and the default request width are 768.
+const fullEmbedding = () => new Array(768).fill(0.01);
 
 function listen(server) {
 	return new Promise((resolve) => server.listen(0, resolve));
@@ -91,8 +92,8 @@ test('GeminiSemanticSearch: gemini-embedding-2 formats asymmetric query and omit
 			receivedBody.content.parts[0].text,
 			'task: search result | query: how to use LazyVGrid',
 		);
-		// Must send output_dimensionality: 3072
-		assert.strictEqual(receivedBody.output_dimensionality, 3072);
+		// Must send the default output_dimensionality: 768 (matches the shipped index)
+		assert.strictEqual(receivedBody.output_dimensionality, 768);
 		// gemini-embedding-2 must NOT contain task_type parameter
 		assert.strictEqual(receivedBody.task_type, undefined);
 		assert.strictEqual(receivedBody.taskType, undefined);
@@ -137,7 +138,7 @@ test('GeminiSemanticSearch: gemini-embedding-2 formats document ingestion prompt
 			receivedBody.content.parts[0].text,
 			'title: SwiftUI | text: Declarative view hierarchy with state management.',
 		);
-		assert.strictEqual(receivedBody.output_dimensionality, 3072);
+		assert.strictEqual(receivedBody.output_dimensionality, 768);
 		assert.strictEqual(receivedBody.task_type, undefined);
 	} finally {
 		server.close();

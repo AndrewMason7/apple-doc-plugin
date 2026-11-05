@@ -21,8 +21,9 @@ test('HybridSearchEngine skips RRF when semantic items < 100 and prevents demoti
 		isPrimaryType: true,
 	});
 
-	// Insert a semantic item (only 1 item in semantic_items, < 100 threshold)
-	const mockEmbedding = new Float32Array(3072);
+	// Insert a semantic item (only 1 item in semantic_items, < 100 threshold).
+	// Fixture width matches the default 768 so the semantic path really runs.
+	const mockEmbedding = new Float32Array(768);
 	mockEmbedding[0] = 1.0;
 	db.insertSemanticItem({
 		id: 'overview-image',
@@ -43,7 +44,7 @@ test('HybridSearchEngine skips RRF when semantic items < 100 and prevents demoti
 	// Mock server that returns high similarity for the query
 	const server = http.createServer((req, res) => {
 		res.writeHead(200, { 'Content-Type': 'application/json' });
-		const values = new Array(3072).fill(0);
+		const values = new Array(768).fill(0);
 		values[0] = 0.99;
 		res.end(JSON.stringify({ embedding: { values } }));
 	});

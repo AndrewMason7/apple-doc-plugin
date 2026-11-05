@@ -35,6 +35,21 @@ const MULTIMODAL_MIME_TYPES = new Set([
 	'application/pdf',
 ]);
 
+/**
+ * Width of the vectors shipped in `data/apple-docs.db`. A fresh install must
+ * request this width: vectors of another width cannot be compared with the
+ * shipped ones, which fails `dimension_consistency` and invalidates hybrid
+ * scoring. Override with APPLE_DOCS_EMBEDDING_DIMENSIONS, then re-embed.
+ */
+export const DEFAULT_EMBEDDING_DIMENSIONS = 768;
+
+/**
+ * Untruncated output width of the Gemini embedding family. This describes the
+ * model, not our default: at its native width the model already returns unit
+ * vectors, so local L2 normalisation must be skipped only there.
+ */
+export const NATIVE_EMBEDDING_DIMENSIONS = 3072;
+
 function l2Normalize(values: ArrayLike<number>): Float32Array {
 	const out = Float32Array.from(values);
 	let sum = 0;
@@ -99,7 +114,7 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 	}
 
 	get dimensions(): number {
-		return this.expectedDimensions ?? 3072;
+		return this.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS;
 	}
 
 	isAvailable(): boolean {
@@ -286,7 +301,7 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 	}
 
 	private requestedDimensions(): number {
-		return this.expectedDimensions ?? 3072;
+		return this.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS;
 	}
 
 	private embeddingFromValues(
@@ -300,8 +315,10 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 			);
 			return null;
 		}
-		// gemini-embedding-2 renormalizes truncated vectors. gemini-embedding-001 does not.
-		if (!this.isEmbedding2() && requestedDims !== 3072) {
+		// gemini-embedding-2 renormalizes truncated vectors. gemini-embedding-001 does not:
+		// at any truncated width it needs a local L2 pass, but at its native 3072 the
+		// API already returns a unit vector and a second normalisation is redundant.
+		if (!this.isEmbedding2() && requestedDims !== NATIVE_EMBEDDING_DIMENSIONS) {
 			return l2Normalize(values as number[]);
 		}
 		return Float32Array.from(values as number[]);

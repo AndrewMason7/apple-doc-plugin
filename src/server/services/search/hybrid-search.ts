@@ -1,5 +1,9 @@
 import { AppleDocsDB, DbSymbol } from '../../db/database.js';
-import { GeminiSemanticSearch, SemanticMatch } from './semantic-search.js';
+import {
+	DEFAULT_EMBEDDING_DIMENSIONS,
+	GeminiSemanticSearch,
+	SemanticMatch,
+} from './semantic-search.js';
 import type { EmbeddingProvider } from './embedding-provider.js';
 
 /**
@@ -76,7 +80,7 @@ export class HybridSearchEngine {
 							options.modelName,
 							options.baseUrl,
 							options.googleAuth,
-							options.expectedDimensions ?? 3072,
+							options.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
 						);
 		} else if (
 			options.apiKey !== undefined ||
@@ -89,7 +93,7 @@ export class HybridSearchEngine {
 				options.modelName,
 				options.baseUrl,
 				options.googleAuth,
-				options.expectedDimensions ?? 3072,
+				options.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
 			);
 			this.embeddingProvider = this.semanticSearch;
 		} else {
@@ -102,7 +106,7 @@ export class HybridSearchEngine {
 							options.modelName,
 							options.baseUrl,
 							options.googleAuth,
-							options.expectedDimensions ?? 3072,
+							options.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
 						);
 		}
 		this.minSemanticItems = options.minSemanticItems ?? 100;

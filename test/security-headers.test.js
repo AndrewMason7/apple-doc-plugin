@@ -101,7 +101,7 @@ test('GeminiSemanticSearch trips circuit breaker automatically on 429 response',
 	}
 });
 
-test('GeminiSemanticSearch sends output_dimensionality: 3072 in payload', async () => {
+test('GeminiSemanticSearch sends the default output_dimensionality: 768 in payload', async () => {
 	let receivedBody = null;
 	const server = http.createServer((req, res) => {
 		let raw = '';
@@ -129,8 +129,8 @@ test('GeminiSemanticSearch sends output_dimensionality: 3072 in payload', async 
 		assert(receivedBody !== null);
 		assert.strictEqual(
 			receivedBody.output_dimensionality ?? receivedBody.outputDimensionality,
-			3072,
-			'Must request 3072 dimensions explicitly',
+			768,
+			'Must request the default 768 dimensions explicitly',
 		);
 	} finally {
 		server.close();
