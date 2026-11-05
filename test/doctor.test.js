@@ -95,10 +95,12 @@ test('an unavailable provider is a warning that names a runnable command', () =>
 		(c) => c.id === 'provider_available',
 	);
 	assert.strictEqual(provider.status, 'warn');
-	assert.match(
-		provider.nextStep,
-		/^export GEMINI_API_KEY=\S+ && npm run embed-index$/,
-	);
+	// The old next step was `export GEMINI_API_KEY=*** && npm run embed-index`,
+	// which set the literal key `***`. Name both the file and the command.
+	assert.match(provider.nextStep, /GEMINI_API_KEY/);
+	assert.match(provider.nextStep, /\.env/);
+	assert.match(provider.nextStep, /npm run embed-index$/);
+	assert.doesNotMatch(provider.nextStep, /=\*/);
 });
 
 test('vectors below the hybrid threshold warn and point at embed-index', () => {
@@ -225,7 +227,10 @@ test('broken inputs yield a report instead of an exception', () => {
 	const oldNodeReport = runDoctor({ ...ctx, nodeVersion: 'v20.11.0' });
 	const node = oldNodeReport.checks.find((c) => c.id === 'node_version');
 	assert.strictEqual(node.status, 'fail');
-	assert.strictEqual(node.nextStep, 'brew install node');
+	// Portable hint: this plugin ships to Linux as well as macOS.
+	assert.match(node.nextStep, /22/);
+	assert.match(node.nextStep, /brew install node/);
+	assert.match(node.nextStep, /nvm install 22|apt|dnf|winget/);
 
 	// A path under a regular file cannot be stat'ed: ENOTDIR.
 	const unstatable = path.join(ctx.dbPath, 'nested', 'apple-docs.db');
@@ -248,6 +253,60 @@ test('a future-dated build stamp clamps to zero days and stays ok', () => {
 	);
 	assert.strictEqual(check.status, 'ok');
 	assert.match(check.detail, /^0 days old/);
+});
+
+test('a snapshot older than the 30-day threshold warns and points at build:index', () => {
+	const ctx = makeContext();
+	addSymbol(ctx.db, 0);
+	ctx.db.setMeta(
+		'built_at',
+		new Date(Date.now() - 40 * 86_400_000).toISOString(),
+	);
+
+	const report = runDoctor(ctx);
+	const check = report.checks.find((c) => c.id === 'snapshot_freshness');
+	assert.strictEqual(check.status, 'warn');
+	assert.match(check.detail, /^40 days old \(from build metadata\)/);
+	assert.match(check.detail, /new Apple APIs may be missing/);
+	assert.match(check.nextStep, /npm run build:index/);
+
+	const rendered = formatDoctorReport(report);
+	assert.match(rendered, /⚠ Snapshot age/);
+	assert.match(rendered, /→ npm run build:index/);
+});
+
+test('two stored vector widths are a dimension failure, not one width plus noise', () => {
+	const ctx = makeContext({
+		provider: {
+			...BASE_PROVIDER,
+			id: 'gemini',
+			dimensions: 768,
+			isAvailable: () => true,
+		},
+	});
+	addSymbol(ctx.db, 0);
+	for (const [id, width] of [
+		['sym-768', 768],
+		['sym-3072', 3072],
+	]) {
+		ctx.db.insertSemanticItem({
+			id,
+			framework: 'SwiftUI',
+			title: id,
+			kind: 'struct',
+			summary: 'vector',
+			path: '/documentation/swiftui/type0',
+			embedding: new Float32Array(width),
+		});
+	}
+
+	const report = runDoctor(ctx);
+	const check = report.checks.find((c) => c.id === 'dimension_consistency');
+	assert.strictEqual(check.status, 'fail');
+	assert.match(check.detail, /768\/3072-d/);
+	assert.match(check.detail, /cosine scoring is invalid/);
+	assert.match(check.nextStep, /npm run embed-index -- --force/);
+	assert.strictEqual(report.ok, false);
 });
 
 test('a one-day-old snapshot reads "1 day old" and names its provenance in prose', () => {
@@ -301,6 +360,82 @@ test('a present but unopenable index is a failure, never a pass', () => {
 		/skipped — no readable index/,
 		'skipped rows are only for a genuinely absent file',
 	);
+});
+
+// C1: better-sqlite3 opens lazily, so a file that is not SQLite constructs
+// without an error and every getter swallows the failure into 0/[]. Doctor used
+// to print FIVE green rows for a file that is not a database at all.
+test('a non-SQLite index fails every dependent check instead of greening zeros', () => {
+	const corrupt = path.join(TEMP_DIR, 'corrupt-apple-docs.db');
+	fs.writeFileSync(corrupt, 'not a sqlite db');
+	// Exactly what doctor-cli.ts does: readonly, and it does NOT throw here.
+	const db = new AppleDocsDB(corrupt, { readonly: true });
+
+	const report = runDoctor({
+		db,
+		dbPath: corrupt,
+		nodeVersion: 'v22.0.0',
+		provider: { ...BASE_PROVIDER },
+	});
+
+	assert.deepStrictEqual(idList(report), ALL_CHECK_IDS);
+	assert.strictEqual(report.ok, false);
+
+	const byId = Object.fromEntries(report.checks.map((c) => [c.id, c]));
+	assert.strictEqual(
+		byId['database_file'].status,
+		'ok',
+		'the file does exist; readability is a separate check',
+	);
+
+	for (const id of ALL_CHECK_IDS.slice(2)) {
+		assert.strictEqual(
+			byId[id].status,
+			'fail',
+			`${id} must fail when the file is not a database`,
+		);
+		assert.match(byId[id].nextStep, /npm run build:index/);
+	}
+
+	for (const id of [
+		'database_readable',
+		'fts_index',
+		'kind_integrity',
+		'attribution_integrity',
+		'dimension_consistency',
+	]) {
+		assert.match(
+			byId[id].detail,
+			/unreadable or corrupt/,
+			`${id} must say the index is unreadable`,
+		);
+		assert.doesNotMatch(
+			byId[id].detail,
+			/\bempty\b/,
+			`${id} must not report an unreadable index as merely empty`,
+		);
+	}
+	assert.match(
+		byId['database_readable'].detail,
+		/not a database/,
+		'the SQLite error must survive into the report',
+	);
+
+	// The bug was five greens: no ok row may survive downstream of the canary.
+	const rendered = formatDoctorReport(report).split('\n');
+	for (const title of [
+		'Symbols',
+		'FTS index',
+		'Symbol kinds',
+		'Framework attribution',
+		'Vector dimensions',
+	]) {
+		assert.ok(
+			!rendered.some((line) => line.startsWith(`✔ ${title}`)),
+			`${title} must not be green for an unreadable index`,
+		);
+	}
+	assert.doesNotMatch(rendered.join('\n'), /All checks passed/);
 });
 
 test('formatDoctorReport marks every check and prints next steps only when needed', () => {

@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import axios from 'axios';
 import { AppleDocsDB } from '../src/server/db/database.js';
+import { isVirtualDbPath, resolveDbPath } from '../src/server/db/db-path.js';
 import {
 	indexFrameworkData,
 	indexFrameworkTree,
@@ -48,12 +49,11 @@ async function fetchJson(url: string): Promise<any | null> {
 }
 
 async function buildIndex() {
-	const dataDir = join(__dirname, '../data');
-	if (!existsSync(dataDir)) {
-		mkdirSync(dataDir, { recursive: true });
+	const dbPath = resolveDbPath();
+	if (!isVirtualDbPath(dbPath)) {
+		mkdirSync(dirname(dbPath), { recursive: true });
 	}
 
-	const dbPath = join(dataDir, 'apple-docs.db');
 	console.error(`🚀 Initializing database at ${dbPath}...`);
 	const db = new AppleDocsDB(dbPath);
 

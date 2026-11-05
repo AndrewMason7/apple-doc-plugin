@@ -111,12 +111,60 @@ test('HybridSearchEngine performs semantic vector match if items exist in DB', a
 	} finally {
 		console.warn = originalWarn;
 	}
-	assert.ok(
-		warnings.some(
-			(line) => line.includes('guide-wrong-width') && line.includes('3 dims'),
-		),
+	// The width comparison is a corpus-level fact, so it is reported once —
+	// naming the widths and both remedies, not the id of the one bad row.
+	assert.match(
+		warnings.join('\n'),
+		/3-d/,
+		`expected the stored width in the warning, got:\n${warnings.join('\n')}`,
 	);
+	assert.match(warnings.join('\n'), /768-d/);
 
+	db.close();
+});
+
+// Regression for the upgrade path: a pre-768 corpus used to emit one warning
+// per stored row (~19.5k lines per query) while silently dropping every match.
+test('a stale-width corpus warns exactly once per query with both remedies', () => {
+	const db = new AppleDocsDB(':memory:');
+	for (let i = 0; i < 50; i++) {
+		const embedding = new Float32Array(3072);
+		embedding[0] = 0.5;
+		db.insertSemanticItem({
+			id: `stale-${i}`,
+			framework: 'SwiftUI',
+			title: `Stale ${i}`,
+			kind: 'struct',
+			summary: 'vector of the old width',
+			path: '/documentation/swiftui/stale',
+			embedding,
+		});
+	}
+
+	const engine = new HybridSearchEngine(db, { apiKey: null });
+	const queryVec = new Float32Array(768);
+	queryVec[0] = 1;
+
+	const warnings = [];
+	const originalWarn = console.warn;
+	console.warn = (...args) => {
+		warnings.push(args.join(' '));
+	};
+	try {
+		assert.deepStrictEqual(engine.searchSemanticWithVector(queryVec), []);
+		assert.deepStrictEqual(engine.searchSemanticWithVector(queryVec), []);
+	} finally {
+		console.warn = originalWarn;
+	}
+
+	assert.strictEqual(
+		warnings.length,
+		1,
+		`50 stale rows must cost one warning, got ${warnings.length}:\n${warnings.join('\n')}`,
+	);
+	assert.match(warnings[0], /APPLE_DOCS_EMBEDDING_DIMENSIONS=3072/);
+	assert.match(warnings[0], /npm run embed-index -- --force/);
+	assert.match(warnings[0], /768/);
 	db.close();
 });
 

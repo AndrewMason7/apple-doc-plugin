@@ -100,8 +100,98 @@ test('runDoctorCli exits 1 when the index exists but cannot be opened', async ()
 	});
 
 	assert.strictEqual(code, 1, 'a corrupt index must not exit 0');
-	assert.match(printed, /✖ Symbols/);
 	assert.doesNotMatch(printed, /All checks passed/);
+
+	// The old version of this test asserted only `✖ Symbols`, which the broken
+	// behaviour also produced — while FTS, kinds, attribution and dimensions
+	// printed green zeros for a file that is not a database.
+	const byTitle = (title) =>
+		printed
+			.split('\n')
+			.filter((line) => /^[✔⚠✖] /.test(line))
+			.find((line) => line.slice(2).trim().startsWith(title));
+
+	for (const title of [
+		'Symbols',
+		'FTS index',
+		'Symbol kinds',
+		'Framework attribution',
+		'Vector dimensions',
+	]) {
+		const row = byTitle(title);
+		assert.ok(row, `missing row: ${title}`);
+		assert.ok(row.startsWith('✖'), `${title} must be a failure, got: ${row}`);
+		assert.ok(
+			!/^✔/.test(row),
+			`${title} must not be green for a corrupt index`,
+		);
+	}
+	assert.match(printed, /unreadable or corrupt/);
+	assert.doesNotMatch(
+		printed,
+		/database opened but is empty/,
+		'an unreadable file must not be reported as an empty database',
+	);
+});
+
+test('--help prints usage on stdout and exits 0 without a report', async () => {
+	let out = '';
+	let err = '';
+	const code = await runDoctorCli({
+		argv: ['--help'],
+		dbPath: '/nonexistent/apple-docs.db',
+		provider: unavailable,
+		nodeVersion: 'v22.0.0',
+		print: (s) => (out += s),
+		eprint: (s) => (err += s),
+	});
+
+	assert.strictEqual(code, 0);
+	assert.match(out, /Usage:/);
+	assert.match(out, /--json/);
+	assert.match(out, /--strict/);
+	assert.doesNotMatch(out, /Index file/, 'help must not run the checks');
+	assert.strictEqual(err, '');
+});
+
+test('an unknown flag exits 2 with usage on stderr and no report', async () => {
+	for (const flag of ['--jsn', '--stirct', '--nope']) {
+		let out = '';
+		let err = '';
+		const code = await runDoctorCli({
+			argv: [flag],
+			dbPath: '/nonexistent/apple-docs.db',
+			provider: unavailable,
+			nodeVersion: 'v22.0.0',
+			print: (s) => (out += s),
+			eprint: (s) => (err += s),
+		});
+
+		assert.strictEqual(code, 2, `${flag} must be rejected, not ignored`);
+		assert.match(err, /Usage:/, `${flag} must print usage on stderr`);
+		assert.match(err, new RegExp(flag.slice(2)), `stderr must name ${flag}`);
+		assert.strictEqual(out, '', `${flag} must not print a report on stdout`);
+	}
+});
+
+test('--json still exits 1 on failure and stays parseable', async () => {
+	let printed = '';
+	const code = await runDoctorCli({
+		argv: ['--json'],
+		dbPath: '/nonexistent/apple-docs.db',
+		provider: unavailable,
+		nodeVersion: 'v22.0.0',
+		print: (s) => (printed += s),
+	});
+
+	assert.strictEqual(code, 1);
+	const parsed = JSON.parse(printed);
+	assert.strictEqual(parsed.ok, false);
+	assert.ok(parsed.failures > 0);
+	assert.strictEqual(
+		parsed.checks.find((c) => c.id === 'database_file').status,
+		'fail',
+	);
 });
 
 test('--strict turns warnings into a non-zero exit', async () => {

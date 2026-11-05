@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import type { AppleDocsDB, FreshnessInfo } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
+import { isVirtualDbPath } from '../db/db-path.js';
 import type { EmbeddingProvider } from './search/embedding-provider.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
@@ -41,13 +42,8 @@ export const FRESHNESS_SOURCE_LABELS: Record<FreshnessInfo['source'], string> =
 	};
 
 /**
- * SQLite's in-memory forms have no file on disk, so `existsSync` would call a
- * perfectly healthy embedded index missing.
+ * Every check the report must carry, whatever the state of the install.
  */
-const isVirtualDbPath = (dbPath: string): boolean =>
-	dbPath === ':memory:' || dbPath.startsWith('file::memory:');
-
-/** Every check the report must carry, whatever the state of the install. */
 const SKIPPED_IDS: Array<[string, string]> = [
 	['database_readable', 'Symbols'],
 	['fts_index', 'FTS index'],
@@ -90,6 +86,17 @@ const safe = (
 	}
 };
 
+/**
+ * Copy-pasteable install hint that is not macOS-only: the plugin ships to Linux
+ * as well, where `brew` may not exist at all.
+ */
+const NODE_INSTALL_HINT =
+	'Install Node.js 22+ — macOS: brew install node; Linux: nvm install 22 (or your distro package); Windows: winget install OpenJS.NodeJS.LTS';
+
+/** Two steps, both literal: `export KEY=***` used to set the key to `***`. */
+const PROVIDER_NEXT_STEP =
+	'Set GEMINI_API_KEY (or APPLE_DOCS_EMBEDDING_MODEL_PATH) in .env, then run: npm run embed-index';
+
 /** Render a byte count without collapsing sub-megabyte files to '0 MB'. */
 const formatBytes = (bytes: number): string => {
 	const megabyte = 1_048_576;
@@ -104,7 +111,7 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 
 	// 1. Node
 	checks.push(
-		safe('node_version', 'Node.js', 'brew install node', () => {
+		safe('node_version', 'Node.js', NODE_INSTALL_HINT, () => {
 			const major = Number(
 				String(context.nodeVersion).replace(/^v/, '').split('.')[0],
 			);
@@ -115,7 +122,7 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 						'Node.js',
 						'fail',
 						`${context.nodeVersion} is too old`,
-						'brew install node',
+						NODE_INSTALL_HINT,
 					);
 		}),
 	);
@@ -145,21 +152,29 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 	);
 	checks.push(exists);
 
-	if (!context.db || exists.status !== 'ok') {
+	const db = context.db;
+
+	// A present-but-unreadable index is indistinguishable from an empty one by
+	// row count alone — better-sqlite3 defers the failure and every getter
+	// swallows it into 0/[]. Read once, before any dependent probe, then either
+	// report honestly or stop.
+	const readability = db?.probeReadability();
+
+	if (!db || exists.status !== 'ok' || readability?.readable === false) {
 		// Without a readable index every remaining probe is meaningless, but the
-		// report still owes consumers all ten rows. A present-but-unopenable
-		// index is a failure; only a genuinely absent file may be skipped.
-		const presentButUnopenable = exists.status === 'ok';
+		// report still owes consumers all ten rows. A present index that cannot
+		// be read is a failure; only a genuinely absent file may be skipped.
+		const failureDetail =
+			readability?.readable === false
+				? `index is unreadable or corrupt (${readability.error})`
+				: exists.status === 'ok'
+					? `${context.dbPath} could not be opened — the index is unreadable or corrupt`
+					: null;
+
 		for (const [id, title] of SKIPPED_IDS) {
 			checks.push(
-				presentButUnopenable
-					? check(
-							id,
-							title,
-							'fail',
-							`${context.dbPath} could not be opened — the index is unreadable or corrupt`,
-							'npm run build:index',
-						)
+				failureDetail
+					? check(id, title, 'fail', failureDetail, 'npm run build:index')
 					: check(
 							id,
 							title,
@@ -171,8 +186,6 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 		}
 		return summarise(checks);
 	}
-
-	const db = context.db;
 
 	// 3. Readable + populated
 	let symbolCount = 0;
@@ -261,25 +274,21 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 
 	// 7. Embedding provider — foreign code, so the probe must be contained.
 	checks.push(
-		safe(
-			'provider_available',
-			'Embedding provider',
-			'export GEMINI_API_KEY=... && npm run embed-index',
-			() =>
-				context.provider.isAvailable()
-					? check(
-							'provider_available',
-							'Embedding provider',
-							'ok',
-							`${context.provider.id} (${context.provider.dimensions}-d)`,
-						)
-					: check(
-							'provider_available',
-							'Embedding provider',
-							'warn',
-							'none configured — hybrid search stays off, lexical still works',
-							'export GEMINI_API_KEY=... && npm run embed-index',
-						),
+		safe('provider_available', 'Embedding provider', PROVIDER_NEXT_STEP, () =>
+			context.provider.isAvailable()
+				? check(
+						'provider_available',
+						'Embedding provider',
+						'ok',
+						`${context.provider.id} (${context.provider.dimensions}-d)`,
+					)
+				: check(
+						'provider_available',
+						'Embedding provider',
+						'warn',
+						'none configured — hybrid search stays off, lexical still works',
+						PROVIDER_NEXT_STEP,
+					),
 		),
 	);
 
@@ -386,6 +395,18 @@ function summarise(checks: DoctorCheck[]): DoctorReport {
 
 const ICONS: Record<DoctorStatus, string> = { ok: '✔', warn: '⚠', fail: '✖' };
 
+/**
+ * `1 failure` / `2 failures` — the single formatter for every surface. The CLI
+ * and the tools used to pluralise the same number two different ways.
+ */
+export function formatCount(
+	count: number,
+	singular: string,
+	plural = `${singular}s`,
+): string {
+	return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function formatDoctorReport(report: DoctorReport): string {
 	const lines = report.checks.map((c) => {
 		const head = `${ICONS[c.status]} ${c.title.padEnd(22)} ${c.detail}`;
@@ -397,8 +418,8 @@ export function formatDoctorReport(report: DoctorReport): string {
 	// or stale report must never claim "All checks passed" while listing failures.
 	const summary =
 		report.failures === 0
-			? `\nAll checks passed${report.warnings > 0 ? ` (${report.warnings} warning${report.warnings === 1 ? '' : 's'})` : ''}.`
-			: `\n${report.failures} failure${report.failures === 1 ? '' : 's'}, ${report.warnings} warning${report.warnings === 1 ? '' : 's'}.`;
+			? `\nAll checks passed${report.warnings > 0 ? ` (${formatCount(report.warnings, 'warning')})` : ''}.`
+			: `\n${formatCount(report.failures, 'failure')}, ${formatCount(report.warnings, 'warning')}.`;
 
 	return [...lines, summary].join('\n');
 }

@@ -8,10 +8,45 @@ export interface DoctorCliOptions {
 	provider: EmbeddingProvider;
 	nodeVersion: string;
 	print: (text: string) => void;
+	/** Diagnostics and usage errors. Defaults to stderr; injectable for tests. */
+	eprint?: (text: string) => void;
 }
 
-/** Returns the process exit code: 0 healthy, 1 failures (or warnings with --strict). */
+const KNOWN_FLAGS = ['--json', '--strict', '--help'] as const;
+
+const USAGE = `Usage: npm run doctor [-- --json] [-- --strict] [-- --help]
+
+  --json     print the report as one JSON envelope on stdout
+  --strict   exit 1 when there are warnings, not just failures
+  --help     print this message and exit
+`;
+
+/** Exit code for a flag we do not understand: unusable, not "diagnosed". */
+const EXIT_USAGE = 2;
+
+/**
+ * Returns the process exit code: 0 healthy, 1 failures (or warnings with
+ * --strict), 2 unknown flags.
+ */
 export async function runDoctorCli(options: DoctorCliOptions): Promise<number> {
+	const eprint =
+		options.eprint ?? ((text: string) => process.stderr.write(text));
+	const unknown = options.argv.filter(
+		(arg) =>
+			arg.startsWith('-') && !(KNOWN_FLAGS as readonly string[]).includes(arg),
+	);
+	if (unknown.length > 0) {
+		// Silently ignoring a typo (`--jsn`, `--stirct`) printed a normal report
+		// and exited 0, which reads as "your index is fine".
+		eprint(`doctor: unknown option ${unknown.join(', ')}\n\n${USAGE}`);
+		return EXIT_USAGE;
+	}
+
+	if (options.argv.includes('--help')) {
+		options.print(USAGE);
+		return 0;
+	}
+
 	const json = options.argv.includes('--json');
 	const strict = options.argv.includes('--strict');
 

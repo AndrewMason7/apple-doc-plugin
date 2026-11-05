@@ -2,7 +2,11 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EmbeddingProvider } from '../src/server/services/search/embedding-provider.js';
-import { resolveEmbeddingProvider } from '../src/server/services/search/provider-factory.js';
+import {
+	UnavailableEmbeddingProvider,
+	resolveEmbeddingProvider,
+} from '../src/server/services/search/provider-factory.js';
+import { resolveDbPath } from '../src/server/db/db-path.js';
 import { runDoctorCli } from '../src/server/services/doctor-cli.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -21,11 +25,7 @@ if (existsSync(envFile) && typeof process.loadEnvFile === 'function') {
 	}
 }
 
-let dbPath =
-	process.env.APPLE_DOCS_DB_PATH || join(__dirname, '../data/apple-docs.db');
-if (dbPath.includes('${extensionPath}')) {
-	dbPath = dbPath.replace(/\$\{extensionPath\}/g, join(__dirname, '..'));
-}
+const dbPath = resolveDbPath();
 
 // A doctor that dies while constructing a provider is worse than one that
 // reports the provider unavailable: the whole point is to print a report.
@@ -36,13 +36,7 @@ try {
 	console.error(
 		`doctor: could not initialise the embedding provider: ${err instanceof Error ? err.message : String(err)}`,
 	);
-	provider = {
-		id: 'unavailable' as const,
-		dimensions: 0,
-		isAvailable: () => false,
-		embedQuery: async () => null,
-		embedDocument: async () => null,
-	};
+	provider = new UnavailableEmbeddingProvider();
 }
 
 const code = await runDoctorCli({
@@ -51,6 +45,7 @@ const code = await runDoctorCli({
 	provider,
 	nodeVersion: process.version,
 	print: (text) => process.stdout.write(text),
+	eprint: (text) => process.stderr.write(text),
 });
 
 // exitCode lets queued stdout drain; process.exit() can truncate a piped report.
