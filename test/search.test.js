@@ -2,8 +2,220 @@ import assert from 'node:assert';
 import http from 'node:http';
 import test from 'node:test';
 import { AppleDocsDB } from '../dist/server/db/database.js';
-import { HybridSearchEngine } from '../dist/server/services/search/hybrid-search.js';
+import {
+	HybridSearchEngine,
+	isNaturalLanguageQuery,
+} from '../dist/server/services/search/hybrid-search.js';
 import { GeminiSemanticSearch } from '../dist/server/services/search/semantic-search.js';
+
+// A unit vector at cosine `similarity` from [1, 0, 0, 0]. Four dimensions keep
+// the fixtures readable; the engine compares widths, it does not require 768.
+const cosineVector = (similarity) => {
+	const vector = new Float32Array(4);
+	vector[0] = similarity;
+	vector[1] = Math.sqrt(Math.max(0, 1 - similarity * similarity));
+	return vector;
+};
+
+const FTS_NOISE = [
+	{
+		id: 'documentation/swiftui/init-upstream-decoder',
+		framework: 'SwiftUI',
+		title: 'init(upstream: Upstream, decoder: Coder)',
+		kind: 'init',
+		abstract: 'Creates a decoder chain.',
+		path: '/documentation/swiftui/init',
+		platforms: [],
+		isPrimaryType: false,
+		score: 9.6,
+	},
+	{
+		id: 'documentation/swiftui/upstream',
+		framework: 'SwiftUI',
+		title: 'Upstream',
+		kind: 'protocol',
+		abstract: 'A source of values.',
+		path: '/documentation/swiftui/upstream',
+		platforms: [],
+		isPrimaryType: false,
+		score: 8.4,
+	},
+	{
+		id: 'documentation/swiftui/workoutpreview',
+		framework: 'SwiftUI',
+		title: 'workoutPreview(WorkoutPlan, isPresented:)',
+		kind: 'func',
+		abstract: 'Presents a workout preview.',
+		path: '/documentation/swiftui/workoutpreview',
+		platforms: [],
+		isPrimaryType: false,
+		score: 7.1,
+	},
+	{
+		id: 'documentation/swiftui/navigationstack',
+		framework: 'SwiftUI',
+		title: 'NavigationStack',
+		kind: 'struct',
+		abstract: 'A view that displays a root view.',
+		path: '/documentation/swiftui/navigationstack',
+		platforms: ['iOS 16.0+'],
+		isPrimaryType: true,
+		score: 2.2,
+	},
+];
+
+const DEFAULT_SEMANTIC = [
+	{
+		id: 'documentation/swiftui/viewdidload',
+		title: 'viewDidLoad()',
+		sim: 0.94,
+	},
+	{
+		id: 'documentation/swiftui/onappear',
+		title: 'onAppear(perform:)',
+		sim: 0.9,
+	},
+	{ id: 'documentation/swiftui/task', title: 'task(priority:_:)', sim: 0.86 },
+];
+
+/**
+ * FTS always ranks the decoder junk first; only the semantic side varies, which
+ * is exactly the real-corpus failure mode. Both floors admit the fixture hits,
+ * so the ranking difference is attributable to the fusion weights alone.
+ */
+const makeFusionFixture = (
+	semantic = DEFAULT_SEMANTIC,
+	providerOverrides = {},
+) => {
+	const ftsRows = FTS_NOISE.map((row) => ({ ...row }));
+	const semanticItems = semantic.map(({ sim, ...item }) => ({
+		...item,
+		framework: 'SwiftUI',
+		kind: 'method',
+		summary: 'Called when the view is displayed.',
+		path: `/documentation/swiftui/${item.id.split('/').pop()}`,
+		embedding: cosineVector(sim),
+	}));
+
+	const db = {
+		queryFTS: () => ftsRows.map((row) => ({ ...row })),
+		getSemanticItemCount: () => semanticItems.length,
+		getSemanticItems: () => semanticItems.map((item) => ({ ...item })),
+	};
+
+	const provider = {
+		id: 'local-gguf',
+		dimensions: 4,
+		minSimilarity: 0.8,
+		minSimilarityPreferred: 0.72,
+		isAvailable: () => true,
+		embedQuery: async () => cosineVector(1),
+		embedDocument: async () => cosineVector(1),
+		...providerOverrides,
+	};
+
+	return { db, provider };
+};
+
+test('isNaturalLanguageQuery separates prose from symbol names', () => {
+	assert.strictEqual(
+		isNaturalLanguageQuery('code that runs once the screen shows up'),
+		true,
+	);
+	assert.strictEqual(
+		isNaturalLanguageQuery('how do I run async work when a view appears'),
+		true,
+	);
+	assert.strictEqual(isNaturalLanguageQuery('NavigationStack'), false);
+	assert.strictEqual(isNaturalLanguageQuery('viewDidLoad'), false);
+	assert.strictEqual(isNaturalLanguageQuery('Grid*'), false);
+	assert.strictEqual(isNaturalLanguageQuery('async task view'), false);
+	assert.strictEqual(isNaturalLanguageQuery(''), false);
+});
+
+test('a natural-language query leans semantic and returns the semantic hit first', async () => {
+	const { db, provider } = makeFusionFixture();
+	const engine = new HybridSearchEngine(db, {
+		embeddingProvider: provider,
+		minSemanticItems: 1,
+	});
+
+	const results = await engine.search(
+		'code that runs once the screen shows up',
+	);
+	assert.strictEqual(
+		results[0].title,
+		'viewDidLoad()',
+		`expected the semantic hit first, got: ${results.map((r) => r.title).join(' | ')}`,
+	);
+});
+
+// RRF is monotone within a list, so a rank-2 semantic hit can never outrank its
+// own rank-0 sibling; what the weights must fix is the cross-list contest, i.e.
+// the semantic hit beating the FTS rank-0 junk that used to own the top slot.
+test('a semantic hit at rank 2 still beats the FTS rank-0 junk on a natural-language query', async () => {
+	const { db, provider } = makeFusionFixture([
+		{
+			id: 'documentation/swiftui/onappear',
+			title: 'onAppear(perform:)',
+			sim: 0.94,
+		},
+		{ id: 'documentation/swiftui/asyncimage', title: 'AsyncImage', sim: 0.9 },
+		{
+			id: 'documentation/swiftui/viewdidload',
+			title: 'viewDidLoad()',
+			sim: 0.86,
+		},
+	]);
+	const engine = new HybridSearchEngine(db, {
+		embeddingProvider: provider,
+		minSemanticItems: 1,
+	});
+
+	const results = await engine.search(
+		'how do I run async work when a view appears',
+	);
+	const order = results.map((result) => result.id);
+	const target = order.indexOf('documentation/swiftui/viewdidload');
+	const junk = order.indexOf('documentation/swiftui/init-upstream-decoder');
+
+	assert.ok(
+		target !== -1,
+		`semantic hit missing from results: ${order.join(' | ')}`,
+	);
+	assert.ok(
+		target < junk,
+		`semantic hit at rank 2 must beat the FTS rank-0 junk, got: ${order.join(' | ')}`,
+	);
+});
+
+test('identifier queries and an explicit preferSemantic:false keep lexical order', async () => {
+	// A strict default floor makes the flagged call deterministically lexical; a
+	// `||` regression would fall back to the preferred floor and admit the hits.
+	const { db, provider } = makeFusionFixture(DEFAULT_SEMANTIC, {
+		minSimilarity: 0.99,
+	});
+	const engine = new HybridSearchEngine(db, {
+		embeddingProvider: provider,
+		minSemanticItems: 1,
+	});
+
+	const identifier = await engine.search('NavigationStack');
+	assert.strictEqual(identifier[0].title, 'NavigationStack');
+	assert.strictEqual(identifier[0].id, 'documentation/swiftui/navigationstack');
+
+	const forcedLexical = await engine.search(
+		'code that runs once the screen shows up',
+		{ preferSemantic: false },
+	);
+	assert.strictEqual(
+		forcedLexical[0].id,
+		'documentation/swiftui/init-upstream-decoder',
+		`an explicit preferSemantic: false must win over auto-detection, got: ${forcedLexical
+			.map((result) => result.id)
+			.join(' | ')}`,
+	);
+});
 
 test('HybridSearchEngine returns scored results without Gemini key', async () => {
 	const db = new AppleDocsDB(':memory:');
