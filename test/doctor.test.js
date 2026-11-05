@@ -154,6 +154,34 @@ test('a vector width mismatch is a failure with the re-embed command', () => {
 	assert.match(check.nextStep, /--force/);
 });
 
+// Red first: a healthy in-memory index used to report `database_file: fail`
+// because the probe gated on existsSync(':memory:').
+test('an in-memory database is present, not a missing file', () => {
+	const db = new AppleDocsDB(':memory:');
+	addSymbol(db, 0);
+
+	const report = runDoctor({
+		db,
+		dbPath: ':memory:',
+		nodeVersion: 'v22.0.0',
+		provider: { ...BASE_PROVIDER },
+	});
+	const byId = Object.fromEntries(report.checks.map((c) => [c.id, c]));
+
+	assert.deepStrictEqual(idList(report), ALL_CHECK_IDS);
+	assert.strictEqual(
+		byId['database_file'].status,
+		'ok',
+		'a virtual path has no file to stat but is still present',
+	);
+	assert.strictEqual(byId['database_file'].detail, 'in-memory database');
+	assert.strictEqual(
+		report.ok,
+		true,
+		'a healthy in-memory index must not fail',
+	);
+});
+
 test('a missing database file still yields all ten checks', () => {
 	const ctx = makeContext({ dbPath: '/nonexistent/apple-docs.db' });
 

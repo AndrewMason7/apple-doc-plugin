@@ -26,7 +26,7 @@ import type {
 	KindCount,
 } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
-import { runDoctor } from '../services/doctor.js';
+import { FRESHNESS_SOURCE_LABELS, runDoctor } from '../services/doctor.js';
 import type { EmbeddingProvider } from '../services/search/embedding-provider.js';
 
 /**
@@ -216,7 +216,7 @@ export const buildIndexInfoHandler =
 
 ## Freshness
 • **Snapshot:** ${describeFreshness(meta.freshness)}
-• **Provenance:** ${meta.freshness.source}
+• **Provenance:** ${FRESHNESS_SOURCE_LABELS[meta.freshness.source]}
 • **Stale snapshot warning:** ${meta.freshness.source === 'meta' ? 'none — build stamp present' : 'no build stamp; APIs newer than this time may be missing'}
 
 ## Search Capability

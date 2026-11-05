@@ -473,9 +473,30 @@ test('index_info surfaces doctor failures so the tool and CLI cannot disagree', 
 	addSymbol(db);
 
 	const infoOut = textOf(await buildIndexInfoHandler({ db })());
+
+	// The healthy branch must be exercised, not just the heading: a doctor that
+	// reports a spurious failure on a good index would still match /Doctor/i.
 	assert.match(
 		infoOut,
-		/Doctor/i,
-		'index_info must include the shared doctor summary',
+		/all checks passed/,
+		`a healthy index must report the passing summary, got:\n${infoOut}`,
 	);
+	assert.doesNotMatch(infoOut, /failure\(s\)/);
+
+	// Provenance must be prose shared with the doctor, never the raw enum.
+	assert.match(infoOut, /from the index file timestamp/);
+	assert.doesNotMatch(infoOut, /db-file-mtime/);
+});
+
+test('index_info reports a doctor failure for an empty index', async () => {
+	const { db } = makeDb();
+
+	const infoOut = textOf(await buildIndexInfoHandler({ db })());
+
+	assert.match(
+		infoOut,
+		/failure/,
+		`an empty index must be reported as failing, got:\n${infoOut}`,
+	);
+	assert.doesNotMatch(infoOut, /all checks passed/);
 });

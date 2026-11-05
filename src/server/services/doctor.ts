@@ -33,11 +33,19 @@ export interface DoctorReport {
 const STALE_AFTER_DAYS = 30;
 
 /** Provenance as user-facing prose: internal enums must never reach the CLI. */
-const FRESHNESS_SOURCE_LABELS: Record<FreshnessInfo['source'], string> = {
-	meta: 'from build metadata',
-	'db-file-mtime': 'from the index file timestamp',
-	unknown: 'unknown',
-};
+export const FRESHNESS_SOURCE_LABELS: Record<FreshnessInfo['source'], string> =
+	{
+		meta: 'from build metadata',
+		'db-file-mtime': 'from the index file timestamp',
+		unknown: 'unknown',
+	};
+
+/**
+ * SQLite's in-memory forms have no file on disk, so `existsSync` would call a
+ * perfectly healthy embedded index missing.
+ */
+const isVirtualDbPath = (dbPath: string): boolean =>
+	dbPath === ':memory:' || dbPath.startsWith('file::memory:');
 
 /** Every check the report must carry, whatever the state of the install. */
 const SKIPPED_IDS: Array<[string, string]> = [
@@ -112,26 +120,28 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 		}),
 	);
 
-	// 2. Database file
+	// 2. Database file — a virtual (in-memory) path is present by definition.
 	const exists = safe(
 		'database_file',
 		'Index file',
 		'npm run build:index',
 		() =>
-			existsSync(context.dbPath)
-				? check(
-						'database_file',
-						'Index file',
-						'ok',
-						`${context.dbPath} (${formatBytes(statSync(context.dbPath).size)})`,
-					)
-				: check(
-						'database_file',
-						'Index file',
-						'fail',
-						`not found at ${context.dbPath}`,
-						'npm run build:index',
-					),
+			isVirtualDbPath(context.dbPath)
+				? check('database_file', 'Index file', 'ok', 'in-memory database')
+				: existsSync(context.dbPath)
+					? check(
+							'database_file',
+							'Index file',
+							'ok',
+							`${context.dbPath} (${formatBytes(statSync(context.dbPath).size)})`,
+						)
+					: check(
+							'database_file',
+							'Index file',
+							'fail',
+							`not found at ${context.dbPath}`,
+							'npm run build:index',
+						),
 	);
 	checks.push(exists);
 
