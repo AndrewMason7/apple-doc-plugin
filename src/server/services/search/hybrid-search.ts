@@ -22,6 +22,62 @@ export const resolveMinSimilarity = (
 };
 import { resolveEmbeddingProvider } from './provider-factory.js';
 
+export const STOPWORDS = new Set([
+	'how',
+	'what',
+	'when',
+	'where',
+	'why',
+	'which',
+	'who',
+	'do',
+	'does',
+	'did',
+	'can',
+	'could',
+	'should',
+	'i',
+	'my',
+	'me',
+	'we',
+	'you',
+	'the',
+	'a',
+	'an',
+	'to',
+	'in',
+	'on',
+	'of',
+	'for',
+	'with',
+	'that',
+	'this',
+	'is',
+	'are',
+	'be',
+	'from',
+	'it',
+	'and',
+	'or',
+	'but',
+	'not',
+	'while',
+	'after',
+	'before',
+]);
+
+/** A sentence is not a symbol name: it needs ≥3 words, no glob, and must read like prose. */
+export const isNaturalLanguageQuery = (query: string): boolean => {
+	const trimmed = query.trim();
+	if (!trimmed || trimmed.includes('*')) return false;
+	const words = trimmed.split(/\s+/);
+	if (words.length < 3) return false;
+	const stopHits = words.filter((word) =>
+		STOPWORDS.has(word.toLowerCase()),
+	).length;
+	return words.length >= 6 || stopHits >= 2;
+};
+
 export interface SearchOptions {
 	framework?: string;
 	limit?: number;
@@ -212,6 +268,11 @@ export class HybridSearchEngine {
 		options: SearchOptions = {},
 	): Promise<SearchResultItem[]> {
 		const limit = options.limit || 20;
+		// A prose query is not a symbol name, so lexical noise beats the vector
+		// hit it happens to contain. Lean semantic for sentences; an explicit
+		// flag from the caller still wins.
+		const preferSemantic =
+			options.preferSemantic ?? isNaturalLanguageQuery(query);
 		const ftsResults = this.db.queryFTS(query, options.framework, limit * 2);
 
 		// Exact symbol booster
@@ -243,7 +304,7 @@ export class HybridSearchEngine {
 			if (queryVec) {
 				const minSim = resolveMinSimilarity(
 					this.embeddingProvider,
-					Boolean(options.preferSemantic),
+					preferSemantic,
 				);
 				const semanticMatches = this.searchSemanticWithVector(
 					queryVec,
@@ -259,8 +320,8 @@ export class HybridSearchEngine {
 						{ item: SearchResultItem; rrf: number }
 					>();
 					const k = 60;
-					const ftsWeight = options.preferSemantic ? 0.7 : 1.0;
-					const semWeight = options.preferSemantic ? 1.8 : 1.0;
+					const ftsWeight = preferSemantic ? 0.7 : 1.0;
+					const semWeight = preferSemantic ? 1.8 : 1.0;
 
 					// Rank FTS items
 					scoredFTS
