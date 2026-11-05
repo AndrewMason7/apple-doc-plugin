@@ -230,6 +230,46 @@ export class AppleDocsDB {
 		}
 	}
 
+	/** Row count of the FTS5 mirror; must equal getSymbolCount() or search is stale. */
+	getFtsCount(): number {
+		try {
+			const row = this.db
+				.prepare(`SELECT count(*) as count FROM symbols_fts`)
+				.get() as { count: number } | undefined;
+			return row?.count ?? 0;
+		} catch (err) {
+			logger.warn(
+				'Failed to count FTS rows:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Distinct vector widths currently stored. More than one value (or a value
+	 * that differs from the active provider) means queries cannot be scored
+	 * against part of the corpus.
+	 */
+	getVectorDimensions(): number[] {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT DISTINCT (LENGTH(embedding) / 4) AS dims FROM semantic_items ORDER BY dims ASC`,
+				)
+				.all() as Array<{ dims: number }>;
+			return rows
+				.map((row) => row.dims)
+				.filter((d) => Number.isFinite(d) && d > 0);
+		} catch (err) {
+			logger.warn(
+				'Failed to read vector dimensions:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return [];
+		}
+	}
+
 	/** Rows stored with a generic `symbol`/`unknown` kind, i.e. unclassified. */
 	countUnknownKind(): number {
 		try {
