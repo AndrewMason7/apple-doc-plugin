@@ -360,12 +360,16 @@ const ICONS: Record<DoctorStatus, string> = { ok: '✔', warn: '⚠', fail: '✖
 export function formatDoctorReport(report: DoctorReport): string {
 	const lines = report.checks.map((c) => {
 		const head = `${ICONS[c.status]} ${c.title.padEnd(22)} ${c.detail}`;
-		return c.nextStep ? `${head}\n   → ${c.nextStep}` : head;
+		const nextStep = c.nextStep.trim();
+		return nextStep ? `${head}\n   → ${nextStep}` : head;
 	});
 
-	const summary = report.ok
-		? `\nAll checks passed${report.warnings > 0 ? ` (${report.warnings} warning${report.warnings === 1 ? '' : 's'})` : ''}.`
-		: `\n${report.failures} failure${report.failures === 1 ? '' : 's'}, ${report.warnings} warning${report.warnings === 1 ? '' : 's'}.`;
+	// Derive the branch from the failure count, not the `ok` flag: a hand-built
+	// or stale report must never claim "All checks passed" while listing failures.
+	const summary =
+		report.failures === 0
+			? `\nAll checks passed${report.warnings > 0 ? ` (${report.warnings} warning${report.warnings === 1 ? '' : 's'})` : ''}.`
+			: `\n${report.failures} failure${report.failures === 1 ? '' : 's'}, ${report.warnings} warning${report.warnings === 1 ? '' : 's'}.`;
 
 	return [...lines, summary].join('\n');
 }

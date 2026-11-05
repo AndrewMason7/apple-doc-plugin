@@ -8,7 +8,10 @@ import {
 	AppleDocsDB,
 	MIN_SEMANTIC_ITEMS_FOR_HYBRID,
 } from '../dist/server/db/database.js';
-import { runDoctor } from '../dist/server/services/doctor.js';
+import {
+	formatDoctorReport,
+	runDoctor,
+} from '../dist/server/services/doctor.js';
 
 const ALL_CHECK_IDS = [
 	'node_version',
@@ -219,8 +222,6 @@ test('a future-dated build stamp clamps to zero days and stays ok', () => {
 	assert.match(check.detail, /^0 days old/);
 });
 
-import { formatDoctorReport } from '../dist/server/services/doctor.js';
-
 test('formatDoctorReport marks every check and prints next steps only when needed', () => {
 	const report = {
 		ok: false,
@@ -256,5 +257,66 @@ test('formatDoctorReport marks every check and prints next steps only when neede
 	assert.match(text, /⚠ Semantic layer/);
 	assert.match(text, /✖ FTS index/);
 	assert.match(text, /→ npm run build:index/);
-	assert.match(text, /1 failure/);
+
+	// The contract is 'next steps only when needed' — assert the ABSENCE too,
+	// otherwise an implementation that prints an empty arrow for every row passes.
+	const arrows = text.split('\n').filter((line) => line.trim().startsWith('→'));
+	assert.strictEqual(
+		arrows.length,
+		2,
+		'only the warn and the fail carry a next step',
+	);
+	assert.doesNotMatch(text, /^\s*→\s*$/m, 'no empty arrow lines');
+
+	// Singular and plural must both be right.
+	assert.match(text, /1 failure, 1 warning\./);
+
+	const plural = formatDoctorReport({
+		ok: false,
+		failures: 2,
+		warnings: 0,
+		checks: [
+			{
+				id: 'a',
+				title: 'A',
+				status: 'fail',
+				detail: 'x',
+				nextStep: 'npm run build:index',
+			},
+			{ id: 'b', title: 'B', status: 'fail', detail: 'y', nextStep: '' },
+		],
+	});
+	assert.match(plural, /2 failures, 0 warnings\./);
+
+	// A whitespace-only next step is not a next step: no blank arrow line.
+	const blank = formatDoctorReport({
+		ok: true,
+		failures: 0,
+		warnings: 0,
+		checks: [
+			{ id: 'a', title: 'A', status: 'ok', detail: 'x', nextStep: '   ' },
+		],
+	});
+	assert.doesNotMatch(
+		blank,
+		/→/,
+		'a whitespace-only next step must not render an arrow',
+	);
+	assert.match(blank, /All checks passed\./);
+
+	// The summary must follow the failure count, not a stale or hand-built ok flag.
+	const inconsistent = formatDoctorReport({
+		ok: true,
+		failures: 2,
+		warnings: 0,
+		checks: [
+			{ id: 'a', title: 'A', status: 'fail', detail: 'x', nextStep: '' },
+			{ id: 'b', title: 'B', status: 'fail', detail: 'y', nextStep: '' },
+		],
+	});
+	assert.match(
+		inconsistent,
+		/2 failures, 0 warnings\./,
+		'failures must win over a contradictory ok flag',
+	);
 });
