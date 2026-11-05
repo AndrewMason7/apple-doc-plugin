@@ -230,11 +230,16 @@ export class AppleDocsDB {
 		}
 	}
 
-	/** Row count of the FTS5 mirror; must equal getSymbolCount() or search is stale. */
+	/**
+	 * Document count of the FTS5 shadow table. `symbols_fts` is an external-content
+	 * table (content='symbols'), so a plain `count(*)` there is served from `symbols`
+	 * and can never disagree with getSymbolCount(). Only the docsize shadow table
+	 * reflects what the index actually holds.
+	 */
 	getFtsCount(): number {
 		try {
 			const row = this.db
-				.prepare(`SELECT count(*) as count FROM symbols_fts`)
+				.prepare(`SELECT count(*) as count FROM symbols_fts_docsize`)
 				.get() as { count: number } | undefined;
 			return row?.count ?? 0;
 		} catch (err) {
@@ -255,7 +260,7 @@ export class AppleDocsDB {
 		try {
 			const rows = this.db
 				.prepare(
-					`SELECT DISTINCT (LENGTH(embedding) / 4) AS dims FROM semantic_items ORDER BY dims ASC`,
+					`SELECT DISTINCT (LENGTH(embedding) / 4.0) AS dims FROM semantic_items ORDER BY dims ASC`,
 				)
 				.all() as Array<{ dims: number }>;
 			return rows
@@ -350,9 +355,7 @@ export class AppleDocsDB {
 	updateSymbolKind(id: string, kind: string, isPrimaryType?: boolean): void {
 		const primary = isPrimaryType ? 1 : 0;
 		this.db
-			.prepare(
-				`UPDATE symbols SET kind = ?, is_primary_type = ? WHERE id = ?`,
-			)
+			.prepare(`UPDATE symbols SET kind = ?, is_primary_type = ? WHERE id = ?`)
 			.run(kind, primary, id);
 	}
 
@@ -446,7 +449,9 @@ export class AppleDocsDB {
 	 * documented top-level types, which leaves conceptual queries about view
 	 * modifiers with nothing to match against.
 	 */
-	getMemberSymbolsForEnrichment(frameworks: string[] = ['SwiftUI', 'UIKit']): Array<{
+	getMemberSymbolsForEnrichment(
+		frameworks: string[] = ['SwiftUI', 'UIKit'],
+	): Array<{
 		id: string;
 		title: string;
 		kind: string;
@@ -509,7 +514,6 @@ export class AppleDocsDB {
 			title: string;
 		}>;
 	}
-
 
 	getSemanticItemCount(): number {
 		try {
