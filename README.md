@@ -35,6 +35,11 @@ hypotheses that measurement rejected — is recorded in
 
 ## Quickstart (5 minutes)
 
+Three commands to a **verified** install. The index ships inside the repo, so
+search works offline before you configure any API key.
+
+**Prerequisites:** Node ≥ 22 (`node -v`). Nothing else.
+
 ```bash
 git clone https://github.com/AndrewMason7/apple-doc-plugin.git
 cd apple-doc-plugin
@@ -42,9 +47,10 @@ npm install && npm run build     # ~1 min; better-sqlite3 compiles once
 npm run doctor                   # ← the only command you need to trust
 ```
 
-`doctor` prints one line per concern and, when something is off, the exact
-command that fixes it (from a configured install; a bare clone shows
-`⚠ Embedding provider  none configured` on that row):
+### 1. Read the doctor report
+
+Ten checks, one line each. Green means usable, and anything else prints the
+exact command that fixes it:
 
 ```
 ✔ Node.js                v24.22.2
@@ -61,11 +67,89 @@ command that fixes it (from a configured install; a bare clone shows
 All checks passed.
 ```
 
-- Exit code **0** = usable. **1** = a check failed, and the failing line names the fix.
-- `npm run doctor -- --json` prints the same report as JSON for scripting; add `--strict` to exit 1 on warnings too.
-- **No API key is fine.** Without a provider, search stays lexical and the provider row only warns. Set `GEMINI_API_KEY` (or point `APPLE_DOCS_EMBEDDING_MODEL_PATH` at the offline GGUF) and run `npm run embed-index` to add conceptual search.
+That output is from a configured install. Without a key, a **bare clone** warns
+on the provider row instead — lexical search is fully functional either way:
 
-Then wire it into your agent: `hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git` (or `agy plugin install .`), restart the client, and ask it an Apple API question. If any row is ⚠ or ✖, [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) maps every check to its fix.
+```
+⚠ Embedding provider     none configured — hybrid search stays off, lexical still works
+   → Set GEMINI_API_KEY (or APPLE_DOCS_EMBEDDING_MODEL_PATH) in .env, then run: npm run embed-index
+⚠ Semantic layer         24/100 vectors — hybrid search cannot engage; queries stay lexical
+   → npm run embed-index
+```
+
+| Flag          | Behaviour                                                              |
+| ------------- | ---------------------------------------------------------------------- |
+| _(none)_      | Human-readable report; exit **0** if usable, **1** if any check failed |
+| `-- --json`   | Machine-readable `{ ok, checks, failures, warnings }` for scripting    |
+| `-- --strict` | Exit 1 on warnings too, for CI                                         |
+| `-- --help`   | Usage; unknown flags exit **2** instead of silently reporting          |
+
+### 2. Wire it into your agent
+
+```bash
+hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git
+# local checkout instead:  agy plugin install .
+```
+
+Restart the client so it picks up the six tools.
+
+### 3. Prove the agent can actually see your index
+
+Do not trust "it installed". Ask one question with a known answer:
+
+> **You:** search_symbols for `NavigationStack`
+>
+> **Expected:** one exact hit — `NavigationStack`, kind `struct`,
+> framework `SwiftUI`, path `/documentation/swiftui/navigationstack`.
+
+Then widen the net:
+
+> **You:** search_symbols for `Grid*`
+>
+> **Expected:** 9 matches (wildcards are globbed, not treated as keywords).
+
+If both come back right, search is live. If a tool errors, run
+`npm run doctor` again — a failed row names its own fix.
+
+### 4. Optional: conceptual search
+
+Lexical search needs no key. Behavioural questions ("what runs async when a view
+appears?") need vectors:
+
+```bash
+echo "GEMINI_API_KEY=your-key" >> .env    # or set APPLE_DOCS_EMBEDDING_MODEL_PATH to a local GGUF
+npm run embed-index
+npm run doctor                            # semantic_layer should flip to ✔
+```
+
+The default width is **768-d**, matching the vectors shipped in this repo. If you
+deliberately re-embed at 3072, set `APPLE_DOCS_EMBEDDING_DIMENSIONS=3072` and run
+`npm run embed-index -- --force`; a width that disagrees with the stored vectors
+fails `dimension_consistency` and disables semantic scoring.
+
+### 5. When a row is ⚠ or ✖
+
+`docs/TROUBLESHOOTING.md` maps every check id to its fix. The short version:
+
+| Row                       | Means                                                 | Fix                                   |
+| ------------------------- | ----------------------------------------------------- | ------------------------------------- |
+| `database_file` ✖         | index missing                                         | `npm run build:index`                 |
+| `fts_index` ✖             | search index out of sync with symbols                 | `npm run build:index`                 |
+| `kind_integrity` ⚠        | `symbolType` filters miss rows                        | `npm run repair-index -- --apply`     |
+| `attribution_integrity` ⚠ | a framework filter returns another framework's symbol | `npm run repair-index -- --apply`     |
+| `provider_available` ⚠    | lexical only                                          | set a key, then `npm run embed-index` |
+| `semantic_layer` ⚠        | below the 100-vector hybrid threshold                 | `npm run embed-index`                 |
+| `dimension_consistency` ✖ | stored vectors ≠ query width                          | `npm run embed-index -- --force`      |
+| `snapshot_freshness` ⚠    | over 30 days old                                      | `npm run build:index`                 |
+
+A corrupt index fails **loudly** — every dependent row prints
+`✖ index is unreadable or corrupt` and the run exits 1, never a green report over
+an unreadable file. A missing index fails on the `Index file` row and marks the
+dependents skipped.
+
+> `APPLE_DOCS_DB_PATH` accepts an absolute path or one relative to the plugin
+> root, and every script (`doctor`, `build:index`, `embed-index`,
+> `repair-index`) resolves it the same way.
 
 ## Why this exists
 
