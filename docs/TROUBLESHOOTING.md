@@ -7,7 +7,7 @@ below maps each check id to the same fix in prose.
 
 | Doctor check              | Symptom                                                                                       | Fix                                                                                   |
 | ------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `node_version` ✖          | `process.loadEnvFile is not a function`                                                       | Node ≥ 22 (`brew install node`, or `fnm install 22` to pin)                           |
+| `node_version` ✖          | `✖ Node.js  v20.x is too old`                                                                 | Node ≥ 22 (`brew install node`, or `fnm install 22` to pin)                           |
 | `database_file` ✖         | `Index file` reports `not found at …`; nothing to search locally                              | `npm run build:index`                                                                 |
 | `database_readable` ✖     | `Symbols` reports `database opened but is empty`; every query returns nothing                 | `npm run build:index`                                                                 |
 | `fts_index` ✖             | FTS rows ≠ symbol rows; search returns nothing or misses symbols it should match              | `npm run build:index`                                                                 |
@@ -20,11 +20,13 @@ below maps each check id to the same fix in prose.
 
 `✔` is healthy, `⚠` is degraded but working, `✖` is a failure. The run exits `1`
 when any check fails; add `--strict` (`npm run doctor -- --strict`) to also exit
-`1` on warnings. `npm run doctor -- --json` prints the same rows as
-`{ id, title, status, detail, nextStep }` objects for scripting.
+`1` on warnings. `npm run doctor -- --json` prints one envelope,
+`{ ok, checks, failures, warnings }`, where each `checks[]` entry is
+`{ id, title, status, detail, nextStep }` — for scripting, not for humans.
 
-Every `✖` row also prints the fixing command under the failing line as
-`→ npm run …`, so the CLI alone is usually enough to get back to green.
+Every `⚠`/`✖` row that has a fix prints a `→ …` next-step line under it (most
+are `npm run …`; `node_version` prints `→ brew install node` and
+`provider_available` prints `→ export GEMINI_API_KEY=... && npm run embed-index`).
 
 ## Native addon build (better-sqlite3)
 

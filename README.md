@@ -10,10 +10,10 @@ Local SQLite FTS5 over 65,787 symbols across SwiftUI, UIKit, Foundation, SwiftDa
 
 **Two modes, same binary:**
 
-| Mode        | What you need                             | What you get                                                                                                                              |
-| ----------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing                                                |
-| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search (768-d default, MRL-configurable), RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
+| Mode        | What you need                             | What you get                                                                                                                                                            |
+| ----------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing                                                                              |
+| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search (768-d default, matching the shipped vectors; MRL-configurable), RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
 
 No API key? It still works offline without a key. That is the point.
 
@@ -43,7 +43,8 @@ npm run doctor                   # ← the only command you need to trust
 ```
 
 `doctor` prints one line per concern and, when something is off, the exact
-command that fixes it:
+command that fixes it (from a configured install; a bare clone shows
+`⚠ Embedding provider  none configured` on that row):
 
 ```
 ✔ Node.js                v24.22.2
@@ -262,17 +263,18 @@ fallback; `APPLE_DOCS_EMBEDDING_PROVIDER=gemini` forces Gemini.
 Gemini's embedding family supports Matryoshka truncation, and the API re-normalises
 truncated output, so direction — which is all cosine similarity uses — is preserved.
 Google's own MTEB numbers put 768 dims within ~0.2 points of 1536, at a quarter of the
-storage of the 3072 default:
+storage of full 3072 width — which is why 768 is the default and matches the shipped
+vectors. Opt into the full width only if you want it:
 
 ```bash
-APPLE_DOCS_EMBEDDING_DIMENSIONS=768   # 128 | 256 | 512 | 768 | 1024 | 1536 | 2048 | 3072
+APPLE_DOCS_EMBEDDING_DIMENSIONS=3072   # 128 | 256 | 512 | 768 | 1024 | 1536 | 2048 | 3072 (default 768)
 npm run embed-index -- --force         # re-embed: existing vectors are the old shape
 ```
 
 Changing the dimension count invalidates every stored vector (a 768-d query cannot be
 scored against a 3072-d corpus), so clear `semantic_items` or run `--force` and verify
 `get_version` before trusting results. Unsupported values are ignored rather than
-guessed, so you keep the native 3072 instead of writing incomparable vectors.
+guessed, so you keep the configured width instead of writing incomparable vectors.
 
 The similarity floor is per-provider, not inherited from Gemini: the local GGUF
 uses **0.68** (0.62 when a caller prefers semantic matches), because measured on
@@ -331,14 +333,14 @@ concrete kind filter.
 cp .env.example .env
 ```
 
-| Variable                          | Required | Purpose                                                                                                                                            |
-| --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | No       | Local path to `embeddinggemma-2-Q8_0.gguf` for 100% offline in-process Metal vector embeddings                                                     |
-| `APPLE_DOCS_EMBEDDING_PROVIDER`   | No       | Force provider: `local` (in-process GGUF) or `gemini` (cloud API)                                                                                  |
-| `GEMINI_API_KEY`                  | No       | Gemini embeddings (`gemini-embedding-2`). [Google AI Studio](https://aistudio.google.com/)                                                         |
-| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | No       | MRL truncation for hosted embeddings: `128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`. 768 measured as near-lossless at 1/4 the storage |
-| `GOOGLE_APPLICATION_CREDENTIALS`  | No       | Service-account JSON for ADC. `gcloud auth application-default login` also works                                                                   |
-| `APPLE_DOCS_DB_PATH`              | No       | Alternate path to the SQLite file (default `data/apple-docs.db`)                                                                                   |
+| Variable                          | Required | Purpose                                                                                                                                                                                       |
+| --------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | No       | Local path to `embeddinggemma-2-Q8_0.gguf` for 100% offline in-process Metal vector embeddings                                                                                                |
+| `APPLE_DOCS_EMBEDDING_PROVIDER`   | No       | Force provider: `local` (in-process GGUF) or `gemini` (cloud API)                                                                                                                             |
+| `GEMINI_API_KEY`                  | No       | Gemini embeddings (`gemini-embedding-2`). [Google AI Studio](https://aistudio.google.com/)                                                                                                    |
+| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | No       | MRL truncation for hosted embeddings: `128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`. Default `768`, matching the shipped index; 768 measured as near-lossless at 1/4 the storage |
+| `GOOGLE_APPLICATION_CREDENTIALS`  | No       | Service-account JSON for ADC. `gcloud auth application-default login` also works                                                                                                              |
+| `APPLE_DOCS_DB_PATH`              | No       | Alternate path to the SQLite file (default `data/apple-docs.db`)                                                                                                                              |
 
 The process loads `.env` at startup. Credentials are not logged.
 
