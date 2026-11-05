@@ -31,10 +31,12 @@
 ### Task 1: Create Hermes Plugin Manifest (`plugin.yaml`)
 
 **Files:**
+
 - Create: `plugin.yaml`
 - Test: `test/test_hermes_manifest.py`
 
 **Interfaces:**
+
 - Consumes: Spec metadata values (`name: apple-doc-plugin`, `manifest_version: 2`, `provides_tools`).
 - Produces: `plugin.yaml` discoverable by `hermes plugins` CLI and catalog validator.
 
@@ -87,10 +89,12 @@ git commit -m "feat(hermes): add plugin.yaml manifest v2 for Hermes catalog"
 ### Task 2: Implement Stdio MCP Bridge (`hermes_bridge.py`)
 
 **Files:**
+
 - Create: `hermes_bridge.py`
 - Test: `test/test_hermes_bridge.py`
 
 **Interfaces:**
+
 - Consumes: `node bin/launcher.cjs` over stdin/stdout via JSON-RPC 2.0.
 - Produces: `NodeMcpBridge` class with `call_tool(name: str, arguments: dict) -> str` and `close()`.
 
@@ -118,6 +122,7 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'hermes_bridge'`
 - [ ] **Step 3: Implement `hermes_bridge.py`**
 
 Implement `NodeMcpBridge` with:
+
 - Subprocess spawning of `node bin/launcher.cjs`.
 - Standard MCP JSON-RPC initialization handshake (`initialize` -> `notifications/initialized`).
 - Background stdout reader thread correlating response IDs to `threading.Event` futures.
@@ -142,10 +147,12 @@ git commit -m "feat(hermes): implement NodeMcpBridge stdio JSON-RPC client"
 ### Task 3: Implement Hermes Plugin Entrypoint (`__init__.py`)
 
 **Files:**
+
 - Create: `__init__.py`
 - Test: `test/test_hermes_registration.py`
 
 **Interfaces:**
+
 - Consumes: `NodeMcpBridge` from `hermes_bridge.py`.
 - Produces: `register(ctx)` entrypoint registering all 6 tools with Hermes.
 
@@ -186,6 +193,7 @@ Expected: FAIL with `ModuleNotFoundError` or missing `register`
 - [ ] **Step 3: Implement `__init__.py`**
 
 Implement `register(ctx)`:
+
 - Support both `ctx.register_tool(...)` and `@ctx.tool(...)` syntax.
 - Provide JSON schemas matching the MCP tool signatures for each tool.
 - Route tool calls through `get_bridge().call_tool(...)`.
@@ -207,9 +215,11 @@ git commit -m "feat(hermes): implement native register(ctx) entrypoint"
 ### Task 4: End-to-End Hermes Plugin Execution Test
 
 **Files:**
+
 - Create: `test/test_hermes_e2e.py`
 
 **Interfaces:**
+
 - Consumes: `register(ctx)` from `__init__.py` and live `bin/launcher.cjs`.
 - Produces: Full verification of documentation lookup via Hermes plugin handlers.
 
@@ -255,16 +265,19 @@ git commit -m "test(hermes): add end-to-end Hermes plugin integration test"
 ### Task 5: Documentation & Catalog Validation
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `AGENT_TASKS.md`
 
 **Interfaces:**
+
 - Consumes: Completed Hermes plugin capabilities.
 - Produces: Updated docs with `hermes plugins install` instructions and catalog verification steps.
 
 - [ ] **Step 1: Update README.md with Hermes installation instructions**
 
 Add a dedicated `Hermes Agent Plugin` section under `Install`:
+
 ```markdown
 ### Hermes Agent Plugin
 
@@ -278,10 +291,12 @@ hermes plugins enable apple-doc-plugin
 - [ ] **Step 2: Run all tests (npm test + pytest)**
 
 Run:
+
 ```bash
 npm test
 python3 -m pytest test/ -v
 ```
+
 Expected: All tests pass.
 
 - [ ] **Step 3: Commit**

@@ -24,7 +24,7 @@ platforms:
   - linux
 external_dependencies:
   - name: node
-    install_hint: "Node.js >= 22 is required. Install via brew install node or fnm install 22."
+    install_hint: 'Node.js >= 22 is required. Install via brew install node or fnm install 22.'
 provides_tools:
   - search_symbols
   - semantic_search

@@ -67,16 +67,14 @@ test('get_version reports lexical fallback when semantic items are below the hyb
 
 	const out = textOf(await buildVersionHandler({ db })());
 
-	assert.ok(
-		/Lexical/i.test(out),
-		`expected honest lexical mode, got:\n${out}`,
-	);
+	assert.ok(/Lexical/i.test(out), `expected honest lexical mode, got:\n${out}`);
 	assert.ok(
 		!/hybrid multimodal search enabled/i.test(out),
 		'get_version must not claim hybrid mode while the search path falls back to lexical',
 	);
 	assert.ok(
-		out.includes(String(24)) && out.includes(String(MIN_SEMANTIC_ITEMS_FOR_HYBRID)),
+		out.includes(String(24)) &&
+			out.includes(String(MIN_SEMANTIC_ITEMS_FOR_HYBRID)),
 		'get_version must show the actual semantic item count and the threshold',
 	);
 });
@@ -170,7 +168,10 @@ test('index_info is distinct from get_version and reports index health', async (
 		versionOut,
 		'index_info must not be a byte-identical duplicate of get_version',
 	);
-	assert.ok(/index health/i.test(infoOut), `expected an index health section:\n${infoOut}`);
+	assert.ok(
+		/index health/i.test(infoOut),
+		`expected an index health section:\n${infoOut}`,
+	);
 	assert.ok(
 		/kind distribution/i.test(infoOut),
 		`expected a kind distribution section:\n${infoOut}`,
@@ -238,14 +239,8 @@ test('resolveFrameworkFromPath handles doc:// identifiers, absolute, relative an
 		resolveFrameworkFromPath('swiftui/view', 'AppKit'),
 		'SwiftUI',
 	);
-	assert.strictEqual(
-		resolveFrameworkFromPath('uikit', 'Foundation'),
-		'UIKit',
-	);
-	assert.strictEqual(
-		resolveFrameworkFromPath('swift', 'SwiftUI'),
-		'Swift',
-	);
+	assert.strictEqual(resolveFrameworkFromPath('uikit', 'Foundation'), 'UIKit');
+	assert.strictEqual(resolveFrameworkFromPath('swift', 'SwiftUI'), 'Swift');
 	assert.strictEqual(
 		resolveFrameworkFromPath('documentation/regexbuilder/regex', 'Swift'),
 		'RegexBuilder',
@@ -273,7 +268,10 @@ test('resolveSymbolKind prefers canonical symbolKind, then roleHeading', () => {
 		'method',
 	);
 	assert.strictEqual(resolveSymbolKind({ roleHeading: 'Structure' }), 'struct');
-	assert.strictEqual(resolveSymbolKind({ roleHeading: 'Protocol' }), 'protocol');
+	assert.strictEqual(
+		resolveSymbolKind({ roleHeading: 'Protocol' }),
+		'protocol',
+	);
 	assert.strictEqual(
 		resolveSymbolKind({ roleHeading: 'Instance Method' }),
 		'method',
@@ -282,10 +280,7 @@ test('resolveSymbolKind prefers canonical symbolKind, then roleHeading', () => {
 		resolveSymbolKind({ roleHeading: 'Type Property' }),
 		'property',
 	);
-	assert.strictEqual(
-		resolveSymbolKind({ roleHeading: 'Initializer' }),
-		'init',
-	);
+	assert.strictEqual(resolveSymbolKind({ roleHeading: 'Initializer' }), 'init');
 	assert.strictEqual(
 		resolveSymbolKind({ roleHeading: 'Type Alias' }),
 		'typealias',
@@ -391,7 +386,11 @@ test('search_symbols treats a generic "symbol" kind row as unknown for filtering
 		searchEngine,
 	});
 	const out = textOf(
-		await handler({ query: 'ModelContainer', symbolType: 'class', lexicalOnly: true }),
+		await handler({
+			query: 'ModelContainer',
+			symbolType: 'class',
+			lexicalOnly: true,
+		}),
 	);
 
 	assert.ok(

@@ -89,7 +89,10 @@ const fetchAbstract = async (path: string): Promise<string | undefined> => {
 		}
 	}
 
-	for (const url of [`${DOC_BASE}${path}.json`, `${DOC_BASE}${encodeURI(path)}.json`]) {
+	for (const url of [
+		`${DOC_BASE}${path}.json`,
+		`${DOC_BASE}${encodeURI(path)}.json`,
+	]) {
 		try {
 			const res = await axios.get(url, { headers, timeout: 15000 });
 			const abstract = extractAbstract(res.data?.abstract);
@@ -151,7 +154,9 @@ async function enrichAbstracts(db: AppleDocsDB): Promise<void> {
 			filled++;
 		}
 		if (done % 250 === 0) {
-			console.error(`   • ${done}/${missing.length} fetched (${filled} filled)`);
+			console.error(
+				`   • ${done}/${missing.length} fetched (${filled} filled)`,
+			);
 		}
 	});
 

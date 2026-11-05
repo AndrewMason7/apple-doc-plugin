@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-04  
 **Author:** Andrew Mason  
-**Status:** Pending Approval  
+**Status:** Pending Approval
 
 ---
 
@@ -17,6 +17,7 @@ Hermes Agent (by Nous Research) features a native plugin architecture with an of
 ## 2. Goals & Non-Goals
 
 ### Goals
+
 - **Dual Compatibility:** Ensure the repository works seamlessly as both an Antigravity plugin (`plugin.json`), a standard MCP server (`mcp_config.json`), and a native Hermes Agent plugin (`plugin.yaml` + `__init__.py`).
 - **Catalog-Ready Manifest:** Provide a compliant `plugin.yaml` (Manifest v2) containing rich metadata, tags, capabilities, documentation links, and external dependency hints (`node >= 22`).
 - **Zero Logic Duplication:** Keep the Node.js TypeScript engine as the single source of truth for DocC formatting, SQLite FTS5 queries, and vector embeddings.
@@ -26,6 +27,7 @@ Hermes Agent (by Nous Research) features a native plugin architecture with an of
 - **Automated Verification:** Include a test script (`test/test_hermes_plugin.py`) validating the Hermes plugin registration and end-to-end tool execution against a mock Hermes context.
 
 ### Non-Goals
+
 - Rewriting the search algorithms, SQLite FTS5 queries, or DocC parsers in pure Python.
 - Modifying existing Antigravity `plugin.json` or breaking standalone MCP clients.
 - Introducing heavy Python third-party dependencies; the Python bridge must rely strictly on the Python standard library (`subprocess`, `threading`, `json`, `sys`, `pathlib`, `atexit`).
@@ -42,17 +44,18 @@ Hermes Agent (by Nous Research) features a native plugin architecture with an of
 
 ## 4. Approaches Considered
 
-| Approach | Description | Trade-offs | Decision |
-|---|---|---|---|
-| **Approach 1: Persistent Stdio MCP Bridge** | Python `__init__.py` lazily launches `node bin/launcher.cjs` as a persistent subprocess and communicates over stdio via JSON-RPC 2.0. | **Pros:** Zero code duplication; warm cache & DB connection; sub-millisecond responses.<br>**Cons:** Requires process lifecycle management in Python. | **Selected** (Recommended) |
-| **Approach 2: One-Shot CLI Execution** | Python `__init__.py` spawns a fresh `node` subprocess per tool call. | **Pros:** Stateless.<br>**Cons:** 150–250ms latency overhead per query; cannot keep in-memory vector models warm. | **Rejected** |
-| **Approach 3: Pure Python SQLite/DocC Rewrite** | Reimplement SQLite FTS5 search and DocC CDN fetching natively in Python. | **Pros:** No Node dependency.<br>**Cons:** High maintenance divergence and duplication of complex DocC markdown formatting. | **Rejected** |
+| Approach                                        | Description                                                                                                                           | Trade-offs                                                                                                                                            | Decision                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| **Approach 1: Persistent Stdio MCP Bridge**     | Python `__init__.py` lazily launches `node bin/launcher.cjs` as a persistent subprocess and communicates over stdio via JSON-RPC 2.0. | **Pros:** Zero code duplication; warm cache & DB connection; sub-millisecond responses.<br>**Cons:** Requires process lifecycle management in Python. | **Selected** (Recommended) |
+| **Approach 2: One-Shot CLI Execution**          | Python `__init__.py` spawns a fresh `node` subprocess per tool call.                                                                  | **Pros:** Stateless.<br>**Cons:** 150–250ms latency overhead per query; cannot keep in-memory vector models warm.                                     | **Rejected**               |
+| **Approach 3: Pure Python SQLite/DocC Rewrite** | Reimplement SQLite FTS5 search and DocC CDN fetching natively in Python.                                                              | **Pros:** No Node dependency.<br>**Cons:** High maintenance divergence and duplication of complex DocC markdown formatting.                           | **Rejected**               |
 
 ---
 
 ## 5. Technical Specification
 
 ### 5.1 Manifest Specification (`plugin.yaml`)
+
 ```yaml
 name: apple-doc-plugin
 label: Apple Developer Documentation
@@ -80,7 +83,7 @@ platforms:
   - linux
 external_dependencies:
   - name: node
-    install_hint: "Node.js >= 22 is required. Install via brew install node or fnm install 22."
+    install_hint: 'Node.js >= 22 is required. Install via brew install node or fnm install 22.'
 provides_tools:
   - search_symbols
   - semantic_search
@@ -91,6 +94,7 @@ provides_tools:
 ```
 
 ### 5.2 Python Bridge Architecture (`__init__.py` & `hermes_bridge.py`)
+
 - **`NodeMcpBridge` class:**
   - Singleton pattern / lazy process initialization.
   - Spawns `node bin/launcher.cjs` on the first tool invocation.
@@ -108,6 +112,7 @@ provides_tools:
   - Handlers execute `bridge.call_tool(tool_name, arguments)` and return formatted text strings directly into Hermes conversation context.
 
 ### 5.3 Automated Verification
+
 - Script `test/test_hermes_plugin.py`:
   - Simulates Hermes Agent runtime context (`MockContext`).
   - Invokes `register(mock_ctx)`.
@@ -117,6 +122,7 @@ provides_tools:
 ---
 
 ## 6. What's Left to Implementation
+
 - Create `plugin.yaml` with catalog metadata.
 - Implement `hermes_bridge.py` and `__init__.py`.
 - Create and run `test/test_hermes_plugin.py` to confirm zero regressions.

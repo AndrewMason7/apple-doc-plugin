@@ -221,7 +221,11 @@ test('updateSymbolAbstract backfills an abstract, making the symbol embeddable',
 test('getMemberSymbolsForEnrichment targets undocumented members of reachable frameworks only', () => {
 	const db = makeDb();
 	// Documented primary type: already covered by the default embedding pass.
-	addSymbol(db, { id: '/documentation/swiftui/griditem', title: 'GridItem', abstract: 'A grid row.' });
+	addSymbol(db, {
+		id: '/documentation/swiftui/griditem',
+		title: 'GridItem',
+		abstract: 'A grid row.',
+	});
 	// Undocumented SwiftUI member: the thing conceptual queries miss.
 	addSymbol(db, {
 		id: '/documentation/swiftui/view/task',

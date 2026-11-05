@@ -70,7 +70,10 @@ const fetchDocMetadata = async (
 		}
 	}
 
-	const candidates = [`${DOC_BASE}${path}.json`, `${DOC_BASE}${encodeURI(path)}.json`];
+	const candidates = [
+		`${DOC_BASE}${path}.json`,
+		`${DOC_BASE}${encodeURI(path)}.json`,
+	];
 
 	for (const url of candidates) {
 		try {
@@ -107,12 +110,15 @@ const mapWithConcurrency = async <T, R>(
 	const results: R[] = new Array(items.length);
 	let cursor = 0;
 
-	const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-		while (cursor < items.length) {
-			const index = cursor++;
-			results[index] = await fn(items[index]);
-		}
-	});
+	const workers = Array.from(
+		{ length: Math.min(limit, items.length) },
+		async () => {
+			while (cursor < items.length) {
+				const index = cursor++;
+				results[index] = await fn(items[index]);
+			}
+		},
+	);
 
 	await Promise.all(workers);
 	return results;
@@ -121,7 +127,9 @@ const mapWithConcurrency = async <T, R>(
 async function repairIndex() {
 	const dbPath = join(__dirname, '../data/apple-docs.db');
 	if (!existsSync(dbPath)) {
-		console.error(`✖ No index found at ${dbPath}. Run "npm run build:index" first.`);
+		console.error(
+			`✖ No index found at ${dbPath}. Run "npm run build:index" first.`,
+		);
 		process.exit(1);
 	}
 
@@ -137,7 +145,9 @@ async function repairIndex() {
 	const reattributionSamples: string[] = [];
 
 	for (const row of rows) {
-		const expected = canonicalFrameworkFromSlug(frameworkSlugFromPath(row.path));
+		const expected = canonicalFrameworkFromSlug(
+			frameworkSlugFromPath(row.path),
+		);
 		if (!expected) continue;
 		if (expected.toLowerCase() === row.framework.toLowerCase()) continue;
 

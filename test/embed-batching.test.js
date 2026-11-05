@@ -27,7 +27,8 @@ const makeDb = (count = 250) => {
 
 const vectorFor = (text, dims = 8) => {
 	const v = new Float32Array(dims);
-	for (let i = 0; i < dims; i++) v[i] = ((text.charCodeAt(i % text.length) + i) % 13) / 13;
+	for (let i = 0; i < dims; i++)
+		v[i] = ((text.charCodeAt(i % text.length) + i) % 13) / 13;
 	return v;
 };
 
@@ -46,7 +47,9 @@ const batchingProvider = (overrides = {}) => ({
 	embedDocuments: async function (items) {
 		this.batchSizes.push(items.length);
 		return items.map((item, index) =>
-			overrides.dropIndex === index ? null : vectorFor(`${item.title}:${item.content}`),
+			overrides.dropIndex === index
+				? null
+				: vectorFor(`${item.title}:${item.content}`),
 		);
 	},
 });
@@ -58,7 +61,11 @@ test('embedSymbols uses the provider batch API instead of one request per symbol
 	const result = await embedSymbols(db, provider, {});
 
 	assert.strictEqual(result.embedded, 250);
-	assert.strictEqual(provider.singleCalls, 0, 'no per-item calls when batching works');
+	assert.strictEqual(
+		provider.singleCalls,
+		0,
+		'no per-item calls when batching works',
+	);
 	assert.deepStrictEqual(
 		provider.batchSizes,
 		[100, 100, 50],
@@ -73,7 +80,11 @@ test('a null inside a batch falls back to a per-item request for that symbol onl
 
 	const result = await embedSymbols(db, provider, {});
 
-	assert.strictEqual(result.embedded, 6, 'the failed slot is retried individually');
+	assert.strictEqual(
+		result.embedded,
+		6,
+		'the failed slot is retried individually',
+	);
 	assert.strictEqual(provider.singleCalls, 1, 'exactly one per-item fallback');
 	assert.strictEqual(result.failed, 0);
 	assert.strictEqual(db.getSemanticItemCount(), 6);
@@ -112,7 +123,11 @@ test('batching keeps ids and metadata aligned with the right symbol', async () =
 	for (let i = 0; i < 3; i++) {
 		const item = byId.get(`sym-/documentation/swiftui/type${i}`);
 		assert.ok(item, `missing vector for type${i}`);
-		assert.strictEqual(item.title, `Type${i}`, 'title must follow the symbol, not the batch order');
+		assert.strictEqual(
+			item.title,
+			`Type${i}`,
+			'title must follow the symbol, not the batch order',
+		);
 		assert.strictEqual(item.dimensions ?? item.embedding.length, 8);
 	}
 });

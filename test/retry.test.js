@@ -45,7 +45,11 @@ test('withRetry retries with exponential backoff and returns the eventual succes
 
 	assert.strictEqual(result, 'third time');
 	assert.strictEqual(calls, 3);
-	assert.deepStrictEqual(delays, [100, 200], 'backoff doubles between attempts');
+	assert.deepStrictEqual(
+		delays,
+		[100, 200],
+		'backoff doubles between attempts',
+	);
 });
 
 test('withRetry gives up after the attempt budget and reports the last error', async () => {
@@ -68,7 +72,9 @@ test('withRetry gives up after the attempt budget and reports the last error', a
 
 test('withRetry honours shouldRetry so permanent errors fail immediately', async () => {
 	let calls = 0;
-	const permanent = Object.assign(new Error('bad request'), { permanent: true });
+	const permanent = Object.assign(new Error('bad request'), {
+		permanent: true,
+	});
 
 	await assert.rejects(
 		() =>

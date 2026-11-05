@@ -283,7 +283,10 @@ test('tool schemas contract: choose_technology and current_technology removed, s
 			infoText.includes('Index Health'),
 			'index_info must report index health',
 		);
-		assert.ok(/\*\*Symbols:\*\* 1/.test(infoText), 'index_info must report the symbol total');
+		assert.ok(
+			/\*\*Symbols:\*\* 1/.test(infoText),
+			'index_info must report the symbol total',
+		);
 		assert.ok(
 			infoText.includes('Unclassified symbols'),
 			'index_info must report unclassified symbol count',

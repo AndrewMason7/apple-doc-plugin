@@ -8,9 +8,10 @@ import {
 } from '../dist/server/services/search/provider-factory.js';
 
 test('supported dimensions match the model family MRL steps', () => {
-	assert.deepStrictEqual(SUPPORTED_EMBEDDING_DIMENSIONS, [
-		128, 256, 512, 768, 1024, 1536, 2048, 3072,
-	]);
+	assert.deepStrictEqual(
+		SUPPORTED_EMBEDDING_DIMENSIONS,
+		[128, 256, 512, 768, 1024, 1536, 2048, 3072],
+	);
 });
 
 test('resolveRequestedDimensions accepts a supported truncation', () => {
