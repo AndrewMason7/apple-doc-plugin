@@ -266,16 +266,40 @@ Settings can be specified in `.env` or passed via your MCP server environment co
 
 The executable CLI supports standalone commands and subcommands:
 
-| Command                                                             | Description                                                                                               |
-| :------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
-| `npm run doctor` (or `apple-doc-plugin doctor`)                     | Run 10-point health check (`--json` and `--strict` supported for CI).                                     |
-| `npm run download-vectors` (or `apple-doc-plugin download-vectors`) | Instant download of pre-computed 768-d vector database artifact without running manual embeddings.        |
-| `npm run download-model` (or `apple-doc-plugin download-model`)     | Automated download of local GGUF (`embeddinggemma-2-Q8_0.gguf`) into local cache without HuggingFace CLI. |
-| `npm run embed-index`                                               | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).               |
-| `npm run repair-index`                                              | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit).            |
-| `npm run build:index`                                               | Crawl and rebuild the entire local database from Apple's DocC CDN.                                        |
-| `npm test`                                                          | Run complete test suite (218 tests).                                                                      |
-| `npm run check`                                                     | Run TypeScript typechecking and Prettier verification.                                                    |
+| Command                                                             | Description                                                                                                |
+| :------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------- |
+| `npm run doctor` (or `apple-doc-plugin doctor`)                     | Run 10-point health check (`--json` and `--strict` supported for CI).                                      |
+| `npm run download-vectors` (or `apple-doc-plugin download-vectors`) | Resilient download of pre-computed 768-d vector database artifact with mirror failover and SHA-256 checks. |
+| `npm run export-vectors` (or `apple-doc-plugin export-vectors`)     | Export semantic vector bundle into verifiable standalone SQLite package with companion manifest and hash.  |
+| `npm run index-xcode` (or `apple-doc-plugin index-xcode`)           | Directly ingest and index offline `.doccarchive` documentation from local Xcode SDKs and DerivedData.      |
+| `npm run download-model` (or `apple-doc-plugin download-model`)     | Automated download of local GGUF (`embeddinggemma-2-Q8_0.gguf`) into local cache without HuggingFace CLI.  |
+| `npm run embed-index`                                               | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).                |
+| `npm run repair-index`                                              | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit).             |
+| `npm run build:binary` (or `scripts/build-binary.sh`)               | Build standalone native runner and release distribution archive.                                           |
+| `npm test`                                                          | Run complete test suite (277 tests).                                                                       |
+| `npm run check`                                                     | Run TypeScript typechecking and Prettier verification.                                                     |
+
+---
+
+## Standalone Distribution & Homebrew
+
+### Homebrew (macOS)
+
+Install via Homebrew using the official formula:
+
+```bash
+brew install packaging/homebrew/apple-doc-plugin.rb
+```
+
+### Standalone Binary Packaging
+
+Build a self-contained executable runner and release tarball:
+
+```bash
+./scripts/build-binary.sh --tarball
+```
+
+Produces `bin/apple-doc-plugin-native` and `dist/apple-doc-plugin-<version>-<platform>.tar.gz`.
 
 ---
 

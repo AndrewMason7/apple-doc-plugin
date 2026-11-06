@@ -60,14 +60,18 @@
 		"download-vectors": "tsx scripts/download-vectors.ts",
 		"doctor": "tsx scripts/doctor.ts",
 		"setup": "node dist/index.js setup",
-		"install:ide": "node dist/index.js install"
+		"install:ide": "node dist/index.js install",
+		"export-vectors": "tsx scripts/export-vectors.ts",
+		"index-xcode": "node dist/index.js index-xcode",
+		"build:binary": "scripts/build-binary.sh"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",
 		"axios": "^1.13.6",
 		"better-sqlite3": "^13.0.3",
 		"google-auth-library": "^11.1.0",
-		"node-llama-cpp": "^3.22.2"
+		"node-llama-cpp": "^3.22.2",
+		"sqlite-vec": "^0.1.9"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^9.6.0",

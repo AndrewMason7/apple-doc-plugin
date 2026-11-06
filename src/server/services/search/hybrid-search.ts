@@ -173,6 +173,28 @@ export class HybridSearchEngine {
 		}
 		if (comparableCount === 0) return [];
 
+		if (this.db.isVecAccelerated() && queryVec.length === 768) {
+			const fetchLimit = framework ? Math.max(limit * 20, 200) : limit * 2;
+			const nativeMatches = this.db.queryVectorNearest(
+				queryVec,
+				fetchLimit,
+				framework,
+			);
+			if (nativeMatches.length > 0) {
+				const filtered = nativeMatches
+					.filter((m) => m.similarity >= minSimilarity)
+					.sort((a, b) => b.similarity - a.similarity)
+					.slice(0, limit);
+				if (
+					filtered.length >= limit ||
+					(!framework && nativeMatches.length < fetchLimit) ||
+					(filtered.length > 0 && !framework)
+				) {
+					return filtered;
+				}
+			}
+		}
+
 		for (const item of items) {
 			if (item.embedding.length !== queryVec.length) continue;
 

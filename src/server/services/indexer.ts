@@ -276,41 +276,73 @@ export function indexFrameworkData(
 	data: any,
 	defaultPlatforms?: string[],
 ): number {
-	if (!data?.references || typeof data.references !== 'object') return 0;
 	let count = 0;
 
 	const frameworkPlatforms = Array.isArray(data?.metadata?.platforms)
 		? data.metadata.platforms.map((p: any) => p?.name || '').filter(Boolean)
 		: defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || [];
 
-	for (const [id, ref] of Object.entries<any>(data.references)) {
-		if (!ref || typeof ref !== 'object') continue;
-		if (ref.kind !== 'symbol' && ref.kind !== 'article') continue;
-		if (!ref.title) continue;
+	// Index page root symbol if present
+	if (data?.metadata?.title && (data?.identifier?.url || data?.identifier)) {
+		const rawUrl =
+			typeof data.identifier?.url === 'string'
+				? data.identifier.url
+				: typeof data.identifier === 'string'
+					? data.identifier
+					: '';
+		const pagePath = rawUrl.replace(/^doc:\/\/[^/]+/, '');
+		if (pagePath.startsWith('/documentation/')) {
+			const kind = resolveSymbolKind({
+				symbolKind: data.metadata?.symbolKind,
+				roleHeading: data.metadata?.roleHeading,
+				kind: data.kind || 'symbol',
+			});
+			const isPrimary = isPrimaryTypeKind(kind);
+			const targetFramework = resolveFrameworkFromPath(pagePath, framework);
+			db.insertSymbol({
+				id: pagePath,
+				framework: targetFramework,
+				title: data.metadata.title,
+				kind,
+				abstract: extractAbstract(data.abstract),
+				path: pagePath,
+				platforms: frameworkPlatforms,
+				isPrimaryType: isPrimary,
+			});
+			count++;
+		}
+	}
 
-		const abstractText = extractAbstract(ref.abstract);
-		const platforms: string[] =
-			Array.isArray(ref.platforms) && ref.platforms.length > 0
-				? ref.platforms.map((p: any) => p?.name || '').filter(Boolean)
-				: frameworkPlatforms;
+	if (data?.references && typeof data.references === 'object') {
+		for (const [id, ref] of Object.entries<any>(data.references)) {
+			if (!ref || typeof ref !== 'object') continue;
+			if (ref.kind !== 'symbol' && ref.kind !== 'article') continue;
+			if (!ref.title) continue;
 
-		const kind = resolveSymbolKind(ref);
-		const isPrimary = isPrimaryTypeKind(kind);
+			const abstractText = extractAbstract(ref.abstract);
+			const platforms: string[] =
+				Array.isArray(ref.platforms) && ref.platforms.length > 0
+					? ref.platforms.map((p: any) => p?.name || '').filter(Boolean)
+					: frameworkPlatforms;
 
-		const symbolPath = ref.url || id;
-		const targetFramework = resolveFrameworkFromPath(symbolPath, framework);
+			const kind = resolveSymbolKind(ref);
+			const isPrimary = isPrimaryTypeKind(kind);
 
-		db.insertSymbol({
-			id: symbolPath,
-			framework: targetFramework,
-			title: ref.title,
-			kind,
-			abstract: abstractText,
-			path: symbolPath,
-			platforms,
-			isPrimaryType: isPrimary,
-		});
-		count++;
+			const symbolPath = ref.url || id;
+			const targetFramework = resolveFrameworkFromPath(symbolPath, framework);
+
+			db.insertSymbol({
+				id: symbolPath,
+				framework: targetFramework,
+				title: ref.title,
+				kind,
+				abstract: abstractText,
+				path: symbolPath,
+				platforms,
+				isPrimaryType: isPrimary,
+			});
+			count++;
+		}
 	}
 
 	return count;

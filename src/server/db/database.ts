@@ -24,6 +24,13 @@ try {
 	);
 }
 
+let sqliteVec: any = null;
+try {
+	sqliteVec = nodeRequire('sqlite-vec');
+} catch (err) {
+	logger.debug('sqlite-vec module not available:', err);
+}
+
 /**
  * Minimum number of embedded semantic items before the search engine will fuse
  * vector results with FTS5. Below this the server is lexical-only, and every
@@ -113,6 +120,8 @@ export class AppleDocsDB {
 	public readonly dbPath: string;
 	private db: SqliteDatabase;
 	private vectorCache: SemanticItem[] | null = null;
+	private hasVec = false;
+	private vecDimensions = 768;
 
 	constructor(dbPath: string, options: SqliteOptions = {}) {
 		if (!BetterSqlite3) {
@@ -122,9 +131,33 @@ export class AppleDocsDB {
 		}
 		this.dbPath = dbPath;
 		this.db = new BetterSqlite3(dbPath, options);
+
+		if (sqliteVec && this.db) {
+			try {
+				sqliteVec.load(this.db);
+				this.hasVec = true;
+			} catch (err) {
+				logger.debug('Failed to load sqlite-vec extension into database:', err);
+				this.hasVec = false;
+			}
+		}
+
 		if (!options.readonly) {
 			this.db.pragma('journal_mode = WAL');
 			this.db.exec(SCHEMA_SQL);
+			if (this.hasVec) {
+				try {
+					this.db.exec(`
+						CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
+							id TEXT PRIMARY KEY,
+							embedding FLOAT[768] DISTANCE_METRIC=COSINE
+						);
+					`);
+					this.syncVecIndex();
+				} catch (err) {
+					logger.debug('Failed to create vec_items virtual table:', err);
+				}
+			}
 			// Safe column migrations for existing databases
 			try {
 				this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
@@ -666,28 +699,65 @@ export class AppleDocsDB {
 		);
 	}
 
-	insertSemanticItem(item: SemanticItem): void {
+	insertSemanticItems(items: SemanticItem[]): void {
+		if (items.length === 0) return;
 		this.vectorCache = null; // Invalidate vector cache on new writes
-		const buffer = Buffer.from(
-			item.embedding.buffer,
-			item.embedding.byteOffset,
-			item.embedding.byteLength,
-		);
-		const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, media_url, media_type, embedding)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-		stmt.run(
-			item.id,
-			item.framework,
-			item.title,
-			item.kind,
-			item.summary,
-			item.path,
-			item.mediaUrl || null,
-			item.mediaType || null,
-			buffer,
-		);
+
+		const insertSem = this.db.prepare(`
+			INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, media_url, media_type, embedding)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+
+		const hasVec = this.hasVec;
+		const deleteVec = hasVec
+			? this.db.prepare('DELETE FROM vec_items WHERE id = ?')
+			: null;
+		const insertVec = hasVec
+			? this.db.prepare('INSERT INTO vec_items(id, embedding) VALUES (?, ?)')
+			: null;
+		const vecDims = this.vecDimensions;
+
+		const runBatch = this.db.transaction((batch: SemanticItem[]) => {
+			for (const item of batch) {
+				const buffer = Buffer.from(
+					item.embedding.buffer,
+					item.embedding.byteOffset,
+					item.embedding.byteLength,
+				);
+				insertSem.run(
+					item.id,
+					item.framework,
+					item.title,
+					item.kind,
+					item.summary,
+					item.path,
+					item.mediaUrl || null,
+					item.mediaType || null,
+					buffer,
+				);
+
+				if (
+					hasVec &&
+					deleteVec &&
+					insertVec &&
+					item.embedding &&
+					item.embedding.length === vecDims
+				) {
+					try {
+						deleteVec.run(item.id);
+						insertVec.run(item.id, item.embedding);
+					} catch (err) {
+						logger.debug('Failed to insert into vec_items:', err);
+					}
+				}
+			}
+		});
+
+		runBatch(items);
+	}
+
+	insertSemanticItem(item: SemanticItem): void {
+		this.insertSemanticItems([item]);
 	}
 
 	getSemanticItems(framework?: string): SemanticItem[] {
@@ -1308,6 +1378,54 @@ export class AppleDocsDB {
 		}
 	}
 
+	syncVecIndex(): void {
+		if (!this.hasVec) return;
+		try {
+			const tblCheck = this.db
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type='table' AND name='vec_items'",
+				)
+				.get();
+			if (!tblCheck) return;
+
+			const targetBytes = this.vecDimensions * 4;
+			const semRow = this.db
+				.prepare(
+					'SELECT count(*) as c FROM semantic_items WHERE length(embedding) = ?',
+				)
+				.get(targetBytes) as { c: number } | undefined;
+			const vecRow = this.db
+				.prepare('SELECT count(*) as c FROM vec_items')
+				.get() as { c: number } | undefined;
+
+			const semCount = semRow?.c ?? 0;
+			const vecCount = vecRow?.c ?? 0;
+
+			if (semCount > 0 && vecCount < semCount) {
+				if (vecCount === 0) {
+					this.db
+						.prepare(
+							`INSERT INTO vec_items(id, embedding)
+							 SELECT id, embedding FROM semantic_items
+							 WHERE length(embedding) = ?`,
+						)
+						.run(targetBytes);
+				} else {
+					this.db
+						.prepare(
+							`INSERT INTO vec_items(id, embedding)
+							 SELECT id, embedding FROM semantic_items
+							 WHERE length(embedding) = ?
+							 AND id NOT IN (SELECT id FROM vec_items)`,
+						)
+						.run(targetBytes);
+				}
+			}
+		} catch (err) {
+			logger.debug('Failed to sync vec_items:', err);
+		}
+	}
+
 	importVectorsFromDb(sourceDbPath: string): number {
 		this.db.prepare('ATTACH DATABASE ? AS src').run(sourceDbPath);
 		try {
@@ -1320,6 +1438,21 @@ export class AppleDocsDB {
 			const result = this.db.prepare(insertSql).run();
 			const count = result.changes;
 
+			if (this.hasVec) {
+				try {
+					this.db.transaction(() => {
+						this.db.exec(`
+							DELETE FROM vec_items WHERE id IN (SELECT id FROM src.semantic_items);
+							INSERT INTO vec_items(id, embedding)
+							SELECT id, embedding FROM src.semantic_items
+							WHERE length(embedding) = 3072;
+						`);
+					})();
+				} catch (err) {
+					logger.debug('Failed to sync vec_items on import:', err);
+				}
+			}
+
 			this.vectorCache = null;
 
 			const status = this.getEmbeddingStatus();
@@ -1331,6 +1464,81 @@ export class AppleDocsDB {
 			try {
 				this.db.prepare('DETACH DATABASE src').run();
 			} catch {}
+		}
+	}
+
+	isVecAccelerated(): boolean {
+		return this.hasVec;
+	}
+
+	queryVectorNearest(
+		queryVec: Float32Array,
+		limit = 20,
+		framework?: string,
+	): Array<{
+		id: string;
+		framework: string;
+		title: string;
+		kind: string;
+		summary: string;
+		path: string;
+		mediaUrl?: string;
+		mediaType?: string;
+		similarity: number;
+	}> {
+		if (!this.hasVec || queryVec.length !== this.vecDimensions) {
+			return [];
+		}
+		try {
+			const tblCheck = this.db
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type='table' AND name='vec_items'",
+				)
+				.get();
+			if (!tblCheck) return [];
+
+			let rows: any[];
+			if (framework) {
+				const fetchLimit = Math.max(limit * 20, 200);
+				const stmt = this.db.prepare(`
+					SELECT s.id, s.framework, s.title, s.kind, s.summary, s.path, s.media_url, s.media_type, v.distance
+					FROM vec_items v
+					JOIN semantic_items s ON v.id = s.id
+					WHERE v.embedding MATCH ? AND k = ? AND LOWER(s.framework) = LOWER(?)
+					ORDER BY v.distance ASC
+				`);
+				rows = stmt.all(queryVec, fetchLimit, framework) as any[];
+			} else {
+				const stmt = this.db.prepare(`
+					SELECT s.id, s.framework, s.title, s.kind, s.summary, s.path, s.media_url, s.media_type, v.distance
+					FROM vec_items v
+					JOIN semantic_items s ON v.id = s.id
+					WHERE v.embedding MATCH ? AND k = ?
+					ORDER BY v.distance ASC
+				`);
+				rows = stmt.all(queryVec, limit) as any[];
+			}
+
+			return rows.map((r) => ({
+				id: r.id,
+				framework: r.framework,
+				title: r.title,
+				kind: r.kind,
+				summary: r.summary,
+				path: r.path,
+				mediaUrl: r.media_url || undefined,
+				mediaType: r.media_type || undefined,
+				similarity: Math.max(
+					0,
+					1 - (typeof r.distance === 'number' ? r.distance : 0),
+				),
+			}));
+		} catch (err) {
+			logger.debug(
+				'queryVectorNearest failed, falling back to in-memory search:',
+				err,
+			);
+			return [];
 		}
 	}
 

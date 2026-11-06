@@ -24,6 +24,42 @@ test('CLI launcher: --help prints subcommands and exits 0', async () => {
 	assert.ok(result.stdout.includes('download-model'));
 	assert.ok(result.stdout.includes('install'));
 	assert.ok(result.stdout.includes('setup'));
+	assert.ok(result.stdout.includes('export-vectors'));
+	assert.ok(result.stdout.includes('index-xcode'));
+});
+
+test('CLI launcher: export-vectors --help prints usage and exits 0', async () => {
+	const result = await new Promise((resolve, reject) => {
+		execFile(
+			'node',
+			[distIndex, 'export-vectors', '--help'],
+			(error, stdout, stderr) => {
+				if (error) return reject(error);
+				resolve({ stdout, stderr });
+			},
+		);
+	});
+
+	assert.ok(result.stdout.includes('Usage: apple-doc-plugin export-vectors'));
+	assert.ok(result.stdout.includes('--output'));
+	assert.ok(result.stdout.includes('--dimensions'));
+});
+
+test('CLI launcher: index-xcode --help prints usage and exits 0', async () => {
+	const result = await new Promise((resolve, reject) => {
+		execFile(
+			'node',
+			[distIndex, 'index-xcode', '--help'],
+			(error, stdout, stderr) => {
+				if (error) return reject(error);
+				resolve({ stdout, stderr });
+			},
+		);
+	});
+
+	assert.ok(result.stdout.includes('Usage: apple-doc-plugin index-xcode'));
+	assert.ok(result.stdout.includes('--path'));
+	assert.ok(result.stdout.includes('--dry-run'));
 });
 
 test('CLI launcher: install --help prints usage and exits 0', async () => {
