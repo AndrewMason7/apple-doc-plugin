@@ -13,35 +13,41 @@ Gives coding agents (Claude Code, Cursor, Windsurf, Antigravity, Hermes) deep un
 ### Highlights
 
 - 🧠 **Hybrid Semantic Search**: Combines dense vector embeddings with SQLite FTS5 BM25 via **Reciprocal Rank Fusion (RRF)**. Finds the right APIs even when your query shares zero words with the symbol name.
+- 🌉 **Cross-Framework Query Expansion**: Seamlessly bridges Web, React, and Android idioms (`useEffect`, `SharedPreferences`, `Flexbox`, `coroutine`, `AsyncStorage`) into native Apple symbols (`task`, `onAppear`, `AppStorage`, `HStack`, `VStack`, `Spacer`).
+- 🛠️ **One-Click IDE Configuration CLI**: Safely configure Cursor, Claude Desktop, Windsurf, Antigravity, and VS Code with `apple-doc-plugin install --target <ide>`.
 - ⚡ **65,787 Symbols Offline**: Ships with a pre-indexed database spanning SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Swift Standard Library, Observation, and CoreLocation.
 - 🎯 **Dual Semantic Engines**: Run hosted embeddings with **Google Gemini** (`gemini-embedding-2`) or **100% offline** on Apple Silicon Metal with local GGUF (`embeddinggemma-2`).
 - 🔍 **Lexical Precision & Wildcards**: Full support for wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), exact-title boosting, and kind aliasing (`func` ↔ `method`).
 - 📖 **DocC AST to Agent Markdown**: Formats Apple DocC JSON into concise Markdown with method signatures, parameter tables, deprecation notices, and live CDN fallback.
-- 🩺 **Instant Diagnostics**: Built-in `npm run doctor` command verifies database integrity, vector dimension consistency, and framework attribution in seconds.
+- 🩺 **Instant Diagnostics & Setup**: Built-in `apple-doc-plugin setup` and `apple-doc-plugin doctor` commands verify database integrity, vector dimensions, and embedding providers in seconds.
 
 ---
 
-## The Power of Semantic Search
+## The Power of Semantic Search & Cross-Framework Recall
 
-Traditional documentation tools require you to know the exact symbol name in advance. But when developers and AI agents build apps, they search for **behaviors, lifecycle events, and UI concepts**:
+Traditional documentation tools require you to know the exact symbol name in advance. But when developers and AI agents build apps, they search for **behaviors, lifecycle events, and cross-platform idioms**:
 
 | What You Ask / What Agent Searches          | How Keyword Search Fails             | What `semantic_search` Returns                                  |
 | :------------------------------------------ | :----------------------------------- | :-------------------------------------------------------------- |
 | _"prevent sheet swipe dismiss"_             | 0 matches (words don't match)        | `interactiveDismissDisabled(_:)`                                |
 | _"code that runs when screen appears"_      | Matches random functions named `run` | `onAppear(perform:)`, `viewIsAppearing()`, `viewDidLoad()`      |
-| _"react useEffect equivalent"_              | 0 matches                            | `.task(id:_:)`, `.onChange(of:_:)`                              |
+| _"react useEffect equivalent"_              | 0 matches (React terminology)        | `.task(id:_:)`, `onAppear(perform:)`, `.onChange(of:_:)`        |
+| _"android shared preferences storage"_      | 0 matches (Android terminology)      | `@AppStorage`, `UserDefaults`                                   |
+| _"display: flex layout"_                    | 0 matches (CSS Flexbox terminology)  | `HStack`, `VStack`, `Spacer`, `Layout`                          |
 | _"three column navigation layout"_          | Matches generic `Navigation` terms   | `NavigationSplitView`, `NavigationSplitViewVisibility`          |
 | _"store sensitive credentials in keychain"_ | Misses non-keyword matches           | `SecItemAdd`, `kSecClassGenericPassword`, `LocalAuthentication` |
 
 ### How the Hybrid Engine Works
 
 ```text
-User / Agent Query ("prevent user from swiping sheet down")
+User / Agent Query ("react useEffect equivalent" or "prevent sheet swipe down")
   │
-  ├──► Lexical Branch: SQLite FTS5 (BM25 + Exact Name Boost)
+  ├──► Query Expansion Layer: Maps 18+ Web/React/Android idioms into native Apple symbols
+  │
+  ├──► Lexical Branch: SQLite FTS5 (BM25 + Exact Name Boost + Mapped Symbol Bonus)
   │
   └──► Semantic Branch: Dense Vector Embedding (Gemini or Local GGUF)
-         └─ Cosine similarity against 19,000+ enriched Apple DocC vectors
+         └─ Enriched context prompt against 19,000+ Apple DocC vectors
   │
   ▼
 Reciprocal Rank Fusion (RRF, k=60)
@@ -56,11 +62,43 @@ Ranked, Deduplicated Results with Runnable get_documentation Links
 
 ---
 
-## Quick Install
+## Quick Install & Setup
 
-### 1. Claude Desktop / Claude Code / Cursor / Windsurf
+### 1. One-Click IDE / Agent Configuration (Recommended)
 
-Add the server to your MCP configuration (`claude_desktop_config.json`, `.cursor/mcp.json`, etc.):
+Automatically detect and configure your coding assistant's MCP configuration without manual JSON editing:
+
+```bash
+# Target Cursor
+npx apple-doc-plugin install --target cursor
+
+# Target Claude Desktop
+npx apple-doc-plugin install --target claude-desktop
+
+# Target Windsurf
+npx apple-doc-plugin install --target windsurf
+
+# Target Antigravity
+npx apple-doc-plugin install --target antigravity
+```
+
+_(Pass `--dry-run` to preview changes without modifying disk, or `--env GEMINI_API_KEY=...` to attach API credentials)._
+
+### 2. First-Run Setup & Vector Bootstrap
+
+Verify your installation, inspect database integrity, and optionally bootstrap offline vector assets:
+
+```bash
+# Verify health and search mode
+npx apple-doc-plugin setup
+
+# Automatically download pre-computed 768-d vectors and configure Cursor
+npx apple-doc-plugin setup --download-vectors --target cursor
+```
+
+### 3. Manual MCP Configuration (Optional)
+
+If preferred, manually add `apple-docs` to your MCP configuration (`claude_desktop_config.json`, `.cursor/mcp.json`, etc.):
 
 ```json
 {
@@ -76,9 +114,9 @@ Add the server to your MCP configuration (`claude_desktop_config.json`, `.cursor
 }
 ```
 
-_(Tip: `GEMINI_API_KEY` enables hybrid semantic search. If omitted, the server operates in offline lexical mode)._
+_(Tip: `GEMINI_API_KEY` enables hybrid semantic search. If omitted, the server operates in offline lexical mode, or uses local `embeddinggemma-2` if downloaded via `apple-doc-plugin download-model`)._
 
-### 2. Antigravity Plugin
+### 4. Antigravity Plugin
 
 ```bash
 # Direct install
@@ -87,7 +125,7 @@ agy plugin install AndrewMason7/apple-doc-plugin
 agy plugin install .
 ```
 
-### 3. Hermes Agent Plugin (Native)
+### 5. Hermes Agent Plugin (Native)
 
 ```bash
 hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git

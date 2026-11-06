@@ -58,7 +58,9 @@
 		"embed-index": "tsx scripts/embed-index.ts",
 		"download-model": "tsx scripts/download-model.ts",
 		"download-vectors": "tsx scripts/download-vectors.ts",
-		"doctor": "tsx scripts/doctor.ts"
+		"doctor": "tsx scripts/doctor.ts",
+		"setup": "node dist/index.js setup",
+		"install:ide": "node dist/index.js install"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",

@@ -15,6 +15,9 @@ import {
 import { downloadModel } from './server/services/download-model.js';
 import { downloadVectors } from './server/services/download-vectors.js';
 
+import { runInstallerCli } from './server/services/installer-cli.js';
+import { runSetupCli } from './server/services/setup-cli.js';
+
 // Attach process lifecycle safety guards to keep MCP stdio stream alive
 process.on('uncaughtException', (err: Error) => {
 	logger.error('CRITICAL: Uncaught exception in process:', err);
@@ -33,6 +36,8 @@ const USAGE = `Apple Developer Documentation MCP Server & Toolkit
 
 Usage:
   apple-doc-plugin                       Launch the MCP server on stdio (default)
+  apple-doc-plugin install --target <id> One-click IDE / Agent config (cursor, claude-desktop, windsurf, antigravity)
+  apple-doc-plugin setup                 First-run setup and vector bootstrap
   apple-doc-plugin doctor [--json]       Check index health and embedding provider
   apple-doc-plugin download-vectors      Download pre-computed vector index for semantic search
   apple-doc-plugin download-model        Download local EmbeddingGemma GGUF model
@@ -46,6 +51,24 @@ async function main() {
 	if (command === '--help' || command === '-h' || command === 'help') {
 		process.stdout.write(USAGE);
 		process.exit(0);
+	}
+
+	if (command === 'install') {
+		const exitCode = await runInstallerCli({
+			argv: args.slice(1),
+			print: (text) => process.stdout.write(text),
+			eprint: (text) => process.stderr.write(text),
+		});
+		process.exit(exitCode);
+	}
+
+	if (command === 'setup') {
+		const exitCode = await runSetupCli({
+			argv: args.slice(1),
+			print: (text) => process.stdout.write(text),
+			eprint: (text) => process.stderr.write(text),
+		});
+		process.exit(exitCode);
 	}
 
 	if (command === 'doctor') {

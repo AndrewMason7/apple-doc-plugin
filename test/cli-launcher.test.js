@@ -22,6 +22,42 @@ test('CLI launcher: --help prints subcommands and exits 0', async () => {
 	assert.ok(result.stdout.includes('doctor'));
 	assert.ok(result.stdout.includes('download-vectors'));
 	assert.ok(result.stdout.includes('download-model'));
+	assert.ok(result.stdout.includes('install'));
+	assert.ok(result.stdout.includes('setup'));
+});
+
+test('CLI launcher: install --help prints usage and exits 0', async () => {
+	const result = await new Promise((resolve, reject) => {
+		execFile(
+			'node',
+			[distIndex, 'install', '--help'],
+			(error, stdout, stderr) => {
+				if (error) return reject(error);
+				resolve({ stdout, stderr });
+			},
+		);
+	});
+
+	assert.ok(result.stdout.includes('Usage: apple-doc-plugin install'));
+	assert.ok(result.stdout.includes('--target'));
+	assert.ok(result.stdout.includes('--dry-run'));
+});
+
+test('CLI launcher: setup --help prints usage and exits 0', async () => {
+	const result = await new Promise((resolve, reject) => {
+		execFile(
+			'node',
+			[distIndex, 'setup', '--help'],
+			(error, stdout, stderr) => {
+				if (error) return reject(error);
+				resolve({ stdout, stderr });
+			},
+		);
+	});
+
+	assert.ok(result.stdout.includes('Usage: apple-doc-plugin setup'));
+	assert.ok(result.stdout.includes('--download-vectors'));
+	assert.ok(result.stdout.includes('--target'));
 });
 
 test('CLI launcher: doctor subcommand forwards to doctor CLI', async () => {

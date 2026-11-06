@@ -93,17 +93,43 @@ Query Apple's official diagrams and layout behaviors:
 
 #### 3. Cross-Platform Terminology Translation (`semantic_search`)
 
-Translate concepts from React, Vue, or Android:
+The search engine features a built-in **Query Expansion Layer** that automatically maps Web, React, and Android idioms into Apple native symbols:
 
 ```json
 {
-	"query": "react useEffect on mount equivalent in swiftui"
+	"query": "useEffect"
 }
 ```
 
-Resolves to `.onAppear` and `.task`.
+Automatically maps and expands candidate symbols for `.task(id:_:)`, `.onAppear(perform:)`, and `.onChange(of:_:)`.
 
-#### 4. Search Exact Symbol or Prefix (`search_symbols`)
+```json
+{
+	"query": "SharedPreferences"
+}
+```
+
+Automatically maps to `@AppStorage` and `UserDefaults`.
+
+```json
+{
+	"query": "display: flex"
+}
+```
+
+Automatically maps to `HStack`, `VStack`, `ZStack`, and `Spacer`.
+
+#### 4. Server Management & CLI Utilities
+
+When guiding users or diagnosing the environment:
+
+- **One-Click IDE Configuration**: `apple-doc-plugin install --target cursor|claude-desktop|windsurf|antigravity`
+- **First-Run Verification & Bootstrapping**: `apple-doc-plugin setup` (inspects database and detects embedding providers)
+- **Local GGUF Offline Model**: `apple-doc-plugin download-model`
+- **Pre-computed 768-d Vector Index**: `apple-doc-plugin download-vectors`
+- **Diagnostics**: `apple-doc-plugin doctor`
+
+#### 5. Search Exact Symbol or Prefix (`search_symbols`)
 
 ```json
 {

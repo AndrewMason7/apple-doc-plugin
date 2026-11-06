@@ -21,6 +21,7 @@ export const resolveMinSimilarity = (
 	return provider.minSimilarity ?? 0.65;
 };
 import { resolveEmbeddingProvider } from './provider-factory.js';
+import { expandQuery, type QueryExpansionResult } from './query-expansion.js';
 
 export interface SearchOptions {
 	framework?: string;
@@ -28,6 +29,7 @@ export interface SearchOptions {
 	preferSemantic?: boolean;
 	lexicalOnly?: boolean;
 	minSemanticItems?: number;
+	expandQuery?: boolean;
 }
 
 export interface SearchResultItem extends DbSymbol {
@@ -212,15 +214,62 @@ export class HybridSearchEngine {
 		options: SearchOptions = {},
 	): Promise<SearchResultItem[]> {
 		const limit = options.limit || 20;
+		const shouldExpand = options.expandQuery !== false;
+		const expansion: QueryExpansionResult = shouldExpand
+			? expandQuery(query)
+			: {
+					originalQuery: query,
+					matchedIdioms: [],
+					mappedSymbols: [],
+					expandedTerms: [],
+					expandedFtsQuery: query,
+					semanticSearchQuery: query,
+					hasExpansion: false,
+				};
+
 		const ftsResults = this.db.queryFTS(query, options.framework, limit * 2);
 
-		// Exact symbol booster
+		// If query matched cross-framework idioms, fetch candidate symbols for the mapped equivalents
+		if (expansion.hasExpansion && expansion.mappedSymbols.length > 0) {
+			const existingIds = new Set(ftsResults.map((r) => r.id));
+			const mappedLimit = Math.max(3, Math.floor(limit / 2));
+			for (let i = 0; i < Math.min(5, expansion.mappedSymbols.length); i++) {
+				const sym = expansion.mappedSymbols[i];
+				const mappedMatches = this.db.queryFTS(
+					sym,
+					options.framework,
+					mappedLimit,
+				);
+				for (const match of mappedMatches) {
+					if (!existingIds.has(match.id)) {
+						existingIds.add(match.id);
+						ftsResults.push({
+							...match,
+							score: match.score * 0.9,
+						});
+					}
+				}
+			}
+		}
+
+		// Exact symbol booster & mapped symbol booster
 		const normalizedQuery = query.trim().toLowerCase();
+		const mappedLower = new Set(
+			expansion.mappedSymbols.map((s) => s.toLowerCase()),
+		);
 		const scoredFTS: SearchResultItem[] = ftsResults.map((item) => {
-			const isExact = item.title.toLowerCase() === normalizedQuery;
+			const itemTitleLower = item.title.toLowerCase();
+			const isExact = itemTitleLower === normalizedQuery;
+			const isMapped = mappedLower.has(itemTitleLower);
+			let bonus = 0;
+			if (isExact) {
+				bonus = 100;
+			} else if (isMapped) {
+				bonus = 50;
+			}
 			return {
 				...item,
-				score: isExact ? item.score + 100 : item.score,
+				score: item.score + bonus,
 				source: 'fts',
 			};
 		});
@@ -239,7 +288,10 @@ export class HybridSearchEngine {
 
 		// Check if semantic search is available
 		if (this.embeddingProvider.isAvailable()) {
-			const queryVec = await this.embeddingProvider.embedQuery(query);
+			const semanticQuery = expansion.hasExpansion
+				? expansion.semanticSearchQuery
+				: query;
+			const queryVec = await this.embeddingProvider.embedQuery(semanticQuery);
 			if (queryVec) {
 				const minSim = resolveMinSimilarity(
 					this.embeddingProvider,
