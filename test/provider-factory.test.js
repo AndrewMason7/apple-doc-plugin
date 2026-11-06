@@ -25,7 +25,8 @@ test('resolveEmbeddingProvider falls back to Gemini when local model is absent b
 		geminiApiKey: 'test-key',
 	});
 	assert.equal(provider.id, 'gemini');
-	assert.equal(provider.dimensions, 3072);
+	// The default is intentionally 768 to match the width of the shipped index.
+	assert.equal(provider.dimensions, 768);
 });
 
 test('resolveEmbeddingProvider respects APPLE_DOCS_EMBEDDING_PROVIDER=gemini override', () => {

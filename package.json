@@ -51,7 +51,8 @@
 		"start": "node dist/index.js",
 		"plugin:validate": "agy plugin validate .",
 		"plugin:install": "agy plugin install .",
-		"embed-index": "tsx scripts/embed-index.ts"
+		"embed-index": "tsx scripts/embed-index.ts",
+		"doctor": "tsx scripts/doctor.ts"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",

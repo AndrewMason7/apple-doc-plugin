@@ -26,6 +26,14 @@ export interface EmbeddingStatus {
 	storageHasVectors: boolean;
 }
 
+/**
+ * Result of the readability canary. A readable database still needs its own
+ * probes; an unreadable one means every other getter is about to lie.
+ */
+export type DbReadability =
+	| { readable: true; schemaVersion: number }
+	| { readable: false; error: string };
+
 export interface FreshnessInfo {
 	builtAt: string;
 	source: 'meta' | 'db-file-mtime' | 'unknown';
@@ -112,6 +120,25 @@ export class AppleDocsDB {
 					logger.warn('Failed to apply media_type migration:', msg);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Readability canary. better-sqlite3 opens a path lazily: a file that is not
+	 * SQLite reports no error at construction time, and every getter below
+	 * swallows the failure into 0/[]. One PRAGMA therefore decides whether any
+	 * other number this class returns can be believed — without it, a corrupt
+	 * index is indistinguishable from an empty one.
+	 */
+	probeReadability(): DbReadability {
+		try {
+			const version = this.db.pragma('schema_version', { simple: true });
+			return { readable: true, schemaVersion: Number(version) };
+		} catch (err) {
+			return {
+				readable: false,
+				error: err instanceof Error ? err.message : String(err),
+			};
 		}
 	}
 
@@ -272,6 +299,32 @@ export class AppleDocsDB {
 				err instanceof Error ? err.message : String(err),
 			);
 			return [];
+		}
+	}
+
+	/**
+	 * Width of the stored vectors, in dimensions, from a single row.
+	 *
+	 * Deliberately cheap: `get_version` is called on every request and a full
+	 * `DISTINCT` over 19k blob rows costs ~240 ms on the shipped corpus. This
+	 * catches the case that matters — a uniformly old (3072-d) corpus queried at
+	 * 768-d — while `getVectorDimensions()` remains the authoritative check for
+	 * a mixed store, which doctor runs.
+	 */
+	getStoredVectorWidth(): number | null {
+		try {
+			const row = this.db
+				.prepare(
+					`SELECT LENGTH(embedding) / 4 AS dims FROM semantic_items LIMIT 1`,
+				)
+				.get() as { dims: number } | undefined;
+			return typeof row?.dims === 'number' && row.dims > 0 ? row.dims : null;
+		} catch (err) {
+			logger.warn(
+				'Failed to read the stored vector width:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return null;
 		}
 	}
 

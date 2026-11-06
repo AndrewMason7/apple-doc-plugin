@@ -57,6 +57,85 @@ const addSemantic = (db, count) => {
 const textOf = (response) => response.content.map((c) => c.text).join('\n');
 
 // ---------------------------------------------------------------------------
+// I2(b): a stored/query width mismatch must be visible, not "Hybrid".
+// ---------------------------------------------------------------------------
+
+const WIDTH_PROVIDER = {
+	id: 'gemini',
+	dimensions: 768,
+	isAvailable: () => true,
+	embedQuery: async () => null,
+	embedDocument: async () => null,
+};
+
+test('get_version names a dimension mismatch instead of claiming hybrid search', async () => {
+	const { db } = makeDb();
+	// addSemantic stores 4-d vectors; the provider asks for 768-d.
+	addSemantic(db, MIN_SEMANTIC_ITEMS_FOR_HYBRID);
+	addSymbol(db);
+
+	const out = textOf(
+		await buildVersionHandler({
+			db,
+			searchEngine: { embeddingProvider: WIDTH_PROVIDER },
+		})(),
+	);
+
+	assert.match(
+		out,
+		/dimension mismatch/i,
+		`expected an explicit mismatch, got:\n${out}`,
+	);
+	assert.match(out, /4-d/, 'the stored width must be named');
+	assert.match(out, /768-d/, 'the expected width must be named');
+	assert.doesNotMatch(
+		out,
+		/Search Capability: Hybrid \(SQLite FTS5 \+ embeddings\)/,
+		'a corpus that cannot be scored must not be advertised as plain Hybrid',
+	);
+});
+
+// get_version runs on every call, so it must not pay for a full DISTINCT scan
+// over ~19k blob rows just to learn the width. One row is enough to catch the
+// uniform 3072-d -> 768-d upgrade case; the full multi-width check belongs in
+// doctor's dimension_consistency probe.
+test('get_version learns the stored width without a full DISTINCT scan', async () => {
+	const { db } = makeDb();
+	addSemantic(db, MIN_SEMANTIC_ITEMS_FOR_HYBRID);
+	addSymbol(db);
+	db.getVectorDimensions = () => {
+		throw new Error('get_version ran the full vector-dimension scan');
+	};
+
+	const out = textOf(
+		await buildVersionHandler({
+			db,
+			searchEngine: { embeddingProvider: WIDTH_PROVIDER },
+		})(),
+	);
+
+	assert.match(out, /4-d/, `expected the sampled width, got:\n${out}`);
+});
+
+test('index_info reports the stored vector width and flags the mismatch', async () => {
+	const { db } = makeDb();
+	addSemantic(db, MIN_SEMANTIC_ITEMS_FOR_HYBRID);
+	addSymbol(db);
+
+	const out = textOf(
+		await buildIndexInfoHandler({
+			db,
+			searchEngine: { embeddingProvider: WIDTH_PROVIDER },
+		})(),
+	);
+
+	assert.match(out, /\*\*Vector dimensions:\*\* 4-d stored vs 768-d expected/);
+	assert.match(out, /\*\*Mode:\*\* hybrid \(dimension mismatch\)/);
+	assert.match(out, /MISMATCH/);
+	assert.match(out, /npm run embed-index -- --force/);
+});
+
+// ---------------------------------------------------------------------------
 // Fix A: embedding status must not claim hybrid mode when search is lexical.
 // ---------------------------------------------------------------------------
 
@@ -462,4 +541,69 @@ test('insertSymbol never downgrades a classified kind to an unclassified one', (
 		0,
 		'a classified pass must upgrade an unclassified row',
 	);
+});
+
+// ---------------------------------------------------------------------------
+// Fix E: index_info must share the CLI's doctor checks, not re-derive them.
+// ---------------------------------------------------------------------------
+
+test('index_info surfaces doctor failures so the tool and CLI cannot disagree', async () => {
+	const { db } = makeDb();
+	addSymbol(db);
+
+	const infoOut = textOf(await buildIndexInfoHandler({ db })());
+
+	// The healthy branch must be exercised, not just the heading: a doctor that
+	// reports a spurious failure on a good index would still match /Doctor/i.
+	assert.match(
+		infoOut,
+		/all checks passed/,
+		`a healthy index must report the passing summary, got:\n${infoOut}`,
+	);
+	assert.doesNotMatch(infoOut, /failure\(s\)/);
+
+	// Provenance must be prose shared with the doctor, never the raw enum.
+	assert.match(infoOut, /from the index file timestamp/);
+	assert.doesNotMatch(infoOut, /db-file-mtime/);
+});
+
+// C1's twin on the tool surface: the prose sections must not print "OK" for a
+// database that cannot be read at all.
+test('index_info refuses to call an unreadable index healthy', async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-truth-bad-'));
+	const dbPath = path.join(dir, 'bad.db');
+	fs.writeFileSync(dbPath, 'not a sqlite db');
+	const db = new AppleDocsDB(dbPath, { readonly: true });
+
+	const out = textOf(await buildIndexInfoHandler({ db })());
+
+	assert.match(out, /unreadable/i);
+	assert.doesNotMatch(
+		out,
+		/Kind filter reliability:\*\* OK/,
+		'a corrupt index cannot have "exact" kind filtering',
+	);
+	assert.doesNotMatch(
+		out,
+		/Framework attribution:\*\* OK/,
+		'a corrupt index cannot claim clean attribution',
+	);
+	assert.match(out, /failure/);
+});
+
+test('index_info reports a doctor failure for an empty index', async () => {
+	const { db } = makeDb();
+
+	const infoOut = textOf(await buildIndexInfoHandler({ db })());
+
+	assert.match(
+		infoOut,
+		/failure/,
+		`an empty index must be reported as failing, got:\n${infoOut}`,
+	);
+	// One formatter for the count: the tool must read like the CLI
+	// ("1 failure, 1 warning."), never "1 failure(s)".
+	assert.match(infoOut, /1 failure\b/);
+	assert.doesNotMatch(infoOut, /failure\(s\)/);
+	assert.doesNotMatch(infoOut, /all checks passed/);
 });

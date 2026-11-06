@@ -1,0 +1,3 @@
+# Prettier has no parser mapped for the `.example` extension, so it would
+# report `.env.example` as unformatted and fail `--check`.
+.env.example

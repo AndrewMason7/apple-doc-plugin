@@ -6,6 +6,7 @@ import { AppleDevDocsClient } from '../apple-client.js';
 import { ServerState } from './state.js';
 import { registerTools } from './tools.js';
 import { AppleDocsDB } from './db/database.js';
+import { resolveDbPath } from './db/db-path.js';
 import { HybridSearchEngine } from './services/search/hybrid-search.js';
 import { loadEnvironment } from './env.js';
 
@@ -48,12 +49,9 @@ export const createServer = () => {
 	let db: AppleDocsDB | undefined;
 	let searchEngine: HybridSearchEngine | undefined;
 
-	let dbPath =
-		process.env.APPLE_DOCS_DB_PATH ||
-		join(__dirname, '../../data/apple-docs.db');
-	if (dbPath.includes('${extensionPath}')) {
-		dbPath = dbPath.replace(/\$\{extensionPath\}/g, join(__dirname, '../..'));
-	}
+	// Same resolver as `npm run doctor` and the index scripts: a custom
+	// APPLE_DOCS_DB_PATH must point every surface at the same file.
+	const dbPath = resolveDbPath();
 	if (existsSync(dbPath)) {
 		try {
 			db = new AppleDocsDB(dbPath, { readonly: true });

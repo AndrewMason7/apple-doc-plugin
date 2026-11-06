@@ -26,6 +26,22 @@ import type {
 	KindCount,
 } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
+import {
+	formatCount,
+	FRESHNESS_SOURCE_LABELS,
+	runDoctor,
+} from '../services/doctor.js';
+import { UnavailableEmbeddingProvider } from '../services/search/provider-factory.js';
+import type { EmbeddingProvider } from '../services/search/embedding-provider.js';
+
+/**
+ * `index_info` is read-only and runs on every call inside the MCP server, so it
+ * must never construct a real embedding provider (that can load a 300 MB GGUF).
+ * When the caller has no live search engine we hand the doctor an honest
+ * "nothing configured" stub — the same object the rest of the server uses.
+ */
+const UNAVAILABLE_PROVIDER: EmbeddingProvider =
+	new UnavailableEmbeddingProvider();
 
 /**
  * Frameworks with fewer symbols than this are cross-reference targets (a
@@ -45,6 +61,8 @@ export interface IndexMetadata {
 	builtAt: string;
 	freshness: FreshnessInfo;
 	embeddingStatus: EmbeddingStatus;
+	/** Width of the stored vectors, from one row; `null` when none exist. */
+	storedVectorWidth: number | null;
 	unknownKindCount: number;
 	frameworkMismatchCount: number;
 	kindDistribution: KindCount[];
@@ -78,6 +96,11 @@ export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
 	const embeddingStatus: EmbeddingStatus = db
 		? db.getEmbeddingStatus()
 		: FALLBACK_EMBEDDING_STATUS;
+	// One row is enough for the status line; the multi-width check is doctor's
+	// dimension_consistency, which scans DISTINCT widths (too slow for a tool
+	// that runs on every call).
+	const storedVectorWidth =
+		db && embeddingStatus.storageHasVectors ? db.getStoredVectorWidth() : null;
 
 	return {
 		version: packageJson.version,
@@ -89,6 +112,7 @@ export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
 		builtAt: freshness.builtAt,
 		freshness,
 		embeddingStatus,
+		storedVectorWidth,
 		unknownKindCount: db ? db.countUnknownKind() : 0,
 		frameworkMismatchCount: db ? db.countFrameworkPathMismatches() : 0,
 		kindDistribution: db ? db.getKindDistribution() : [],
@@ -103,7 +127,32 @@ const describeFreshness = (freshness: FreshnessInfo): string => {
 	return 'unknown (snapshot not recorded and db file unavailable)';
 };
 
-const describeSearchMode = (status: EmbeddingStatus): string => {
+export interface DimensionMismatch {
+	stored: number;
+	expected: number;
+}
+
+/**
+ * A corpus that cannot be scored against the query vector is not "hybrid" just
+ * because it holds 19,473 rows. Both status tools must say so, because the
+ * search path silently falls back to lexical in exactly this state.
+ */
+const resolveDimensionMismatch = (
+	stored: number | null,
+	expected: number,
+): DimensionMismatch | null =>
+	stored !== null && stored > 0 && expected > 0 && stored !== expected
+		? { stored, expected }
+		: null;
+
+const describeSearchMode = (
+	status: EmbeddingStatus,
+	mismatch: DimensionMismatch | null,
+): string => {
+	if (mismatch) {
+		return `Hybrid (dimension mismatch) — ${mismatch.stored}-d vectors stored but queries embed at ${mismatch.expected}-d, so semantic scoring is skipped and results stay lexical; set APPLE_DOCS_EMBEDDING_DIMENSIONS=${mismatch.stored} to keep them, or "npm run embed-index -- --force" to re-embed`;
+	}
+
 	if (status.hybridEnabled) {
 		return `Hybrid (SQLite FTS5 + embeddings) — ${status.semanticItemCount} semantic items (threshold ${status.threshold})`;
 	}
@@ -118,6 +167,10 @@ const describeSearchMode = (status: EmbeddingStatus): string => {
 export const buildVersionHandler =
 	(context?: ServerContext) => async (): Promise<ToolResponse> => {
 		const meta = getIndexMetadata(context);
+		const mismatch = resolveDimensionMismatch(
+			meta.storedVectorWidth,
+			context?.searchEngine?.embeddingProvider?.dimensions ?? 0,
+		);
 
 		const text = `Apple Doc MCP Server Version & Index Information:
 
@@ -128,7 +181,7 @@ export const buildVersionHandler =
 📊 Indexed Symbols: ${meta.symbolCount}
 📦 Indexed Frameworks: ${meta.indexedFrameworks.length} (${meta.indexedFrameworks.join(', ')})${meta.crossReferenceFrameworks.length > 0 ? `\n🔗 Cross-reference targets: ${meta.crossReferenceFrameworks.join(', ')}` : ''}
 🕒 Snapshot Built At: ${describeFreshness(meta.freshness)}
-🔎 Search Capability: ${describeSearchMode(meta.embeddingStatus)}
+🔎 Search Capability: ${describeSearchMode(meta.embeddingStatus, mismatch)}
 👤 Author: ${packageJson.author}
 🔗 Repository: ${packageJson.repository?.url ?? 'N/A'}`;
 
@@ -162,15 +215,78 @@ export const buildIndexInfoHandler =
 				? ((meta.unknownKindCount / meta.symbolCount) * 100).toFixed(2)
 				: '0.00';
 
-		const filterReliability =
-			meta.unknownKindCount === 0
+		// A corrupt file yields zero rows and zero mismatches from the same
+		// swallowed errors that made doctor print five greens. Do not restate
+		// those zeros as "OK": the index has to be readable before any of it
+		// means anything.
+		const db = context?.db;
+		const readability = db?.probeReadability();
+		const unreadableReason =
+			readability?.readable === false ? readability.error : null;
+
+		const filterReliability = unreadableReason
+			? `UNKNOWN — the index is unreadable (${unreadableReason}), so no kind can be filtered. Run "npm run build:index" to rebuild it.`
+			: meta.unknownKindCount === 0
 				? 'OK — every row carries a classified kind, so symbolType filters are exact.'
 				: `DEGRADED — ${meta.unknownKindCount} rows (${unknownShare}%) carry no classified kind. A symbolType filter cannot match them, so filtered results may silently exclude valid symbols. Run "npm run repair-index -- --apply" to backfill kinds.`;
 
-		const attribution =
-			meta.frameworkMismatchCount === 0
+		const attribution = unreadableReason
+			? `UNKNOWN — the index is unreadable (${unreadableReason}), so attribution cannot be checked. Run "npm run build:index" to rebuild it.`
+			: meta.frameworkMismatchCount === 0
 				? 'OK — every row is attributed to the framework named by its own path.'
 				: `DEGRADED — ${meta.frameworkMismatchCount} rows are attributed to a framework that contradicts their path, producing cross-framework false positives and framework-scoped false negatives. Run "npm run repair-index -- --apply" to re-attribute them.`;
+
+		// Same checks as `npm run doctor`, so the tool and the CLI cannot drift.
+		// Cheap by design: `runDoctor` is pure apart from existsSync/statSync.
+		const expectedDimensions =
+			context?.searchEngine?.embeddingProvider?.dimensions ?? 0;
+		const mismatch = resolveDimensionMismatch(
+			meta.storedVectorWidth,
+			expectedDimensions,
+		);
+		const doctor = db
+			? runDoctor({
+					db,
+					dbPath: db.dbPath,
+					provider:
+						context.searchEngine?.embeddingProvider ?? UNAVAILABLE_PROVIDER,
+					nodeVersion: process.version,
+				})
+			: undefined;
+
+		const doctorResult = doctor
+			? doctor.failures === 0
+				? `all checks passed (${formatCount(doctor.warnings, 'warning')})`
+				: `${formatCount(doctor.failures, 'failure')} — run \`npm run doctor\``
+			: 'unavailable (no database)';
+
+		const dimensionLine =
+			meta.storedVectorWidth !== null
+				? `\n• **Vector dimensions:** ${meta.storedVectorWidth}-d stored vs ${expectedDimensions > 0 ? `${expectedDimensions}-d` : 'unknown'} expected${mismatch ? ' — MISMATCH: semantic scoring is skipped, results stay lexical. Set APPLE_DOCS_EMBEDDING_DIMENSIONS to the stored width, or run `npm run embed-index -- --force` to re-embed' : ''}`
+				: '';
+		// "hybrid" on row count alone is the claim the review rejected: the mode
+		// label must carry the mismatch, not just the dimension line.
+		const modeLabel = mismatch
+			? `${meta.embeddingStatus.mode} (dimension mismatch)`
+			: meta.embeddingStatus.mode;
+
+		// The actions section is derived from the report, not hand-written: the
+		// old list drifted (it said build:index enabled hybrid; embed-index does).
+		const recommendedActions = doctor
+			? [
+					...new Set(
+						doctor.checks
+							.filter((c) => c.nextStep.trim())
+							.map((c) => c.nextStep.trim()),
+					),
+				]
+			: [];
+		const actionLines =
+			recommendedActions.length > 0
+				? recommendedActions.map((step) => `• ${step}`).join('\n')
+				: doctor
+					? '• No action required — every check passed'
+					: '• `npm run doctor` — no index was open to diagnose';
 
 		const text = `# Apple Docs Index Health
 
@@ -181,14 +297,14 @@ export const buildIndexInfoHandler =
 
 ## Freshness
 • **Snapshot:** ${describeFreshness(meta.freshness)}
-• **Provenance:** ${meta.freshness.source}
+• **Provenance:** ${FRESHNESS_SOURCE_LABELS[meta.freshness.source]}
 • **Stale snapshot warning:** ${meta.freshness.source === 'meta' ? 'none — build stamp present' : 'no build stamp; APIs newer than this time may be missing'}
 
 ## Search Capability
-• **Mode:** ${meta.embeddingStatus.mode}
+• **Mode:** ${modeLabel}
 • **Hybrid enabled:** ${meta.embeddingStatus.hybridEnabled ? 'yes' : 'no'}
-• **Semantic items:** ${meta.embeddingStatus.semanticItemCount} / threshold ${meta.embeddingStatus.threshold}
-• **Note:** vector storage ${meta.embeddingStatus.storageHasVectors ? 'holds vectors' : 'is empty'}; hybrid fusion only engages at or above the threshold, so a populated store does not imply hybrid search.
+• **Semantic items:** ${meta.embeddingStatus.semanticItemCount} / threshold ${meta.embeddingStatus.threshold}${dimensionLine}
+• **Note:** vector storage ${meta.embeddingStatus.storageHasVectors ? 'holds vectors' : 'is empty'}; hybrid fusion only engages at or above the threshold, and only when the stored width matches the query width.
 
 ## Kind Distribution
 ${kindLines.join('\n')}
@@ -199,9 +315,11 @@ ${kindLines.join('\n')}
 • **Kind filter reliability:** ${filterReliability}
 • **Framework attribution:** ${attribution}
 
+## Doctor
+• **Result:** ${doctorResult}
+
 ## Recommended Actions
-${meta.unknownKindCount > 0 || meta.frameworkMismatchCount > 0 ? '• `npm run repair-index -- --apply` to fix kinds and attribution in place' : '• No repair required'}
-${meta.embeddingStatus.hybridEnabled ? '• Hybrid search is active' : '• `npm run build:index` with embedding credentials to enable hybrid search'}`;
+${actionLines}`;
 
 		return {
 			content: [
