@@ -5,6 +5,8 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { AppleDevDocsClient } from '../apple-client.js';
 import { ServerState } from './state.js';
 import { registerTools } from './tools.js';
+import { registerResources } from './resources.js';
+import { registerPrompts } from './prompts.js';
 import { AppleDocsDB } from './db/database.js';
 import { resolveDbPath } from './db/db-path.js';
 import { HybridSearchEngine } from './services/search/hybrid-search.js';
@@ -34,6 +36,8 @@ export const createServer = () => {
 		{
 			capabilities: {
 				tools: {},
+				resources: {},
+				prompts: {},
 			},
 		},
 	);
@@ -61,10 +65,15 @@ export const createServer = () => {
 				'Failed to open pre-indexed SQLite database, falling back to dynamic search:',
 				err instanceof Error ? err.message : err,
 			);
+			db = undefined;
+			searchEngine = undefined;
 		}
 	}
 
-	registerTools(server, { client, state, db, searchEngine });
+	const context = { client, state, db, searchEngine };
+	registerTools(server, context);
+	registerResources(server, context);
+	registerPrompts(server);
 
 	return server;
 };

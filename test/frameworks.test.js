@@ -6,7 +6,7 @@ import { ServerState } from '../dist/server/state.js';
 
 test('CORE_FRAMEWORKS is the single source of truth for indexed frameworks', () => {
 	assert.ok(Array.isArray(CORE_FRAMEWORKS));
-	assert.strictEqual(CORE_FRAMEWORKS.length, 8);
+	assert.strictEqual(CORE_FRAMEWORKS.length, 21);
 	const expected = [
 		'SwiftUI',
 		'UIKit',
@@ -16,6 +16,19 @@ test('CORE_FRAMEWORKS is the single source of truth for indexed frameworks', () 
 		'AppKit',
 		'Observation',
 		'CoreLocation',
+		'StoreKit',
+		'WidgetKit',
+		'AuthenticationServices',
+		'LocalAuthentication',
+		'Security',
+		'AVFoundation',
+		'AVKit',
+		'UserNotifications',
+		'MapKit',
+		'RealityKit',
+		'Vision',
+		'CoreData',
+		'WebKit',
 	];
 	assert.deepStrictEqual([...CORE_FRAMEWORKS], expected);
 });
@@ -33,9 +46,11 @@ test('discover_technologies lists the indexed frameworks even when offline', asy
 	const res = await handler({});
 	const text = res.content[0].text;
 	assert.ok(text.includes('Total indexed frameworks'));
-	assert.ok(text.includes('8'));
+	assert.ok(text.includes('21'));
 	assert.ok(text.includes('### SwiftUI'));
 	assert.ok(text.includes('### UIKit'));
 	assert.ok(text.includes('### Foundation'));
+	assert.ok(text.includes('### StoreKit'));
+	assert.ok(text.includes('### WebKit'));
 	assert.ok(text.includes('Pass `framework: "<FrameworkName>"` directly'));
 });

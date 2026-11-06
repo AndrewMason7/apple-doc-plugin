@@ -1,4 +1,9 @@
-import Database from 'better-sqlite3';
+import type DatabaseConstructor from 'better-sqlite3';
+import type {
+	Database as SqliteDatabase,
+	Options as SqliteOptions,
+} from 'better-sqlite3';
+import { createRequire } from 'node:module';
 import { statSync } from 'node:fs';
 import { SCHEMA_SQL } from './schema.js';
 import { logger } from '../logger.js';
@@ -6,6 +11,18 @@ import {
 	canonicalFrameworkFromSlug,
 	frameworkSlugFromPath,
 } from './path-attribution.js';
+import { levenshteinDistance } from '../services/levenshtein.js';
+
+const nodeRequire = createRequire(import.meta.url);
+let BetterSqlite3: typeof DatabaseConstructor | null = null;
+try {
+	BetterSqlite3 = nodeRequire('better-sqlite3');
+} catch (err) {
+	logger.warn(
+		'Failed to load native better-sqlite3 module:',
+		err instanceof Error ? err.message : String(err),
+	);
+}
 
 /**
  * Minimum number of embedded semantic items before the search engine will fuse
@@ -94,12 +111,17 @@ function safeParsePlatforms(val: unknown): string[] {
 
 export class AppleDocsDB {
 	public readonly dbPath: string;
-	private db: Database.Database;
+	private db: SqliteDatabase;
 	private vectorCache: SemanticItem[] | null = null;
 
-	constructor(dbPath: string, options: Database.Options = {}) {
+	constructor(dbPath: string, options: SqliteOptions = {}) {
+		if (!BetterSqlite3) {
+			throw new Error(
+				'better-sqlite3 native binding is not available in this environment',
+			);
+		}
 		this.dbPath = dbPath;
-		this.db = new Database(dbPath, options);
+		this.db = new BetterSqlite3(dbPath, options);
 		if (!options.readonly) {
 			this.db.pragma('journal_mode = WAL');
 			this.db.exec(SCHEMA_SQL);
@@ -210,6 +232,26 @@ export class AppleDocsDB {
 		} catch (err) {
 			logger.warn(
 				'Failed to get framework symbol counts:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return [];
+		}
+	}
+
+	getFrameworkPrimarySymbolCounts(): Array<{
+		framework: string;
+		count: number;
+	}> {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT framework, count(*) as count FROM symbols WHERE is_primary_type = 1 GROUP BY framework`,
+				)
+				.all() as Array<{ framework: string; count: number }>;
+			return rows;
+		} catch (err) {
+			logger.warn(
+				'Failed to get framework primary symbol counts:',
 				err instanceof Error ? err.message : String(err),
 			);
 			return [];
@@ -1113,6 +1155,183 @@ export class AppleDocsDB {
 			.prepare('SELECT DISTINCT framework FROM symbols ORDER BY framework')
 			.all() as any[];
 		return rows.map((r) => r.framework);
+	}
+
+	getPrimarySymbols(
+		framework: string,
+		limit = 100,
+	): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		path: string;
+		abstract: string;
+	}> {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT id, title, kind, path, abstract
+					 FROM symbols
+					 WHERE framework = ? COLLATE NOCASE AND is_primary_type = 1
+					 ORDER BY title ASC
+					 LIMIT ?`,
+				)
+				.all(framework, limit) as Array<{
+				id: string;
+				title: string;
+				kind: string;
+				path: string;
+				abstract: string;
+			}>;
+			return rows;
+		} catch (err) {
+			logger.debug('getPrimarySymbols failed:', err);
+			return [];
+		}
+	}
+
+	findFuzzySuggestions(
+		query: string,
+		framework?: string,
+		maxSuggestions = 3,
+	): Array<{
+		title: string;
+		framework: string;
+		path: string;
+		kind: string;
+		distance: number;
+	}> {
+		const raw = query.trim();
+		if (!raw || raw.length < 2) return [];
+
+		// Extract symbol name and infer framework if path format (e.g. SwiftUI/NavgationStack -> NavgationStack)
+		let targetFramework = framework;
+		let targetName = raw;
+		if (raw.includes('/')) {
+			const parts = raw.split('/').filter(Boolean);
+			targetName = parts.at(-1) || raw;
+			if (!targetFramework) {
+				const inferred = canonicalFrameworkFromSlug(frameworkSlugFromPath(raw));
+				if (inferred) {
+					targetFramework = inferred;
+				}
+			}
+		}
+
+		// Clean method parenthesis if provided (e.g. onAppear() -> onAppear)
+		const cleanTargetName = targetName.replace(/\(.*\)$/, '');
+
+		const maxDist =
+			cleanTargetName.length <= 4 ? 1 : cleanTargetName.length <= 8 ? 2 : 3;
+
+		let sql = `
+			SELECT title, framework, path, kind, is_primary_type
+			FROM symbols
+			WHERE abs(length(title) - ?) <= ?
+			   OR is_primary_type = 1
+			   OR path LIKE '%/' || ? || '%'
+		`;
+		const params: (string | number)[] = [
+			cleanTargetName.length,
+			maxDist,
+			cleanTargetName.toLowerCase(),
+		];
+
+		if (targetFramework) {
+			sql += ` AND framework = ? COLLATE NOCASE`;
+			params.push(targetFramework);
+		}
+
+		try {
+			const rows = this.db.prepare(sql).all(...params) as Array<{
+				title: string;
+				framework: string;
+				path: string;
+				kind: string;
+				is_primary_type: number;
+			}>;
+
+			const scored: Array<{
+				title: string;
+				framework: string;
+				path: string;
+				kind: string;
+				isPrimary: boolean;
+				distance: number;
+			}> = [];
+
+			const seen = new Set<string>();
+
+			for (const row of rows) {
+				const key = `${row.framework}:${row.path}`;
+				if (seen.has(key)) continue;
+				seen.add(key);
+
+				const distTitle = levenshteinDistance(cleanTargetName, row.title);
+				const lastPathSeg = row.path.split('/').filter(Boolean).at(-1) || '';
+				const shortSlug = lastPathSeg.replace(/\(.*\)$/, '');
+				const distSlug = shortSlug
+					? levenshteinDistance(cleanTargetName, shortSlug)
+					: 999;
+
+				const bestDist = Math.min(distTitle, distSlug);
+				if (bestDist <= maxDist) {
+					scored.push({
+						title: row.title,
+						framework: row.framework,
+						path: row.path,
+						kind: row.kind,
+						isPrimary: Boolean(row.is_primary_type),
+						distance: bestDist,
+					});
+				}
+			}
+
+			scored.sort((a, b) => {
+				if (a.distance !== b.distance) return a.distance - b.distance;
+				if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+				return a.title.length - b.title.length;
+			});
+
+			return scored
+				.slice(0, maxSuggestions)
+				.map(({ title, framework, path, kind, distance }) => ({
+					title,
+					framework,
+					path,
+					kind,
+					distance,
+				}));
+		} catch (err) {
+			logger.debug('findFuzzySuggestions failed:', err);
+			return [];
+		}
+	}
+
+	importVectorsFromDb(sourceDbPath: string): number {
+		this.db.prepare('ATTACH DATABASE ? AS src').run(sourceDbPath);
+		try {
+			const insertSql = `
+				INSERT OR REPLACE INTO main.semantic_items
+				(id, framework, title, kind, summary, path, embedding, media_url, media_type)
+				SELECT id, framework, title, kind, summary, path, embedding, media_url, media_type
+				FROM src.semantic_items;
+			`;
+			const result = this.db.prepare(insertSql).run();
+			const count = result.changes;
+
+			this.vectorCache = null;
+
+			const status = this.getEmbeddingStatus();
+			this.setMeta('embedded_at', new Date().toISOString());
+			this.setMeta('semantic_item_count', String(status.semanticItemCount));
+
+			return count;
+		} finally {
+			try {
+				this.db.prepare('DETACH DATABASE src').run();
+			} catch {}
+		}
 	}
 
 	close(): void {

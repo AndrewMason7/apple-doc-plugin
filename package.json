@@ -11,6 +11,7 @@
 		"dist/",
 		"data/apple-docs.db",
 		"bin/launcher.cjs",
+		"scripts/",
 		"plugin.json",
 		"plugin.yaml",
 		"__init__.py",
@@ -52,6 +53,8 @@
 		"plugin:validate": "agy plugin validate .",
 		"plugin:install": "agy plugin install .",
 		"embed-index": "tsx scripts/embed-index.ts",
+		"download-model": "tsx scripts/download-model.ts",
+		"download-vectors": "tsx scripts/download-vectors.ts",
 		"doctor": "tsx scripts/doctor.ts"
 	},
 	"dependencies": {

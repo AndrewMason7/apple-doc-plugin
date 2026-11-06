@@ -1,0 +1,167 @@
+import assert from 'node:assert';
+import { createServer } from 'node:http';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { AppleDocsDB } from '../dist/server/db/database.js';
+import { downloadModel } from '../dist/server/services/download-model.js';
+import { downloadVectors } from '../dist/server/services/download-vectors.js';
+
+test('downloadModel skips when destination exists and force is false', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'model-test-'));
+	const dest = join(dir, 'test-model.gguf');
+	writeFileSync(dest, 'dummy model content');
+
+	try {
+		const res = await downloadModel({
+			destination: dest,
+			force: false,
+		});
+		assert.strictEqual(res.skipped, true);
+		assert.strictEqual(res.bytesDownloaded, 0);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('downloadModel streams and saves file with progress', async () => {
+	const testPayload = Buffer.from('GGUF_TEST_MODEL_STREAMING_DATA_12345');
+	const server = createServer((req, res) => {
+		res.writeHead(200, {
+			'content-length': String(testPayload.length),
+			'content-type': 'application/octet-stream',
+		});
+		res.end(testPayload);
+	});
+
+	await new Promise((resolve) => server.listen(0, resolve));
+	const port = server.address().port;
+	const url = `http://127.0.0.1:${port}/model.gguf`;
+
+	const dir = mkdtempSync(join(tmpdir(), 'model-dl-'));
+	const dest = join(dir, 'downloaded.gguf');
+
+	let progressCalled = false;
+
+	try {
+		const res = await downloadModel({
+			url,
+			destination: dest,
+			force: true,
+			onProgress: (p) => {
+				progressCalled = true;
+				assert.ok(p.loaded > 0);
+			},
+		});
+
+		assert.strictEqual(res.skipped, false);
+		assert.strictEqual(res.bytesDownloaded, testPayload.length);
+		assert.ok(existsSync(dest));
+		assert.strictEqual(progressCalled, true);
+	} finally {
+		server.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('AppleDocsDB.importVectorsFromDb imports semantic items from external DB', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'import-vec-'));
+	const srcDbPath = join(dir, 'source.db');
+	const targetDbPath = join(dir, 'target.db');
+
+	try {
+		// 1. Create source db with semantic items
+		const srcDb = new AppleDocsDB(srcDbPath);
+		const vector = new Float32Array(768);
+		vector[0] = 0.5;
+		srcDb.insertSemanticItem({
+			id: 'doc/swiftui/view',
+			framework: 'SwiftUI',
+			title: 'View',
+			kind: 'protocol',
+			summary: 'A view protocol.',
+			path: '/documentation/swiftui/view',
+			embedding: vector,
+		});
+		srcDb.close();
+
+		// 2. Target db initially has 0 semantic items
+		const targetDb = new AppleDocsDB(targetDbPath);
+		assert.strictEqual(targetDb.getEmbeddingStatus().semanticItemCount, 0);
+
+		// 3. Import vectors from source db
+		const imported = targetDb.importVectorsFromDb(srcDbPath);
+		assert.strictEqual(imported, 1);
+
+		const status = targetDb.getEmbeddingStatus();
+		assert.strictEqual(status.semanticItemCount, 1);
+		assert.strictEqual(targetDb.getMeta('semantic_item_count'), '1');
+		assert.ok(targetDb.getMeta('embedded_at'));
+
+		targetDb.close();
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('downloadVectors downloads external vector DB and merges into target DB', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'dl-vectors-'));
+	const mockVectorDbPath = join(dir, 'remote-vectors.db');
+	const targetDbPath = join(dir, 'apple-docs.db');
+
+	// Populate mock remote db
+	const mockDb = new AppleDocsDB(mockVectorDbPath);
+	for (let i = 0; i < 5; i++) {
+		const vec = new Float32Array(768);
+		vec[0] = i * 0.1;
+		mockDb.insertSemanticItem({
+			id: `sym-${i}`,
+			framework: 'SwiftUI',
+			title: `Symbol${i}`,
+			kind: 'struct',
+			summary: `Symbol summary ${i}`,
+			path: `/documentation/swiftui/symbol${i}`,
+			embedding: vec,
+		});
+	}
+	mockDb.close();
+
+	const { readFileSync } = await import('node:fs');
+	const fileBuffer = readFileSync(mockVectorDbPath);
+
+	const server = createServer((req, res) => {
+		res.writeHead(200, {
+			'content-length': String(fileBuffer.length),
+			'content-type': 'application/x-sqlite3',
+		});
+		res.end(fileBuffer);
+	});
+
+	await new Promise((resolve) => server.listen(0, resolve));
+	const port = server.address().port;
+	const url = `http://127.0.0.1:${port}/vectors.db`;
+
+	try {
+		let progressReported = false;
+		const result = await downloadVectors({
+			url,
+			dbPath: targetDbPath,
+			onProgress: (p) => {
+				progressReported = true;
+			},
+		});
+
+		assert.strictEqual(result.importedCount, 5);
+		assert.strictEqual(result.totalVectors, 5);
+		assert.strictEqual(progressReported, true);
+
+		// Verify target DB has the items
+		const targetDb = new AppleDocsDB(targetDbPath);
+		assert.strictEqual(targetDb.getEmbeddingStatus().semanticItemCount, 5);
+		targetDb.close();
+	} finally {
+		server.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

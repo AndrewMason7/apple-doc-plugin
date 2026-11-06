@@ -68,11 +68,16 @@ export const registerTools = (server: Server, context: ServerContext) => {
 						description:
 							'Symbol path or relative name (e.g. "View", "GridItem", "documentation/SwiftUI/NavigationStack")',
 					},
+					concise: {
+						type: 'boolean',
+						description:
+							'Optional. When true, returns compact token-budgeted output with declaration, parameters, and return types, omitting verbose discussion and topic sections.',
+					},
 				},
 			},
 			handler: (args) =>
 				buildGetDocumentationHandler(context)(
-					args as { path: string; framework?: string },
+					args as { path: string; framework?: string; concise?: boolean },
 				),
 		},
 		{

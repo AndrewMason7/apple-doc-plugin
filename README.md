@@ -177,13 +177,13 @@ npm run embed-index
 
 The server exposes dedicated tools designed specifically for AI agent pair programming:
 
-| Tool                         | Purpose                       | When to Use                                                                                                                  | Example Query                                                                             |
-| :--------------------------- | :---------------------------- | :--------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------- |
-| `semantic_search` ⭐         | **Hybrid Semantic Search**    | **Default tool for agents.** Use when you know what you want to achieve, describe UI concepts, or ask behavioral questions.  | `semantic_search({ "query": "dismiss keyboard on tap outside", "framework": "SwiftUI" })` |
-| `search_symbols`             | **Fast Lexical Search**       | Use when searching for specific names, prefix/suffix wildcards (`Grid*`, `*Style`), or filtering by kind (`func`, `struct`). | `search_symbols({ "query": "Navigation*View", "framework": "SwiftUI" })`                  |
-| `get_documentation`          | **Full Documentation Lookup** | Use to inspect parameters, return types, code declarations, and discussion for a specific symbol or DocC path.               | `get_documentation({ "path": "NavigationStack" })`                                        |
-| `discover_technologies`      | **Framework Discovery**       | Use to discover available Apple frameworks in the database and see symbol counts.                                            | `discover_technologies()`                                                                 |
-| `index_info` / `get_version` | **Index & Health Status**     | Inspect server version, search mode (`Lexical only` vs `Hybrid`), freshness, and database statistics.                        | `index_info()`                                                                            |
+| Tool                         | Purpose                       | When to Use                                                                                                                                                                             | Example Query                                                                             |
+| :--------------------------- | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------- |
+| `semantic_search` ⭐         | **Hybrid Semantic Search**    | **Default tool for agents.** Use when you know what you want to achieve, describe UI concepts, or ask behavioral questions.                                                             | `semantic_search({ "query": "dismiss keyboard on tap outside", "framework": "SwiftUI" })` |
+| `search_symbols`             | **Fast Lexical Search**       | Use when searching for specific names, prefix/suffix wildcards (`Grid*`, `*Style`), or filtering by kind (`func`, `struct`).                                                            | `search_symbols({ "query": "Navigation*View", "framework": "SwiftUI" })`                  |
+| `get_documentation`          | **Full Documentation Lookup** | Use to inspect parameters, return types, code declarations, and discussion. Supports `concise: true` to strip verbose narratives and save context tokens. Includes fuzzy typo recovery. | `get_documentation({ "path": "NavigationStack", "concise": true })`                       |
+| `discover_technologies`      | **Framework Discovery**       | Use to discover available Apple frameworks in the database and see symbol counts.                                                                                                       | `discover_technologies()`                                                                 |
+| `index_info` / `get_version` | **Index & Health Status**     | Inspect server version, search mode (`Lexical only` vs `Hybrid`), freshness, and database statistics.                                                                                   | `index_info()`                                                                            |
 
 ### Search Modes Compared
 
@@ -194,6 +194,18 @@ The server exposes dedicated tools designed specifically for AI agent pair progr
 | **Query Type**        | Exact names, wildcards (`Grid*`) | Natural language, concepts, behaviors            |
 | **Requirements**      | Node.js 22+ (shipped database)   | Gemini Key or local GGUF (`npm run embed-index`) |
 | **Network Access**    | 100% Offline                     | 100% Offline (with GGUF) or Gemini API           |
+
+### MCP Resources & Prompts
+
+In addition to tools, `apple-doc-plugin` implements native MCP Resources and Prompts:
+
+- **Resources**:
+  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for all 21 supported Apple frameworks.
+  - `apple-docs://symbols/{framework}`: Returns a clean catalog of primary types, protocols, and macros for any indexed framework (e.g. `apple-docs://symbols/SwiftUI`).
+- **Prompts**:
+  - `modernize-navigation`: Automated migration template from legacy `NavigationView` to `NavigationStack` / `NavigationSplitView`.
+  - `scaffold-swiftdata`: Scaffold `@Model` schemas, container configuration, and SwiftUI `@Query` view bindings.
+  - `audit-deprecation`: Audit Swift/SwiftUI code against modern deployment targets and flags deprecated APIs.
 
 ---
 
@@ -208,19 +220,24 @@ Settings can be specified in `.env` or passed via your MCP server environment co
 | `APPLE_DOCS_EMBEDDING_MODEL_PATH` | `~/.cache/...`       | Path to local `embeddinggemma-2-Q8_0.gguf` file.                                                              |
 | `APPLE_DOCS_EMBEDDING_DIMENSIONS` | `768`                | MRL vector dimensions (`128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`). Default `768` is optimal. |
 | `APPLE_DOCS_DB_PATH`              | `data/apple-docs.db` | Custom path to the SQLite documentation database.                                                             |
+| `APPLE_DOCS_VECTORS_URL`          | _GitHub Release URL_ | Override download URL for pre-computed vector artifact (`v1.0.0/apple-docs-vectors-768d.db`).                 |
 
 ---
 
 ## CLI & Database Commands
 
-| Command                | Description                                                                                    |
-| :--------------------- | :--------------------------------------------------------------------------------------------- |
-| `npm run doctor`       | Run 10-point health check (`--json` and `--strict` supported for CI).                          |
-| `npm run embed-index`  | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).    |
-| `npm run repair-index` | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit). |
-| `npm run build:index`  | Crawl and rebuild the entire local database from Apple's DocC CDN.                             |
-| `npm test`             | Run complete test suite (193 tests).                                                           |
-| `npm run check`        | Run TypeScript typechecking and Prettier verification.                                         |
+The executable CLI supports standalone commands and subcommands:
+
+| Command                                                             | Description                                                                                               |
+| :------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
+| `npm run doctor` (or `apple-doc-plugin doctor`)                     | Run 10-point health check (`--json` and `--strict` supported for CI).                                     |
+| `npm run download-vectors` (or `apple-doc-plugin download-vectors`) | Instant download of pre-computed 768-d vector database artifact without running manual embeddings.        |
+| `npm run download-model` (or `apple-doc-plugin download-model`)     | Automated download of local GGUF (`embeddinggemma-2-Q8_0.gguf`) into local cache without HuggingFace CLI. |
+| `npm run embed-index`                                               | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).               |
+| `npm run repair-index`                                              | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit).            |
+| `npm run build:index`                                               | Crawl and rebuild the entire local database from Apple's DocC CDN.                                        |
+| `npm test`                                                          | Run complete test suite (218 tests).                                                                      |
+| `npm run check`                                                     | Run TypeScript typechecking and Prettier verification.                                                    |
 
 ---
 
