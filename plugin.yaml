@@ -3,6 +3,7 @@ label: Apple Developer Documentation
 version: 1.0.0
 manifest_version: 2
 api_version: 1
+entrypoint: bridges/hermes/__init__.py
 author: Andrew Mason <https://github.com/AndrewMason7>
 license: MIT
 homepage: https://github.com/AndrewMason7/apple-doc-plugin

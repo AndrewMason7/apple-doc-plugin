@@ -474,7 +474,7 @@ async function runBenchmark() {
 	}
 
 	// Write full output to JSON artifact
-	const artifactPath = 'scripts/benchmark-results.json';
+	const artifactPath = 'docs/benchmarks/results.json';
 	writeFileSync(artifactPath, JSON.stringify({ summary, results }, null, 2));
 	console.log(`\nDetailed benchmark report written to ${artifactPath}`);
 	db.close();

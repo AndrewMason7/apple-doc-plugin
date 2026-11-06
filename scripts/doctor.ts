@@ -7,7 +7,7 @@ import {
 	resolveEmbeddingProvider,
 } from '../src/server/services/search/provider-factory.js';
 import { resolveDbPath } from '../src/server/db/db-path.js';
-import { runDoctorCli } from '../src/server/services/doctor-cli.js';
+import { runDoctorCli } from '../src/cli/commands/doctor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
