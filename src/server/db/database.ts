@@ -1,6 +1,40 @@
 import Database from 'better-sqlite3';
+import { statSync } from 'node:fs';
 import { SCHEMA_SQL } from './schema.js';
 import { logger } from '../logger.js';
+import {
+	canonicalFrameworkFromSlug,
+	frameworkSlugFromPath,
+} from './path-attribution.js';
+
+/**
+ * Minimum number of embedded semantic items before the search engine will fuse
+ * vector results with FTS5. Below this the server is lexical-only, and every
+ * status surface must say so.
+ */
+export const MIN_SEMANTIC_ITEMS_FOR_HYBRID = 100;
+
+/** Kinds that carry no classification and must never satisfy a kind filter. */
+const UNCLASSIFIED_KINDS = ['symbol', 'unknown'] as const;
+
+export interface EmbeddingStatus {
+	semanticItemCount: number;
+	threshold: number;
+	hybridEnabled: boolean;
+	mode: 'hybrid' | 'lexical-only';
+	/** True when any vectors exist at all (e.g. framework cards, media previews). */
+	storageHasVectors: boolean;
+}
+
+export interface FreshnessInfo {
+	builtAt: string;
+	source: 'meta' | 'db-file-mtime' | 'unknown';
+}
+
+export interface KindCount {
+	kind: string;
+	count: number;
+}
 
 export interface DbSymbol {
 	id: string;
@@ -155,21 +189,330 @@ export class AppleDocsDB {
 		}
 	}
 
+	/**
+	 * Full embedding/search-mode status. The search path needs
+	 * MIN_SEMANTIC_ITEMS_FOR_HYBRID vectors before it will fuse semantically, so
+	 * reporting "embeddings present" from a raw row count is not the same claim
+	 * as "hybrid search is enabled" — keep both facts.
+	 */
+	getEmbeddingStatus(): EmbeddingStatus {
+		const semanticItemCount = this.getSemanticItemCount();
+		const hybridEnabled = semanticItemCount >= MIN_SEMANTIC_ITEMS_FOR_HYBRID;
+
+		return {
+			semanticItemCount,
+			threshold: MIN_SEMANTIC_ITEMS_FOR_HYBRID,
+			hybridEnabled,
+			mode: hybridEnabled ? 'hybrid' : 'lexical-only',
+			storageHasVectors: semanticItemCount > 0,
+		};
+	}
+
+	/** True when *any* vectors exist — not a claim that hybrid search is active. */
 	hasEmbeddings(): boolean {
+		return this.getEmbeddingStatus().storageHasVectors;
+	}
+
+	getKindDistribution(): KindCount[] {
 		try {
-			const row = this.db
-				.prepare(`SELECT count(*) as count FROM semantic_items`)
-				.get() as {
-				count: number;
-			};
-			return (row?.count ?? 0) > 0;
+			const rows = this.db
+				.prepare(
+					`SELECT kind, count(*) as count FROM symbols GROUP BY kind ORDER BY count DESC`,
+				)
+				.all() as KindCount[];
+			return rows;
 		} catch (err) {
 			logger.warn(
-				'Failed to check embeddings count:',
+				'Failed to get kind distribution:',
 				err instanceof Error ? err.message : String(err),
 			);
-			return false;
+			return [];
 		}
+	}
+
+	/**
+	 * Document count of the FTS5 shadow table. `symbols_fts` is an external-content
+	 * table (content='symbols'), so a plain `count(*)` there is served from `symbols`
+	 * and can never disagree with getSymbolCount(). Only the docsize shadow table
+	 * reflects what the index actually holds.
+	 */
+	getFtsCount(): number {
+		try {
+			const row = this.db
+				.prepare(`SELECT count(*) as count FROM symbols_fts_docsize`)
+				.get() as { count: number } | undefined;
+			return row?.count ?? 0;
+		} catch (err) {
+			logger.warn(
+				'Failed to count FTS rows:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Distinct vector widths currently stored. More than one value (or a value
+	 * that differs from the active provider) means queries cannot be scored
+	 * against part of the corpus.
+	 */
+	getVectorDimensions(): number[] {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT DISTINCT (LENGTH(embedding) / 4.0) AS dims FROM semantic_items ORDER BY dims ASC`,
+				)
+				.all() as Array<{ dims: number }>;
+			return rows
+				.map((row) => row.dims)
+				.filter((d) => Number.isFinite(d) && d > 0);
+		} catch (err) {
+			logger.warn(
+				'Failed to read vector dimensions:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return [];
+		}
+	}
+
+	/** Rows stored with a generic `symbol`/`unknown` kind, i.e. unclassified. */
+	countUnknownKind(): number {
+		try {
+			const placeholders = UNCLASSIFIED_KINDS.map(() => '?').join(', ');
+			const row = this.db
+				.prepare(
+					`SELECT count(*) as count FROM symbols WHERE lower(kind) IN (${placeholders})`,
+				)
+				.get(...UNCLASSIFIED_KINDS) as { count: number } | undefined;
+			return row?.count ?? 0;
+		} catch (err) {
+			logger.warn(
+				'Failed to count unclassified symbols:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Rows whose `framework` column contradicts the framework segment of their
+	 * own path — the cross-framework false positives that leak through
+	 * framework-scoped searches.
+	 */
+	countFrameworkPathMismatches(): number {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT framework, path FROM symbols WHERE path LIKE '/documentation/%'`,
+				)
+				.all() as Array<{ framework: string; path: string }>;
+
+			let mismatches = 0;
+			for (const row of rows) {
+				const expected = canonicalFrameworkFromSlug(
+					frameworkSlugFromPath(row.path),
+				);
+				if (!expected) continue;
+				if (expected.toLowerCase() !== row.framework.toLowerCase()) {
+					mismatches++;
+				}
+			}
+			return mismatches;
+		} catch (err) {
+			logger.warn(
+				'Failed to count framework/path mismatches:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Snapshot freshness. Falls back to the database file mtime and names that
+	 * provenance, so a derived timestamp is never mistaken for a build stamp.
+	 */
+	getFreshness(): FreshnessInfo {
+		const recorded = this.getMeta('built_at');
+		if (recorded && recorded.trim()) {
+			return { builtAt: recorded.trim(), source: 'meta' };
+		}
+
+		try {
+			const stats = statSync(this.dbPath);
+			return {
+				builtAt: new Date(stats.mtimeMs).toISOString(),
+				source: 'db-file-mtime',
+			};
+		} catch (err) {
+			logger.debug(
+				'Failed to stat database for freshness:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return { builtAt: 'unknown', source: 'unknown' };
+		}
+	}
+
+	updateSymbolKind(id: string, kind: string, isPrimaryType?: boolean): void {
+		const primary = isPrimaryType ? 1 : 0;
+		this.db
+			.prepare(`UPDATE symbols SET kind = ?, is_primary_type = ? WHERE id = ?`)
+			.run(kind, primary, id);
+	}
+
+	updateSymbolFramework(id: string, framework: string): void {
+		this.db
+			.prepare(`UPDATE symbols SET framework = ? WHERE id = ?`)
+			.run(framework, id);
+	}
+
+	/** Rows whose framework attribution can be checked against their path. */
+	getFrameworkAttributionCandidates(): Array<{
+		id: string;
+		path: string;
+		framework: string;
+		title: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, path, framework, title FROM symbols WHERE path LIKE '/documentation/%'`,
+			)
+			.all() as Array<{
+			id: string;
+			path: string;
+			framework: string;
+			title: string;
+		}>;
+	}
+
+	/**
+	 * Default embedding selection: primary types plus anything Apple documented.
+	 * Documented symbols sort first so a limited run spends its budget on the
+	 * rows that carry real meaning.
+	 */
+	getEmbeddingCandidateSymbols(): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         WHERE is_primary_type = 1
+            OR lower(kind) IN ('struct', 'class', 'protocol', 'enum', 'macro')
+            OR (abstract IS NOT NULL AND abstract != '')
+         ORDER BY is_primary_type DESC,
+                  (CASE WHEN abstract IS NOT NULL AND abstract != '' THEN 0 ELSE 1 END) ASC,
+                  title ASC`,
+			)
+			.all() as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/** Every symbol, for an exhaustive embedding pass. */
+	getAllSymbolsForEmbedding(): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         ORDER BY is_primary_type DESC, title ASC`,
+			)
+			.all() as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/**
+	 * Members (methods, properties, initializers…) of the frameworks people
+	 * actually reach for, that still have no abstract. Cheap ingestion only ever
+	 * documented top-level types, which leaves conceptual queries about view
+	 * modifiers with nothing to match against.
+	 */
+	getMemberSymbolsForEnrichment(
+		frameworks: string[] = ['SwiftUI', 'UIKit'],
+	): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		const frameworkPlaceholders = frameworks.map(() => '?').join(', ');
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         WHERE framework IN (${frameworkPlaceholders})
+           AND lower(kind) IN ('method', 'property', 'init', 'subscript', 'case', 'op', 'func', 'var')
+           AND (abstract IS NULL OR abstract = '')
+         ORDER BY framework ASC, path ASC`,
+			)
+			.all(...frameworks) as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/** Ids already present in the semantic layer — the resume key set. */
+	getSemanticItemIds(): Set<string> {
+		const rows = this.db
+			.prepare(`SELECT id FROM semantic_items`)
+			.all() as Array<{ id: string }>;
+		return new Set(rows.map((row) => row.id));
+	}
+
+	updateSymbolAbstract(id: string, abstract: string): void {
+		this.db
+			.prepare(`UPDATE symbols SET abstract = ? WHERE id = ?`)
+			.run(abstract, id);
+	}
+
+	/** Rows stored with a generic `symbol`/`unknown` kind. */
+	getUnclassifiedSymbols(): Array<{
+		id: string;
+		path: string;
+		framework: string;
+		kind: string;
+		title: string;
+	}> {
+		const placeholders = UNCLASSIFIED_KINDS.map(() => '?').join(', ');
+		return this.db
+			.prepare(
+				`SELECT id, path, framework, kind, title FROM symbols WHERE lower(kind) IN (${placeholders})`,
+			)
+			.all(...UNCLASSIFIED_KINDS) as Array<{
+			id: string;
+			path: string;
+			framework: string;
+			kind: string;
+			title: string;
+		}>;
 	}
 
 	getSemanticItemCount(): number {
@@ -198,13 +541,23 @@ export class AppleDocsDB {
       INSERT INTO symbols (id, framework, title, kind, abstract, path, platforms, is_primary_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        framework = excluded.framework,
-        title = excluded.title,
-        kind = excluded.kind,
-        abstract = CASE WHEN excluded.abstract IS NOT NULL AND excluded.abstract != '' THEN excluded.abstract ELSE symbols.abstract END,
-        path = excluded.path,
-        platforms = CASE WHEN excluded.platforms IS NOT NULL AND excluded.platforms != '[]' AND excluded.platforms != '' THEN excluded.platforms ELSE symbols.platforms END,
-        is_primary_type = excluded.is_primary_type
+      framework = excluded.framework,
+      title = excluded.title,
+      kind = CASE
+      WHEN lower(excluded.kind) IN ('symbol', 'unknown')
+      AND lower(symbols.kind) NOT IN ('symbol', 'unknown')
+      THEN symbols.kind
+      ELSE excluded.kind
+      END,
+      abstract = CASE WHEN excluded.abstract IS NOT NULL AND excluded.abstract != '' THEN excluded.abstract ELSE symbols.abstract END,
+      path = excluded.path,
+      platforms = CASE WHEN excluded.platforms IS NOT NULL AND excluded.platforms != '[]' AND excluded.platforms != '' THEN excluded.platforms ELSE symbols.platforms END,
+      is_primary_type = CASE
+      WHEN lower(excluded.kind) IN ('symbol', 'unknown')
+      AND lower(symbols.kind) NOT IN ('symbol', 'unknown')
+      THEN symbols.is_primary_type
+      ELSE excluded.is_primary_type
+      END
     `);
 		stmt.run(
 			sym.id,

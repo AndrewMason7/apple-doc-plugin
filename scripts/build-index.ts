@@ -9,6 +9,7 @@ import {
 	extractMediaReferences,
 } from '../src/server/services/indexer.js';
 import { resolveEmbeddingProvider } from '../src/server/services/search/provider-factory.js';
+import { embedSymbols } from '../src/server/services/symbol-embeddings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -178,6 +179,20 @@ async function buildIndex() {
 		}
 	}
 
+	if (canEmbed) {
+		// Framework overviews and media previews alone never fill the hybrid
+		// threshold; the symbol layer is what semantic_search actually needs.
+		console.error('\n🧠 Embedding symbol layer...');
+		const embedded = await embedSymbols(db, semantic, {
+			batchSize: 500,
+			onProgress: ({ done, total }) =>
+				console.error(`   • ${done}/${total} symbols embedded`),
+		});
+		console.error(
+			`   • Symbols embedded: ${embedded.embedded} (skipped ${embedded.skipped}, failed ${embedded.failed})`,
+		);
+	}
+
 	console.error(
 		'\n🔧 Rebuilding SQLite FTS5 index for 100% token consistency...',
 	);
@@ -189,6 +204,7 @@ async function buildIndex() {
 	db.setMeta('frameworks', JSON.stringify(CORE_FRAMEWORKS));
 	db.setMeta('symbol_count', String(db.getSymbolCount()));
 	db.setMeta('has_embeddings', String(canEmbed && db.hasEmbeddings()));
+	db.setMeta('semantic_item_count', String(db.getSemanticItemCount()));
 	console.error(`📝 Saved index metadata (built_at: ${builtAt})`);
 
 	console.error('🧹 Running SQLite WAL checkpoint and VACUUM...');

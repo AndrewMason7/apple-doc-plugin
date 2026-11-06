@@ -10,12 +10,28 @@ Local SQLite FTS5 over 65,787 symbols across SwiftUI, UIKit, Foundation, SwiftDa
 
 **Two modes, same binary:**
 
-| Mode        | What you need                             | What you get                                                                                            |
-| ----------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing              |
-| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search, RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
+| Mode        | What you need                             | What you get                                                                                                                              |
+| ----------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing                                                |
+| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search (768-d default, MRL-configurable), RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
 
 No API key? It still works offline without a key. That is the point.
+
+### What the shipped index actually contains
+
+|                       |                                                        |
+| --------------------- | ------------------------------------------------------ |
+| symbols               | 65,787 (kind-classified, 0 unclassified)               |
+| framework attribution | 0 rows contradicting their own path                    |
+| semantic vectors      | 19,473 at 768 dims (Gemini `gemini-embedding-2`)       |
+| search mode           | Hybrid — verified from the running server, not assumed |
+| tests                 | 154 (151 pass, 3 skipped)                              |
+
+Status claims here are measured, not aspirational: `get_version` reports the
+search mode it can actually serve, and `index_info` reports the classification
+defects that degrade filtering. How this state was reached — including three
+hypotheses that measurement rejected — is recorded in
+[docs/SESSION-2026-11-04-semantic-search.md](docs/SESSION-2026-11-04-semantic-search.md).
 
 ## Why this exists
 
@@ -27,7 +43,8 @@ Ships with:
 - `semantic_search` — natural-language / behavioral queries (hybrid vector + FTS5 with guard against demoting exact symbols on sparse embeddings; falls back to lexical if Gemini credentials are not configured or circuit breaker trips)
 - `get_documentation` — point lookup by symbol title (`NavigationStack`) or path (`/documentation/swiftui/view`), with disambiguation candidate list for colliding names, and clean error flags on missing symbols
 - `discover_technologies` — database-backed discovery listing indexed frameworks with exact symbol counts and valid tool call pagination
-- `index_info` / `get_version` — inspect runtime SQLite database status, symbol count, and freshness
+- `index_info` — index **health**: freshness provenance, real search mode, kind distribution, unclassified-symbol count, framework/path attribution defects, filter reliability
+- `get_version` — server identity: version, symbol count, the search mode the engine will actually use, and freshness with provenance
 - Antigravity **skill + rules** that tell the agent to verify APIs and prefer `NavigationStack`, `@Observable`, SwiftData, Swift Concurrency
 
 ## Prior art
@@ -128,8 +145,10 @@ get_documentation({ "path": "/documentation/swiftui/view" })
 query
   ├─ sanitize / clamp / escape FTS
   ├─ lexical: SQLite FTS5 BM25 (+100 exact-title boost)
-  └─ optional semantic: gemini-embedding-2 (3072-d), cosine vs precomputed L2 norms
-        └─ skip on missing creds, 401/403/429/5xx/timeout (30s circuit breaker)
+  └─ optional semantic: gemini-embedding-2 (768-d or 3072-d) or a local GGUF,
+        cosine vs stored unit vectors
+        └─ batched 100/request when the provider supports it
+        └─ retry with backoff on 429/5xx/timeout; waits out the 30s circuit breaker
 fuse with Reciprocal Rank Fusion (k = 60)
 optional suffix-wildcard rerank (types & protocols first)
 attach visual preview markdown when a media hit exists
@@ -140,7 +159,8 @@ slice to maxResults
 
 ## Refresh the index
 
-The shipped `data/apple-docs.db` is a snapshot (~99,903 symbols across SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Observation, CoreLocation). It goes stale when Apple ships new APIs.
+The shipped `data/apple-docs.db` is a snapshot (65,787 symbols across 14 indexed
+frameworks, plus cross-reference targets). It goes stale when Apple ships new APIs.
 
 ```bash
 cp .env.example .env          # optional; add GEMINI_API_KEY to also rebuild vectors
@@ -152,14 +172,125 @@ What `build:index` does:
 1. Open SQLite in WAL mode, ensure tables + FTS5 exist
 2. For each configured framework, pull the symbol tree + overview DocC from Apple’s CDN
 3. Upsert symbols and abstracts
-4. If Gemini auth is present: embed documents (asymmetric title/abstract prompts) and referenced UI media
+4. If an embedding provider is available: embed framework overviews, referenced UI media, **and the symbol layer** (`title`, kind, framework, abstract) — the symbol vectors are what `semantic_search` actually needs
 5. If not: log that this pass is FTS5-only
 6. `INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')`
 7. `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM`
 
-Expect this to take a while and to hit Apple’s CDN. Hybrid rebuilds also cost Gemini embeddings. Run it on a machine with network, then copy the db if you want.
+Expect this to take a while and to hit Apple's CDN. With a batched hosted provider
+the symbol pass runs at roughly 45-55 embeddings/second (~6 min for 19k symbols);
+single-threaded it is ~2.3/second. Run it on a machine with network, then copy the
+db if you want.
 
 Override the db location with `APPLE_DOCS_DB_PATH`.
+
+## Enable hybrid search
+
+Hybrid search needs **100+** semantic items, and the _symbol_ layer is what gets
+you there — the pipeline is `npm run embed-index`, not `build:index` alone.
+
+### Hosted: Gemini (fastest, best ranking)
+
+```bash
+APPLE_DOCS_EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=...                 # https://aistudio.google.com/
+APPLE_DOCS_EMBEDDING_DIMENSIONS=768   # optional MRL truncation, see below
+```
+
+```bash
+npm run embed-index                 # batched 100/request, ~45-55 embeddings/s
+```
+
+Measured on Apple symbol text, Gemini led with the correct API family
+(`viewDidLoad` / `viewDidAppear` / `onAppear`) where the 270M local model led
+with word-matches (`main()` / `show()`).
+
+### Local: EmbeddingGemma GGUF (offline, no API key, no per-token cost)
+
+```bash
+# 1. Place the model (309 MB) where the server looks for it by default
+mkdir -p ~/.cache/apple-docs/models
+hf download unsloth/embeddinggemma-2-GGUF embeddinggemma-2-Q8_0.gguf \
+  --local-dir ~/.cache/apple-docs/models
+
+# 2. Embed the symbol layer (resumable — re-run to continue)
+npm run embed-index                 # primary types + documented symbols
+npm run embed-index -- --enrich     # fetch missing abstracts first (better recall)
+npm run embed-index -- --limit 25   # smoke test
+npm run embed-index -- --all        # every symbol (slow, exhaustive)
+```
+
+Override the model location with `APPLE_DOCS_EMBEDDING_MODEL_PATH`. Provider
+precedence: an available local GGUF wins; Gemini (API key or ADC) is the
+fallback; `APPLE_DOCS_EMBEDDING_PROVIDER=gemini` forces Gemini.
+
+### Truncating vector size (MRL)
+
+Gemini's embedding family supports Matryoshka truncation, and the API re-normalises
+truncated output, so direction — which is all cosine similarity uses — is preserved.
+Google's own MTEB numbers put 768 dims within ~0.2 points of 1536, at a quarter of the
+storage of the 3072 default:
+
+```bash
+APPLE_DOCS_EMBEDDING_DIMENSIONS=768   # 128 | 256 | 512 | 768 | 1024 | 1536 | 2048 | 3072
+npm run embed-index -- --force         # re-embed: existing vectors are the old shape
+```
+
+Changing the dimension count invalidates every stored vector (a 768-d query cannot be
+scored against a 3072-d corpus), so clear `semantic_items` or run `--force` and verify
+`get_version` before trusting results. Unsupported values are ignored rather than
+guessed, so you keep the native 3072 instead of writing incomparable vectors.
+
+The similarity floor is per-provider, not inherited from Gemini: the local GGUF
+uses **0.68** (0.62 when a caller prefers semantic matches), because measured on
+Apple symbol text, on-topic pairs score 0.688-0.719 while unrelated pairs top out
+near 0.66 — Gemini's 0.65 floor let that noise through. See
+`resolveMinSimilarity()` in `hybrid-search.ts`.
+
+Progress is reported per batch, and completed items are skipped on the next run,
+so an interrupted embedding pass costs nothing. `get_version` flips from
+`Lexical only` to `Hybrid` once the threshold is crossed — restart the MCP
+server afterwards so the new vectors are loaded.
+
+## Repair an existing index (no re-crawl)
+
+`build:index` re-downloads everything. When a snapshot has classification
+defects — unclassified symbol kinds, or rows attributed to the wrong framework —
+repair them in place instead:
+
+```bash
+npm run repair-index            # dry run: shows what would change
+npm run repair-index -- --apply # writes, rebuilds FTS5, stamps repaired_at
+```
+
+`repair-index` does two things:
+
+1. **Framework attribution** — any row whose `framework` column contradicts the
+   framework segment of its own path is re-attributed (`/documentation/uikit/nsview`
+   filed under `Foundation` becomes `UIKit`).
+2. **Symbol kinds** — rows stored with the generic `symbol`/`unknown` kind are
+   re-fetched from Apple's DocC CDN and written back from the authoritative
+   `metadata.symbolKind` / `metadata.roleHeading`. Responses are cached under
+   `.cache/repair/`, so repeat runs are free.
+
+Both counts are reported by the `index_info` tool under **Index Health**.
+
+## Reading the status tools honestly
+
+| Tool          | Answers                | Key fields                                                                           |
+| ------------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| `get_version` | what is this server    | version, symbol count, **real** search mode, freshness + provenance                  |
+| `index_info`  | can I trust this index | kind distribution, unclassified count, framework/path mismatches, filter reliability |
+
+`Search Capability` reports `Lexical only` until at least **100** semantic items
+exist, because the hybrid engine refuses to fuse vectors below that threshold.
+A non-empty `semantic_items` table is _not_ the same claim as hybrid search, and
+the status line says so.
+
+`symbolType` filters never silently relax: if a filter matches nothing, the
+response states that the results are **UNFILTERED**. Rows without a classified
+kind are shown as `Kind: unknown` — never as `symbol` — and never satisfy a
+concrete kind filter.
 
 ## Environment
 
@@ -167,13 +298,14 @@ Override the db location with `APPLE_DOCS_DB_PATH`.
 cp .env.example .env
 ```
 
-| Variable                          | Required | Purpose                                                                                        |
-| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | No       | Local path to `embeddinggemma-2-Q8_0.gguf` for 100% offline in-process Metal vector embeddings |
-| `APPLE_DOCS_EMBEDDING_PROVIDER`   | No       | Force provider: `local` (in-process GGUF) or `gemini` (cloud API)                              |
-| `GEMINI_API_KEY`                  | No       | Gemini embeddings (`gemini-embedding-2`). [Google AI Studio](https://aistudio.google.com/)     |
-| `GOOGLE_APPLICATION_CREDENTIALS`  | No       | Service-account JSON for ADC. `gcloud auth application-default login` also works               |
-| `APPLE_DOCS_DB_PATH`              | No       | Alternate path to the SQLite file (default `data/apple-docs.db`)                               |
+| Variable                          | Required | Purpose                                                                                                                                            |
+| --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | No       | Local path to `embeddinggemma-2-Q8_0.gguf` for 100% offline in-process Metal vector embeddings                                                     |
+| `APPLE_DOCS_EMBEDDING_PROVIDER`   | No       | Force provider: `local` (in-process GGUF) or `gemini` (cloud API)                                                                                  |
+| `GEMINI_API_KEY`                  | No       | Gemini embeddings (`gemini-embedding-2`). [Google AI Studio](https://aistudio.google.com/)                                                         |
+| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | No       | MRL truncation for hosted embeddings: `128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`. 768 measured as near-lossless at 1/4 the storage |
+| `GOOGLE_APPLICATION_CREDENTIALS`  | No       | Service-account JSON for ADC. `gcloud auth application-default login` also works                                                                   |
+| `APPLE_DOCS_DB_PATH`              | No       | Alternate path to the SQLite file (default `data/apple-docs.db`)                                                                                   |
 
 The process loads `.env` at startup. Credentials are not logged.
 
@@ -186,13 +318,15 @@ apple-doc-plugin/
 ├── rules/AGENTS.md           # modern Apple API rules for agents
 ├── skills/apple-docs/        # skill + workflow
 ├── scripts/build-index.ts    # corpus rebuild
+├── scripts/repair-index.ts   # in-place kind + attribution repair
+├── scripts/embed-index.ts    # symbol vector backfill (resumable)
 ├── src/
 │   ├── index.ts              # stdio MCP entry
 │   ├── apple-client/         # HTTP + DocC AST → Markdown
 │   └── server/
 │       ├── handlers/         # one handler per tool
-│       ├── services/         # hybrid / semantic / resolution
-│       └── db/               # SQLite access
+│       ├── services/         # hybrid / semantic / retry / symbol-embeddings
+│       └── db/               # SQLite access + path attribution
 └── test/
 ```
 
@@ -201,10 +335,12 @@ apple-doc-plugin/
 ```bash
 npm install
 npm run build
-npm test              # Node native runner; currently 82 tests
+npm test              # Node native runner; currently 154 tests
 npm run check         # tsc --noEmit + prettier
 npm run format
 npm run build:index   # rebuild the snapshot (network)
+npm run repair-index  # fix kinds + attribution in place (dry run; --apply to write)
+npm run embed-index   # build/refresh the symbol vector layer (resumable)
 ```
 
 `better-sqlite3` will compile on install. If that fails, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — you are missing platform build tools, not an MCP bug.
@@ -212,7 +348,8 @@ npm run build:index   # rebuild the snapshot (network)
 ## Limitations (read this)
 
 - The snapshot is **not** the entire Apple documentation corpus. Niche frameworks may miss. `get_documentation` can still fall back to the live DocC CDN for a known path.
-- Hybrid quality depends on whatever was embedded the last time you ran `build:index` with Gemini credentials.
+- Hybrid quality is bounded by Apple's one-line abstracts, not by the threshold. Lowering the cosine floor admits the noise band, so it is not a fix. See `docs/SESSION-2026-11-04-semantic-search.md` for the measured bands.
+- Changing `APPLE_DOCS_EMBEDDING_DIMENSIONS` invalidates every stored vector — re-embed (`--force`) or clear `semantic_items`; a 768-d query cannot be scored against a 3072-d corpus.
 - Visual previews are derived from media references in Apple’s docs. Treat them as lookup aids, not a HIG replacement.
 - Native addon (`better-sqlite3`) requires C++ compilation tools during install.
 

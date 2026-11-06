@@ -2,6 +2,7 @@ import type { ServerContext, ToolResponse } from '../context.js';
 import type { Technology } from '../../apple-client.js';
 import { header, bold } from '../markdown.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
+import { isUnknownKind } from '../services/indexer.js';
 
 type QueryMode = 'exact-symbol' | 'wildcard' | 'keyword';
 
@@ -96,6 +97,24 @@ const KIND_ALIASES: Record<string, string[]> = {
 	typealias: ['typealias'],
 	modifier: ['method', 'func', 'viewmodifier'],
 	article: ['article', 'overview', 'tutorial', 'guide', 'ui_preview'],
+	// Let a caller ask for rows the index could not classify.
+	unknown: ['symbol', 'unknown'],
+	symbol: ['symbol', 'unknown'],
+};
+
+/** Rows without a classified kind are reported as `unknown`, never as `symbol`. */
+const UNKNOWN_KIND_LABEL = 'unknown';
+
+const displayKind = (kind: string): string =>
+	isUnknownKind(kind) ? UNKNOWN_KIND_LABEL : kind.trim().toLowerCase();
+
+const normalizeKindTargets = (symbolType: string): string[] => {
+	const lowerKind = symbolType.toLowerCase().trim();
+	const aliases = KIND_ALIASES[lowerKind] || [lowerKind];
+	const targets = aliases.map((alias) =>
+		isUnknownKind(alias) ? UNKNOWN_KIND_LABEL : alias,
+	);
+	return Array.from(new Set(targets));
 };
 
 const formatMatch = (match: SearchMatch): string[] => {
@@ -105,7 +124,7 @@ const formatMatch = (match: SearchMatch): string[] => {
 	const fwArg = match.framework ? `, "framework": "${match.framework}"` : '';
 	const lines = [
 		`### ${match.title}${frameworkInfo}`,
-		`   • **Kind:** ${match.kind}`,
+		`   • **Kind:** ${displayKind(match.kind)}`,
 		`   • **Path:** \`${match.path}\``,
 		`   • **Platforms:** ${platforms}`,
 		`   • **Doc Call:** \`get_documentation({ "path": "${match.path}"${fwArg} })\``,
@@ -218,15 +237,35 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 
 			let kindNotice: string | undefined;
 			if (symbolType) {
-				const lowerKind = symbolType.toLowerCase().trim();
-				const targetKinds = KIND_ALIASES[lowerKind] || [lowerKind];
+				const targetKinds = normalizeKindTargets(symbolType);
+				const unknownRequested = targetKinds.includes(UNKNOWN_KIND_LABEL);
 				const kindFiltered = filtered.filter((r) =>
-					targetKinds.includes(r.kind.toLowerCase()),
+					targetKinds.includes(displayKind(r.kind)),
 				);
+
 				if (kindFiltered.length > 0) {
 					filtered = kindFiltered;
+					const droppedUnknown = unknownRequested
+						? 0
+						: results.filter(
+								(r) =>
+									!targetKinds.includes(displayKind(r.kind)) &&
+									isUnknownKind(r.kind),
+							).length;
+					if (droppedUnknown > 0) {
+						kindNotice = `${droppedUnknown} result(s) with unknown kind were excluded by this filter — the index lacks kind data for them (run "npm run repair-index -- --apply" to backfill).`;
+					}
 				} else {
-					kindNotice = `Filter "${symbolType}" matched 0 symbols; showing all kinds`;
+					// Silent relaxation is a correctness bug: the caller would
+					// otherwise believe these results are kind-filtered.
+					const unknownKindCount = context.db
+						? context.db.countUnknownKind()
+						: 0;
+					const hint =
+						unknownKindCount > 0
+							? ` ${unknownKindCount} symbol(s) in this index have no classified kind (run "npm run repair-index -- --apply" to backfill), and unknown-kind rows never satisfy a concrete kind filter.`
+							: ' This index holds no symbol of that kind for this query — nothing was dropped, so try another symbolType or drop the filter.';
+					kindNotice = `⚠️ Kind filter "${symbolType}" matched 0 symbols — the results below are UNFILTERED (they are NOT restricted to that kind).${hint}`;
 				}
 			}
 

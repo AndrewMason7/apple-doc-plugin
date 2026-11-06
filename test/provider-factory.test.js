@@ -1,11 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { resolveEmbeddingProvider } from '../dist/server/services/search/provider-factory.js';
 
-test('resolveEmbeddingProvider selects local GGUF when model exists', () => {
+const LOCAL_MODEL =
+	'/Users/andrew/Documents/GitHub/Models/embeddinggemma-2-Q8_0.gguf';
+
+test('resolveEmbeddingProvider selects local GGUF when model exists', (t) => {
+	if (!existsSync(LOCAL_MODEL)) {
+		// The GGUF only exists on the author's Mac; skip rather than fail CI/VPS.
+		t.skip(`local GGUF model not present at ${LOCAL_MODEL}`);
+		return;
+	}
 	const provider = resolveEmbeddingProvider({
-		localModelPath:
-			'/Users/andrew/Documents/GitHub/Models/embeddinggemma-2-Q8_0.gguf',
+		localModelPath: LOCAL_MODEL,
 	});
 	assert.equal(provider.id, 'local-gguf');
 	assert.equal(provider.dimensions, 768);

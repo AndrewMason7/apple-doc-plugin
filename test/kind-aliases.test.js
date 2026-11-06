@@ -79,7 +79,7 @@ test('kind filter that matches 0 symbols falls back to all results with a note',
 		'Should retain results when kind filter matches 0 items',
 	);
 	assert.ok(
-		text.includes('matched 0 symbols; showing all kinds'),
-		'Should display fallback note',
+		text.includes('matched 0 symbols') && text.includes('UNFILTERED'),
+		'Should state loudly that retained results are NOT kind-filtered',
 	);
 });
