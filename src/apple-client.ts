@@ -1,6 +1,7 @@
 import { HttpClient } from './apple-client/http-client.js';
 import { FileCache } from './apple-client/cache/file-cache.js';
 import { extractText, formatPlatforms } from './apple-client/formatters.js';
+import { logger } from './server/logger.js';
 import type {
 	FrameworkData,
 	SymbolData,
@@ -39,7 +40,14 @@ export class AppleDevDocsClient {
 		const data = await this.httpClient.getDocumentation<FrameworkData>(
 			`documentation/${frameworkName}`,
 		);
-		await this.fileCache.saveFramework(frameworkName, data);
+		try {
+			await this.fileCache.saveFramework(frameworkName, data);
+		} catch (cacheErr) {
+			logger.warn(
+				`Failed writing framework ${frameworkName} to file cache:`,
+				cacheErr,
+			);
+		}
 		return data;
 	}
 
@@ -53,7 +61,14 @@ export class AppleDevDocsClient {
 		}
 
 		const data = await this.httpClient.getDocumentation<SymbolData>(cleanPath);
-		await this.fileCache.saveSymbol(cleanPath, data);
+		try {
+			await this.fileCache.saveSymbol(cleanPath, data);
+		} catch (cacheErr) {
+			logger.warn(
+				`Failed writing symbol ${cleanPath} to file cache:`,
+				cacheErr,
+			);
+		}
 		return data;
 	}
 
@@ -83,7 +98,11 @@ export class AppleDevDocsClient {
 
 		// Save the extracted technologies (not the full response)
 		if (Object.keys(technologies).length > 0) {
-			await this.fileCache.saveTechnologies(technologies);
+			try {
+				await this.fileCache.saveTechnologies(technologies);
+			} catch (cacheErr) {
+				logger.warn('Failed writing technologies to file cache:', cacheErr);
+			}
 		}
 
 		return technologies;

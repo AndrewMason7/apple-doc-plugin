@@ -32,8 +32,9 @@ const looksLikeExactSymbol = (query: string): boolean => {
 	}
 
 	return (
-		/^[A-Z][a-zA-Z\d]*(?:[./][A-Z][a-zA-Z\d]*)*$/.test(query) ||
-		query.startsWith('documentation/')
+		/^[a-zA-Z_][a-zA-Z\d_]*(?:[./][a-zA-Z_][a-zA-Z\d_]*)*$/.test(query) ||
+		query.startsWith('documentation/') ||
+		query.startsWith('/documentation/')
 	);
 };
 
@@ -463,7 +464,8 @@ const tryExactSymbolMatch = async (
 		}
 
 		if (symbolType && data.metadata?.symbolKind) {
-			if (data.metadata.symbolKind.toLowerCase() !== symbolType.toLowerCase()) {
+			const targetKinds = normalizeKindTargets(symbolType);
+			if (!targetKinds.includes(data.metadata.symbolKind.toLowerCase())) {
 				return undefined;
 			}
 		}

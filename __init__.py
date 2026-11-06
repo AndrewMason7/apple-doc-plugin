@@ -49,6 +49,10 @@ TOOL_DEFINITIONS = [
                     "type": "string",
                     "description": "Optional framework name (e.g. 'SwiftUI', 'UIKit'). If omitted, framework is auto-detected.",
                 },
+                "concise": {
+                    "type": "boolean",
+                    "description": "Optional compact token-budgeted mode. Strips lengthy discussions and returns only declarations, parameters, and return types.",
+                },
                 "path": {
                     "type": "string",
                     "description": "Symbol path or relative name (e.g. 'View', 'GridItem', 'documentation/SwiftUI/NavigationStack')",

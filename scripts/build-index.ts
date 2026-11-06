@@ -208,10 +208,7 @@ async function buildIndex() {
 	console.error(`📝 Saved index metadata (built_at: ${builtAt})`);
 
 	console.error('🧹 Running SQLite WAL checkpoint and VACUUM...');
-	// @ts-ignore
-	db['db'].pragma('wal_checkpoint(TRUNCATE)');
-	// @ts-ignore
-	db['db'].exec('VACUUM');
+	db.checkpointAndVacuum();
 
 	console.error(
 		`\n🎉 Indexing complete! Total symbols indexed: ${totalIndexed}`,

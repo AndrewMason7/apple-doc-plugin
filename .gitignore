@@ -81,6 +81,13 @@ jspm_packages/
 # vuepress build output
 .vuepress/dist
 
+# Python and test caches
+.pytest_cache/
+__pycache__/
+*.pyc
+.cache-test-*
+
+
 # Serverless directories
 .serverless
 
@@ -102,4 +109,11 @@ test-*.js
 .superpowers/
 
 dist
+
+# Python and test caches
+.pytest_cache/
+__pycache__/
+*.pyc
+.cache-test-*
+
 

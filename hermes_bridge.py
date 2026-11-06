@@ -187,7 +187,7 @@ class NodeMcpBridge:
 
         self._send_raw(payload)
 
-        if not event.wait(timeout=15.0):
+        if not event.wait(timeout=60.0):
             with self._lock:
                 self._pending_requests.pop(req_id, None)
             err_diagnostics = "\n".join(list(self._stderr_buffer)[-10:])

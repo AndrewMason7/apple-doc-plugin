@@ -77,6 +77,17 @@ export const formatContentNodes = (nodes?: DocCContentNode[]): string => {
 			if (listItems) {
 				parts.push(listItems);
 			}
+		} else if (node.type === 'orderedList' && Array.isArray(node.items)) {
+			const listItems = node.items
+				.map(
+					(item, idx) =>
+						`${idx + 1}. ${formatContentNodes(item.content).trim()}`,
+				)
+				.filter(Boolean)
+				.join('\n');
+			if (listItems) {
+				parts.push(listItems);
+			}
 		} else if (node.type === 'aside') {
 			const style = (node.style || 'NOTE').toUpperCase();
 			const content = formatContentNodes(node.content).trim();

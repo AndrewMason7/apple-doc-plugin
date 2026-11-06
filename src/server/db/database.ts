@@ -1227,9 +1227,9 @@ export class AppleDocsDB {
 		let sql = `
 			SELECT title, framework, path, kind, is_primary_type
 			FROM symbols
-			WHERE abs(length(title) - ?) <= ?
+			WHERE (abs(length(title) - ?) <= ?
 			   OR is_primary_type = 1
-			   OR path LIKE '%/' || ? || '%'
+			   OR path LIKE '%/' || ? || '%')
 		`;
 		const params: (string | number)[] = [
 			cleanTargetName.length,
@@ -1332,6 +1332,11 @@ export class AppleDocsDB {
 				this.db.prepare('DETACH DATABASE src').run();
 			} catch {}
 		}
+	}
+
+	checkpointAndVacuum(): void {
+		this.db.pragma('wal_checkpoint(TRUNCATE)');
+		this.db.exec('VACUUM');
 	}
 
 	close(): void {

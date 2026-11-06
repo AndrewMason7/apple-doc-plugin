@@ -59,7 +59,7 @@ export async function downloadModel(
 			headers: {
 				'User-Agent': 'apple-doc-plugin/1.0.0',
 			},
-			timeout: 60000,
+			timeout: 600000,
 		});
 
 		const totalBytes = Number(response.headers['content-length'] || 0);
@@ -82,8 +82,14 @@ export async function downloadModel(
 			});
 
 			writer.on('finish', resolve);
-			writer.on('error', reject);
-			response.data.on('error', reject);
+			writer.on('error', (err) => {
+				writer.close();
+				reject(err);
+			});
+			response.data.on('error', (err: unknown) => {
+				writer.close();
+				reject(err);
+			});
 
 			response.data.pipe(writer);
 		});
