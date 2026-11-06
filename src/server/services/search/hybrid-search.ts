@@ -1,7 +1,27 @@
 import { AppleDocsDB, DbSymbol } from '../../db/database.js';
-import { GeminiSemanticSearch, SemanticMatch } from './semantic-search.js';
+import {
+	DEFAULT_EMBEDDING_DIMENSIONS,
+	GeminiSemanticSearch,
+	SemanticMatch,
+} from './semantic-search.js';
 import type { EmbeddingProvider } from './embedding-provider.js';
+
+/**
+ * Pick the cosine floor for a provider. Each embedding model has its own score
+ * distribution, so a floor tuned against one model quietly admits noise when
+ * swapped for another.
+ */
+export const resolveMinSimilarity = (
+	provider: EmbeddingProvider,
+	preferSemantic: boolean,
+): number => {
+	if (preferSemantic) {
+		return provider.minSimilarityPreferred ?? 0.55;
+	}
+	return provider.minSimilarity ?? 0.65;
+};
 import { resolveEmbeddingProvider } from './provider-factory.js';
+import { expandQuery, type QueryExpansionResult } from './query-expansion.js';
 
 export interface SearchOptions {
 	framework?: string;
@@ -9,6 +29,7 @@ export interface SearchOptions {
 	preferSemantic?: boolean;
 	lexicalOnly?: boolean;
 	minSemanticItems?: number;
+	expandQuery?: boolean;
 }
 
 export interface SearchResultItem extends DbSymbol {
@@ -32,6 +53,12 @@ export class HybridSearchEngine {
 	public readonly embeddingProvider: EmbeddingProvider;
 	public readonly semanticSearch: GeminiSemanticSearch;
 	public readonly minSemanticItems: number;
+	/**
+	 * Width pairs already reported. The comparison is a corpus-level fact, so a
+	 * stale 3072-d corpus must cost one line per process, not one line per
+	 * stored row (19,473 rows used to mean 19,473 stderr lines per query).
+	 */
+	private readonly reportedWidthMismatches = new Set<string>();
 
 	hasSemanticAuth(): boolean {
 		return this.embeddingProvider.isAvailable();
@@ -61,7 +88,7 @@ export class HybridSearchEngine {
 							options.modelName,
 							options.baseUrl,
 							options.googleAuth,
-							options.expectedDimensions ?? 3072,
+							options.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
 						);
 		} else if (
 			options.apiKey !== undefined ||
@@ -74,7 +101,7 @@ export class HybridSearchEngine {
 				options.modelName,
 				options.baseUrl,
 				options.googleAuth,
-				options.expectedDimensions ?? 3072,
+				options.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
 			);
 			this.embeddingProvider = this.semanticSearch;
 		} else {
@@ -87,10 +114,29 @@ export class HybridSearchEngine {
 							options.modelName,
 							options.baseUrl,
 							options.googleAuth,
-							options.expectedDimensions ?? 3072,
+							options.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
 						);
 		}
 		this.minSemanticItems = options.minSemanticItems ?? 100;
+	}
+
+	/**
+	 * Report an unusable vector width exactly once per width pair, with both
+	 * ways out. Returns nothing: the caller skips the semantic pass.
+	 */
+	private reportWidthMismatch(
+		storedWidth: number,
+		queryWidth: number,
+		mismatchedItems: number,
+	): void {
+		const key = `${storedWidth}->${queryWidth}`;
+		if (this.reportedWidthMismatches.has(key)) return;
+		this.reportedWidthMismatches.add(key);
+		console.warn(
+			`Warning: semantic vector dimension mismatch — ${mismatchedItems} stored vector(s) are ${storedWidth}-d but the query embedding is ${queryWidth}-d, so cosine scores are undefined. ` +
+				`set APPLE_DOCS_EMBEDDING_DIMENSIONS=${storedWidth} to keep your existing vectors, or run npm run embed-index -- --force to re-embed at ${queryWidth}. ` +
+				'Skipping the semantic pass; results stay lexical until one of those is done.',
+		);
 	}
 
 	searchSemanticWithVector(
@@ -109,7 +155,49 @@ export class HybridSearchEngine {
 		const queryNorm = Math.sqrt(queryNormSq);
 		if (queryNorm === 0) return [];
 
+		// Compare widths once, before any cosine work. A partial mismatch is
+		// still worth one line; a total mismatch means the pass cannot produce a
+		// single match, so skip it instead of scanning the corpus for nothing.
+		const widths = new Map<number, number>();
 		for (const item of items) {
+			const width = item.embedding.length;
+			widths.set(width, (widths.get(width) ?? 0) + 1);
+		}
+		const comparableCount = widths.get(queryVec.length) ?? 0;
+		const mismatchedCount = items.length - comparableCount;
+		if (mismatchedCount > 0) {
+			const storedWidth = Math.max(
+				...[...widths.keys()].filter((width) => width !== queryVec.length),
+			);
+			this.reportWidthMismatch(storedWidth, queryVec.length, mismatchedCount);
+		}
+		if (comparableCount === 0) return [];
+
+		if (this.db.isVecAccelerated() && queryVec.length === 768) {
+			const fetchLimit = framework ? Math.max(limit * 20, 200) : limit * 2;
+			const nativeMatches = this.db.queryVectorNearest(
+				queryVec,
+				fetchLimit,
+				framework,
+			);
+			if (nativeMatches.length > 0) {
+				const filtered = nativeMatches
+					.filter((m) => m.similarity >= minSimilarity)
+					.sort((a, b) => b.similarity - a.similarity)
+					.slice(0, limit);
+				if (
+					filtered.length >= limit ||
+					(!framework && nativeMatches.length < fetchLimit) ||
+					(filtered.length > 0 && !framework)
+				) {
+					return filtered;
+				}
+			}
+		}
+
+		for (const item of items) {
+			if (item.embedding.length !== queryVec.length) continue;
+
 			let itemNorm = item.norm;
 			if (itemNorm === undefined) {
 				let normSq = 0.0;
@@ -117,13 +205,6 @@ export class HybridSearchEngine {
 					normSq += item.embedding[i] * item.embedding[i];
 				}
 				itemNorm = Math.sqrt(normSq);
-			}
-
-			if (item.embedding.length !== queryVec.length) {
-				console.warn(
-					`Warning: Semantic vector dimension mismatch: item "${item.id}" has ${item.embedding.length} dims, query has ${queryVec.length} dims.`,
-				);
-				continue;
 			}
 
 			const similarity = this.semanticSearch.cosineSimilarityWithNorm(
@@ -155,15 +236,62 @@ export class HybridSearchEngine {
 		options: SearchOptions = {},
 	): Promise<SearchResultItem[]> {
 		const limit = options.limit || 20;
+		const shouldExpand = options.expandQuery !== false;
+		const expansion: QueryExpansionResult = shouldExpand
+			? expandQuery(query)
+			: {
+					originalQuery: query,
+					matchedIdioms: [],
+					mappedSymbols: [],
+					expandedTerms: [],
+					expandedFtsQuery: query,
+					semanticSearchQuery: query,
+					hasExpansion: false,
+				};
+
 		const ftsResults = this.db.queryFTS(query, options.framework, limit * 2);
 
-		// Exact symbol booster
+		// If query matched cross-framework idioms, fetch candidate symbols for the mapped equivalents
+		if (expansion.hasExpansion && expansion.mappedSymbols.length > 0) {
+			const existingIds = new Set(ftsResults.map((r) => r.id));
+			const mappedLimit = Math.max(3, Math.floor(limit / 2));
+			for (let i = 0; i < Math.min(5, expansion.mappedSymbols.length); i++) {
+				const sym = expansion.mappedSymbols[i];
+				const mappedMatches = this.db.queryFTS(
+					sym,
+					options.framework,
+					mappedLimit,
+				);
+				for (const match of mappedMatches) {
+					if (!existingIds.has(match.id)) {
+						existingIds.add(match.id);
+						ftsResults.push({
+							...match,
+							score: match.score * 0.9,
+						});
+					}
+				}
+			}
+		}
+
+		// Exact symbol booster & mapped symbol booster
 		const normalizedQuery = query.trim().toLowerCase();
+		const mappedLower = new Set(
+			expansion.mappedSymbols.map((s) => s.toLowerCase()),
+		);
 		const scoredFTS: SearchResultItem[] = ftsResults.map((item) => {
-			const isExact = item.title.toLowerCase() === normalizedQuery;
+			const itemTitleLower = item.title.toLowerCase();
+			const isExact = itemTitleLower === normalizedQuery;
+			const isMapped = mappedLower.has(itemTitleLower);
+			let bonus = 0;
+			if (isExact) {
+				bonus = 100;
+			} else if (isMapped) {
+				bonus = 50;
+			}
 			return {
 				...item,
-				score: isExact ? item.score + 100 : item.score,
+				score: item.score + bonus,
 				source: 'fts',
 			};
 		});
@@ -182,9 +310,15 @@ export class HybridSearchEngine {
 
 		// Check if semantic search is available
 		if (this.embeddingProvider.isAvailable()) {
-			const queryVec = await this.embeddingProvider.embedQuery(query);
+			const semanticQuery = expansion.hasExpansion
+				? expansion.semanticSearchQuery
+				: query;
+			const queryVec = await this.embeddingProvider.embedQuery(semanticQuery);
 			if (queryVec) {
-				const minSim = options.preferSemantic ? 0.55 : 0.65;
+				const minSim = resolveMinSimilarity(
+					this.embeddingProvider,
+					Boolean(options.preferSemantic),
+				);
 				const semanticMatches = this.searchSemanticWithVector(
 					queryVec,
 					options.framework,

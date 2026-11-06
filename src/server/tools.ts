@@ -7,7 +7,10 @@ import type { ServerContext } from './context.js';
 import { buildDiscoverHandler } from './handlers/discover.js';
 import { buildGetDocumentationHandler } from './handlers/get-documentation.js';
 import { buildSearchSymbolsHandler } from './handlers/search-symbols.js';
-import { buildVersionHandler } from './handlers/version.js';
+import {
+	buildIndexInfoHandler,
+	buildVersionHandler,
+} from './handlers/version.js';
 import { logger } from './logger.js';
 
 type ToolDefinition = {
@@ -65,11 +68,16 @@ export const registerTools = (server: Server, context: ServerContext) => {
 						description:
 							'Symbol path or relative name (e.g. "View", "GridItem", "documentation/SwiftUI/NavigationStack")',
 					},
+					concise: {
+						type: 'boolean',
+						description:
+							'Optional. When true, returns compact token-budgeted output with declaration, parameters, and return types, omitting verbose discussion and topic sections.',
+					},
 				},
 			},
 			handler: (args) =>
 				buildGetDocumentationHandler(context)(
-					args as { path: string; framework?: string },
+					args as { path: string; framework?: string; concise?: boolean },
 				),
 		},
 		{
@@ -184,13 +192,13 @@ export const registerTools = (server: Server, context: ServerContext) => {
 		{
 			name: 'index_info',
 			description:
-				'Get runtime SQLite index metadata including symbol count, indexed frameworks, snapshot build timestamp, and embedding status',
+				'Report index HEALTH (not just metadata): freshness provenance, real search mode (lexical vs hybrid), kind distribution, unclassified-symbol count, and framework/path attribution defects that degrade symbolType and framework filtering',
 			inputSchema: {
 				type: 'object',
 				required: [],
 				properties: {},
 			},
-			handler: () => buildVersionHandler(context)(),
+			handler: () => buildIndexInfoHandler(context)(),
 		},
 	];
 

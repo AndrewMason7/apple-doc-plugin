@@ -5,7 +5,10 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { AppleDevDocsClient } from '../apple-client.js';
 import { ServerState } from './state.js';
 import { registerTools } from './tools.js';
+import { registerResources } from './resources.js';
+import { registerPrompts } from './prompts.js';
 import { AppleDocsDB } from './db/database.js';
+import { resolveDbPath } from './db/db-path.js';
 import { HybridSearchEngine } from './services/search/hybrid-search.js';
 import { loadEnvironment } from './env.js';
 
@@ -33,6 +36,8 @@ export const createServer = () => {
 		{
 			capabilities: {
 				tools: {},
+				resources: {},
+				prompts: {},
 			},
 		},
 	);
@@ -48,12 +53,9 @@ export const createServer = () => {
 	let db: AppleDocsDB | undefined;
 	let searchEngine: HybridSearchEngine | undefined;
 
-	let dbPath =
-		process.env.APPLE_DOCS_DB_PATH ||
-		join(__dirname, '../../data/apple-docs.db');
-	if (dbPath.includes('${extensionPath}')) {
-		dbPath = dbPath.replace(/\$\{extensionPath\}/g, join(__dirname, '../..'));
-	}
+	// Same resolver as `npm run doctor` and the index scripts: a custom
+	// APPLE_DOCS_DB_PATH must point every surface at the same file.
+	const dbPath = resolveDbPath();
 	if (existsSync(dbPath)) {
 		try {
 			db = new AppleDocsDB(dbPath, { readonly: true });
@@ -63,10 +65,15 @@ export const createServer = () => {
 				'Failed to open pre-indexed SQLite database, falling back to dynamic search:',
 				err instanceof Error ? err.message : err,
 			);
+			db = undefined;
+			searchEngine = undefined;
 		}
 	}
 
-	registerTools(server, { client, state, db, searchEngine });
+	const context = { client, state, db, searchEngine };
+	registerTools(server, context);
+	registerResources(server, context);
+	registerPrompts(server);
 
 	return server;
 };

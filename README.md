@@ -4,77 +4,101 @@
 [![MCP](https://img.shields.io/badge/MCP-1.27.1-purple.svg)](https://modelcontextprotocol.io)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org)
 
-Offline-first [MCP](https://modelcontextprotocol.io) server (and Antigravity plugin) for Apple Developer Documentation.
+**High-performance MCP server and Antigravity/Hermes plugin featuring Hybrid Semantic Search and offline Apple Developer Documentation.**
 
-Local SQLite FTS5 over 65,787 symbols across SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Swift Standard Library, Observation, and CoreLocation. Optional Gemini embeddings for conceptual / visual queries. DocC JSON rendered to Markdown agents can actually use.
+Gives coding agents (Claude Code, Cursor, Windsurf, Antigravity, Hermes) deep understanding of Apple frameworks — allowing agents to search by **natural-language behavior, concepts, and intent**, not just exact symbol names.
 
-**Two modes, same binary:**
+---
 
-| Mode        | What you need                             | What you get                                                                                            |
-| ----------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Offline** | Node 22+ and `data/apple-docs.db`         | Fast BM25 + wildcard symbol search, local docs, CDN fallback only when a symbol is missing              |
-| **Hybrid**  | Local GGUF (`embeddinggemma-2`) or Gemini | Same lexical path, plus vector search, RRF fusion, and UI-layout preview cards (100% offline with GGUF) |
+### Highlights
 
-No API key? It still works offline without a key. That is the point.
+- 🧠 **Hybrid Semantic Search**: Combines dense vector embeddings with SQLite FTS5 BM25 via **Reciprocal Rank Fusion (RRF)**. Finds the right APIs even when your query shares zero words with the symbol name.
+- 🌉 **Cross-Framework Query Expansion**: Seamlessly bridges Web, React, and Android idioms (`useEffect`, `SharedPreferences`, `Flexbox`, `coroutine`, `AsyncStorage`) into native Apple symbols (`task`, `onAppear`, `AppStorage`, `HStack`, `VStack`, `Spacer`).
+- 🛠️ **One-Click IDE Configuration CLI**: Safely configure Cursor, Claude Desktop, Windsurf, Antigravity, and VS Code with `apple-doc-plugin install --target <ide>`.
+- ⚡ **65,787 Symbols Offline**: Ships with a pre-indexed database spanning SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Swift Standard Library, Observation, and CoreLocation.
+- 🎯 **Dual Semantic Engines**: Run hosted embeddings with **Google Gemini** (`gemini-embedding-2`) or **100% offline** on Apple Silicon Metal with local GGUF (`embeddinggemma-2`).
+- 🔍 **Lexical Precision & Wildcards**: Full support for wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), exact-title boosting, and kind aliasing (`func` ↔ `method`).
+- 📖 **DocC AST to Agent Markdown**: Formats Apple DocC JSON into concise Markdown with method signatures, parameter tables, deprecation notices, and live CDN fallback.
+- 🩺 **Instant Diagnostics & Setup**: Built-in `apple-doc-plugin setup` and `apple-doc-plugin doctor` commands verify database integrity, vector dimensions, and embedding providers in seconds.
 
-## Why this exists
+---
 
-Coding agents hallucinate deprecated Apple APIs. Live doc scrapers are accurate until the CDN rate-limits you. This repo keeps a local index for the hot path and only hits Apple or Gemini when it has to.
+## The Power of Semantic Search & Cross-Framework Recall
 
-Ships with:
+Traditional documentation tools require you to know the exact symbol name in advance. But when developers and AI agents build apps, they search for **behaviors, lifecycle events, and cross-platform idioms**:
 
-- `search_symbols` — lexical FTS5 search with exact-name boost, universal wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), kind aliasing (`func` matches DocC `method`), runnable copy-paste `get_documentation` calls, and optional framework / platform filters (never calls Gemini)
-- `semantic_search` — natural-language / behavioral queries (hybrid vector + FTS5 with guard against demoting exact symbols on sparse embeddings; falls back to lexical if Gemini credentials are not configured or circuit breaker trips)
-- `get_documentation` — point lookup by symbol title (`NavigationStack`) or path (`/documentation/swiftui/view`), with disambiguation candidate list for colliding names, and clean error flags on missing symbols
-- `discover_technologies` — database-backed discovery listing indexed frameworks with exact symbol counts and valid tool call pagination
-- `index_info` / `get_version` — inspect runtime SQLite database status, symbol count, and freshness
-- Antigravity **skill + rules** that tell the agent to verify APIs and prefer `NavigationStack`, `@Observable`, SwiftData, Swift Concurrency
+| What You Ask / What Agent Searches          | How Keyword Search Fails             | What `semantic_search` Returns                                  |
+| :------------------------------------------ | :----------------------------------- | :-------------------------------------------------------------- |
+| _"prevent sheet swipe dismiss"_             | 0 matches (words don't match)        | `interactiveDismissDisabled(_:)`                                |
+| _"code that runs when screen appears"_      | Matches random functions named `run` | `onAppear(perform:)`, `viewIsAppearing()`, `viewDidLoad()`      |
+| _"react useEffect equivalent"_              | 0 matches (React terminology)        | `.task(id:_:)`, `onAppear(perform:)`, `.onChange(of:_:)`        |
+| _"android shared preferences storage"_      | 0 matches (Android terminology)      | `@AppStorage`, `UserDefaults`                                   |
+| _"display: flex layout"_                    | 0 matches (CSS Flexbox terminology)  | `HStack`, `VStack`, `Spacer`, `Layout`                          |
+| _"three column navigation layout"_          | Matches generic `Navigation` terms   | `NavigationSplitView`, `NavigationSplitViewVisibility`          |
+| _"store sensitive credentials in keychain"_ | Misses non-keyword matches           | `SecItemAdd`, `kSecClassGenericPassword`, `LocalAuthentication` |
 
-## Prior art
+### How the Hybrid Engine Works
 
-The MCP tool shape (discover / choose technology, symbol search, get documentation) follows the path opened by [MightyDillah/apple-doc-mcp](https://github.com/MightyDillah/apple-doc-mcp). That server talks to Apple’s live documentation. This project is a separate codebase: local FTS5 index, hybrid ranking, DocC formatter, and Antigravity plugin packaging.
-
-If you want always-fresh docs and `npx` with no native addon, use that one. If you want offline lookup + ranking + agent rules, use this one.
-
-## Requirements
-
-- **Node.js 22+** (uses `process.loadEnvFile`; badge is not decorative)
-- A working C/C++ toolchain the first time `better-sqlite3` compiles (native addon; see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md))
-- Optional: Gemini API key or `gcloud auth application-default login`
-
-```bash
-node -v   # >= 22
-npm install
-npm run build
+```text
+User / Agent Query ("react useEffect equivalent" or "prevent sheet swipe down")
+  │
+  ├──► Query Expansion Layer: Maps 18+ Web/React/Android idioms into native Apple symbols
+  │
+  ├──► Lexical Branch: SQLite FTS5 (BM25 + Exact Name Boost + Mapped Symbol Bonus)
+  │
+  └──► Semantic Branch: Dense Vector Embedding (Gemini or Local GGUF)
+         └─ Enriched context prompt against 19,000+ Apple DocC vectors
+  │
+  ▼
+Reciprocal Rank Fusion (RRF, k=60)
+  │
+  ▼
+Ranked, Deduplicated Results with Runnable get_documentation Links
 ```
 
-## Install
+- **Zero Demotion Risk**: Exact symbol matches receive an explicit boost so lexical precision is never sacrificed for semantic breadth.
+- **Enriched Member Abstracts**: Includes 13,800+ backfilled view modifiers, initializers, and methods so modifiers like `.interactiveDismissDisabled()` are indexed by behavior.
+- **Calibrated Similarity Thresholds**: Uses empirically tuned cosine floors (`0.65` for Gemini, `0.68` for Gemma) to filter background noise while surfacing relevant API families.
 
-### Hermes Agent plugin (Native)
+---
 
-Install directly into Hermes Agent via CLI or catalog:
+## Quick Install & Setup
 
-```bash
-hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git
-hermes plugins enable apple-doc-plugin
-```
+### 1. One-Click IDE / Agent Configuration (Recommended)
 
-This uses native Hermes manifest v2 (`plugin.yaml`) and exposes `search_symbols`, `semantic_search`, `get_documentation`, `discover_technologies`, `get_version`, and `index_info` directly in Hermes conversations.
-
-### Antigravity plugin
+Automatically detect and configure your coding assistant's MCP configuration without manual JSON editing:
 
 ```bash
-agy plugin install .
-# or
-agy plugin install AndrewMason7/apple-doc-plugin
-agy plugin validate .
+# Target Cursor
+npx apple-doc-plugin install --target cursor
+
+# Target Claude Desktop
+npx apple-doc-plugin install --target claude-desktop
+
+# Target Windsurf
+npx apple-doc-plugin install --target windsurf
+
+# Target Antigravity
+npx apple-doc-plugin install --target antigravity
 ```
 
-That registers the MCP server (`bin/launcher.cjs`), the `apple-docs` skill, and `rules/AGENTS.md`.
+_(Pass `--dry-run` to preview changes without modifying disk, or `--env GEMINI_API_KEY=...` to attach API credentials)._
 
-### Claude Code / Cursor / Windsurf / Codex
+### 2. First-Run Setup & Vector Bootstrap
 
-Build first, then point MCP at the compiled entrypoint. Gemini env is optional.
+Verify your installation, inspect database integrity, and optionally bootstrap offline vector assets:
+
+```bash
+# Verify health and search mode
+npx apple-doc-plugin setup
+
+# Automatically download pre-computed 768-d vectors and configure Cursor
+npx apple-doc-plugin setup --download-vectors --target cursor
+```
+
+### 3. Manual MCP Configuration (Optional)
+
+If preferred, manually add `apple-docs` to your MCP configuration (`claude_desktop_config.json`, `.cursor/mcp.json`, etc.):
 
 ```json
 {
@@ -90,131 +114,208 @@ Build first, then point MCP at the compiled entrypoint. Gemini env is optional.
 }
 ```
 
-Omit `GEMINI_API_KEY` for offline-only. You can also run `bin/launcher.cjs` if you installed the plugin layout.
+_(Tip: `GEMINI_API_KEY` enables hybrid semantic search. If omitted, the server operates in offline lexical mode, or uses local `embeddinggemma-2` if downloaded via `apple-doc-plugin download-model`)._
 
-> Package name on npm is `apple-doc-plugin`. Do **not** `npx apple-doc-mcp-server` and assume it is this repo — that name already belongs to MightyDillah’s live server.
-
-## Tools
-
-Use the smallest tool that answers the question.
-
-| Tool                         | Use when                                                                                | Notes                                                                                                                                                                                             |
-| ---------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `semantic_search`            | You know the _behavior_ or UI concept, not the symbol (`"prevent sheet swipe dismiss"`) | Preferred for agents. Needs Gemini for the vector half; lexical still runs if the circuit breaker is open or creds missing. Guards against demoting symbols when vectors are sparse (<100 items). |
-| `search_symbols`             | You know a name or pattern (`Grid*`, `*Style`, `Navigation*View`)                       | Always purely local lexical. Exact title match gets a large score boost. Includes runnable copy-paste `get_documentation` calls and kind aliases (`symbolType: "func"` matches `method`).         |
-| `get_documentation`          | You already have a symbol or DocC path (`NavigationStack`, `SwiftUI/View`)              | Point lookup: local SQLite first, Apple DocC CDN if missing. Resolves by title or path. Returns disambiguation candidates if ambiguous and `isError: true` if unresolvable.                       |
-| `discover_technologies`      | You need the list of indexed frameworks                                                 | Database-backed discovery showing exact symbol counts per framework with valid tool JSON pagination.                                                                                              |
-| `get_version` / `index_info` | You want server version or snapshot freshness                                           | Reports runtime symbol count, indexed frameworks, snapshot build timestamp, and embedding availability.                                                                                           |
-
-### Agent examples
-
-```json
-semantic_search({ "query": "prevent user from dragging sheet down to close", "framework": "SwiftUI" })
-semantic_search({ "query": "three column sidebar split view diagram", "framework": "SwiftUI" })
-
-search_symbols({ "query": "Grid*" })
-search_symbols({ "query": "*Style", "framework": "SwiftUI" })
-search_symbols({ "query": "Navigation*View", "framework": "SwiftUI" })
-search_symbols({ "query": "interactiveDismissDisabled", "symbolType": "func" })
-
-get_documentation({ "path": "NavigationStack" })
-get_documentation({ "path": "Button", "framework": "SwiftUI" })
-get_documentation({ "path": "/documentation/swiftui/view" })
-```
-
-## How search works
-
-```
-query
-  ├─ sanitize / clamp / escape FTS
-  ├─ lexical: SQLite FTS5 BM25 (+100 exact-title boost)
-  └─ optional semantic: gemini-embedding-2 (3072-d), cosine vs precomputed L2 norms
-        └─ skip on missing creds, 401/403/429/5xx/timeout (30s circuit breaker)
-fuse with Reciprocal Rank Fusion (k = 60)
-optional suffix-wildcard rerank (types & protocols first)
-attach visual preview markdown when a media hit exists
-slice to maxResults
-```
-
-`get_documentation` does not go through that fusion path. It is a point lookup: local row → else CDN → DocC AST formatter → Markdown.
-
-## Refresh the index
-
-The shipped `data/apple-docs.db` is a snapshot (~99,903 symbols across SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Observation, CoreLocation). It goes stale when Apple ships new APIs.
+### 4. Antigravity Plugin
 
 ```bash
-cp .env.example .env          # optional; add GEMINI_API_KEY to also rebuild vectors
-npm run build:index
+# Direct install
+agy plugin install AndrewMason7/apple-doc-plugin
+# Or from local clone
+agy plugin install .
 ```
 
-What `build:index` does:
-
-1. Open SQLite in WAL mode, ensure tables + FTS5 exist
-2. For each configured framework, pull the symbol tree + overview DocC from Apple’s CDN
-3. Upsert symbols and abstracts
-4. If Gemini auth is present: embed documents (asymmetric title/abstract prompts) and referenced UI media
-5. If not: log that this pass is FTS5-only
-6. `INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')`
-7. `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM`
-
-Expect this to take a while and to hit Apple’s CDN. Hybrid rebuilds also cost Gemini embeddings. Run it on a machine with network, then copy the db if you want.
-
-Override the db location with `APPLE_DOCS_DB_PATH`.
-
-## Environment
+### 5. Hermes Agent Plugin (Native)
 
 ```bash
-cp .env.example .env
+hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git
+hermes plugins enable apple-doc-plugin
 ```
 
-| Variable                          | Required | Purpose                                                                                        |
-| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | No       | Local path to `embeddinggemma-2-Q8_0.gguf` for 100% offline in-process Metal vector embeddings |
-| `APPLE_DOCS_EMBEDDING_PROVIDER`   | No       | Force provider: `local` (in-process GGUF) or `gemini` (cloud API)                              |
-| `GEMINI_API_KEY`                  | No       | Gemini embeddings (`gemini-embedding-2`). [Google AI Studio](https://aistudio.google.com/)     |
-| `GOOGLE_APPLICATION_CREDENTIALS`  | No       | Service-account JSON for ADC. `gcloud auth application-default login` also works               |
-| `APPLE_DOCS_DB_PATH`              | No       | Alternate path to the SQLite file (default `data/apple-docs.db`)                               |
+---
 
-The process loads `.env` at startup. Credentials are not logged.
+## Getting Started (Clone & Build)
 
-## Layout
-
-```
-apple-doc-plugin/
-├── bin/launcher.cjs          # Antigravity bootstrap
-├── data/apple-docs.db        # FTS5 + optional vectors
-├── rules/AGENTS.md           # modern Apple API rules for agents
-├── skills/apple-docs/        # skill + workflow
-├── scripts/build-index.ts    # corpus rebuild
-├── src/
-│   ├── index.ts              # stdio MCP entry
-│   ├── apple-client/         # HTTP + DocC AST → Markdown
-│   └── server/
-│       ├── handlers/         # one handler per tool
-│       ├── services/         # hybrid / semantic / resolution
-│       └── db/               # SQLite access
-└── test/
-```
-
-## Development
+**Prerequisites:** Node.js ≥ 22 (`node -v`).
 
 ```bash
+# 1. Clone & install dependencies
+git clone https://github.com/AndrewMason7/apple-doc-plugin.git
+cd apple-doc-plugin
 npm install
 npm run build
-npm test              # Node native runner; currently 82 tests
-npm run check         # tsc --noEmit + prettier
-npm run format
-npm run build:index   # rebuild the snapshot (network)
+
+# 2. Run diagnostics
+npm run doctor
 ```
 
-`better-sqlite3` will compile on install. If that fails, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — you are missing platform build tools, not an MCP bug.
+`npm run doctor` inspects your database, schema, and embedding setup:
 
-## Limitations (read this)
+```text
+✔ Node.js                v24.x
+✔ Index file             data/apple-docs.db (30.3 MB)
+✔ Symbols                65,787 rows
+✔ FTS index              65,787 rows
+✔ Symbol kinds           every row classified
+✔ Framework attribution  consistent with paths
+✔ Embedding provider     local-gguf (768-d) (or gemini)
+⚠ Semantic layer         0/100 vectors — hybrid search cannot engage; queries stay lexical
+   → npm run embed-index
+✔ Vector dimensions      no vectors stored
+✔ Snapshot age           0 days old (from index timestamp)
 
-- The snapshot is **not** the entire Apple documentation corpus. Niche frameworks may miss. `get_documentation` can still fall back to the live DocC CDN for a known path.
-- Hybrid quality depends on whatever was embedded the last time you ran `build:index` with Gemini credentials.
-- Visual previews are derived from media references in Apple’s docs. Treat them as lookup aids, not a HIG replacement.
-- Native addon (`better-sqlite3`) requires C++ compilation tools during install.
+All checks passed (1 warning).
+```
+
+> **Note:** The shipped snapshot is immediately usable for fast offline lexical search (65,787 symbols). Once you configure a provider and run `npm run embed-index`, the semantic layer flips to `✔` with 19,473 vectors stored and hybrid search engages.
+
+---
+
+## Setting Up Semantic Search
+
+The repository ships with lexical FTS5 ready out-of-the-box. Enabling the semantic layer gives you full hybrid vector search. You can choose hosted Gemini or 100% offline local GGUF:
+
+### Option A: Hosted Gemini (Recommended & Fastest)
+
+Gemini embeddings (`gemini-embedding-2`) provide the highest conceptual ranking and fastest generation rate (~50 embeddings/second via batching).
+
+1. Get an API key from [Google AI Studio](https://aistudio.google.com/) (free tier available).
+2. Configure your environment:
+   ```bash
+   cp .env.example .env
+   echo "GEMINI_API_KEY=your-api-key" >> .env
+   ```
+3. Generate the vector embeddings:
+   ```bash
+   # Generates ~19,400 symbol embeddings with member abstracts in ~5 minutes
+   npm run embed-index
+   ```
+4. Verify status:
+   ```bash
+   npm run doctor
+   ```
+   The semantic layer will now display `✔` and hybrid search is immediately engaged.
+
+### Option B: Local GGUF (100% Offline & Private)
+
+Run vector embeddings completely on-device using EmbeddingGemma via Apple Silicon Metal acceleration:
+
+```bash
+# 1. Download model into local cache (~309 MB)
+mkdir -p ~/.cache/apple-docs/models
+hf download unsloth/embeddinggemma-2-GGUF embeddinggemma-2-Q8_0.gguf --local-dir ~/.cache/apple-docs/models
+
+# 2. Embed the symbol layer
+npm run embed-index
+```
+
+---
+
+## MCP Tools Reference
+
+The server exposes dedicated tools designed specifically for AI agent pair programming:
+
+| Tool                         | Purpose                       | When to Use                                                                                                                                                                             | Example Query                                                                             |
+| :--------------------------- | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------- |
+| `semantic_search` ⭐         | **Hybrid Semantic Search**    | **Default tool for agents.** Use when you know what you want to achieve, describe UI concepts, or ask behavioral questions.                                                             | `semantic_search({ "query": "dismiss keyboard on tap outside", "framework": "SwiftUI" })` |
+| `search_symbols`             | **Fast Lexical Search**       | Use when searching for specific names, prefix/suffix wildcards (`Grid*`, `*Style`), or filtering by kind (`func`, `struct`).                                                            | `search_symbols({ "query": "Navigation*View", "framework": "SwiftUI" })`                  |
+| `get_documentation`          | **Full Documentation Lookup** | Use to inspect parameters, return types, code declarations, and discussion. Supports `concise: true` to strip verbose narratives and save context tokens. Includes fuzzy typo recovery. | `get_documentation({ "path": "NavigationStack", "concise": true })`                       |
+| `discover_technologies`      | **Framework Discovery**       | Use to discover available Apple frameworks in the database and see symbol counts.                                                                                                       | `discover_technologies()`                                                                 |
+| `index_info` / `get_version` | **Index & Health Status**     | Inspect server version, search mode (`Lexical only` vs `Hybrid`), freshness, and database statistics.                                                                                   | `index_info()`                                                                            |
+
+### Search Modes Compared
+
+| Capability            | Offline Lexical (Default)        | Hybrid Semantic (Embedded)                       |
+| :-------------------- | :------------------------------- | :----------------------------------------------- |
+| **Primary Tool**      | `search_symbols`                 | `semantic_search`                                |
+| **Ranking Algorithm** | SQLite FTS5 (BM25)               | Reciprocal Rank Fusion (BM25 + Cosine Vectors)   |
+| **Query Type**        | Exact names, wildcards (`Grid*`) | Natural language, concepts, behaviors            |
+| **Requirements**      | Node.js 22+ (shipped database)   | Gemini Key or local GGUF (`npm run embed-index`) |
+| **Network Access**    | 100% Offline                     | 100% Offline (with GGUF) or Gemini API           |
+
+### MCP Resources & Prompts
+
+In addition to tools, `apple-doc-plugin` implements native MCP Resources and Prompts:
+
+- **Resources**:
+  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for all 21 supported Apple frameworks.
+  - `apple-docs://symbols/{framework}`: Returns a clean catalog of primary types, protocols, and macros for any indexed framework (e.g. `apple-docs://symbols/SwiftUI`).
+- **Prompts**:
+  - `modernize-navigation`: Automated migration template from legacy `NavigationView` to `NavigationStack` / `NavigationSplitView`.
+  - `scaffold-swiftdata`: Scaffold `@Model` schemas, container configuration, and SwiftUI `@Query` view bindings.
+  - `audit-deprecation`: Audit Swift/SwiftUI code against modern deployment targets and flags deprecated APIs.
+
+---
+
+## Configuration
+
+Settings can be specified in `.env` or passed via your MCP server environment config:
+
+| Variable                          | Default              | Description                                                                                                   |
+| :-------------------------------- | :------------------- | :------------------------------------------------------------------------------------------------------------ |
+| `GEMINI_API_KEY`                  | _none_               | Gemini API key for hosted semantic search and embeddings.                                                     |
+| `APPLE_DOCS_EMBEDDING_PROVIDER`   | `auto`               | Force provider: `gemini` or `local` (GGUF). Defaults to `local` if model file exists, else `gemini`.          |
+| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | `~/.cache/...`       | Path to local `embeddinggemma-2-Q8_0.gguf` file.                                                              |
+| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | `768`                | MRL vector dimensions (`128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`). Default `768` is optimal. |
+| `APPLE_DOCS_DB_PATH`              | `data/apple-docs.db` | Custom path to the SQLite documentation database.                                                             |
+| `APPLE_DOCS_VECTORS_URL`          | _GitHub Release URL_ | Override download URL for pre-computed vector artifact (`v1.0.0/apple-docs-vectors-768d.db`).                 |
+
+---
+
+## CLI & Database Commands
+
+The executable CLI supports standalone commands and subcommands:
+
+| Command                                                             | Description                                                                                                |
+| :------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------- |
+| `npm run doctor` (or `apple-doc-plugin doctor`)                     | Run 10-point health check (`--json` and `--strict` supported for CI).                                      |
+| `npm run download-vectors` (or `apple-doc-plugin download-vectors`) | Resilient download of pre-computed 768-d vector database artifact with mirror failover and SHA-256 checks. |
+| `npm run export-vectors` (or `apple-doc-plugin export-vectors`)     | Export semantic vector bundle into verifiable standalone SQLite package with companion manifest and hash.  |
+| `npm run index-xcode` (or `apple-doc-plugin index-xcode`)           | Directly ingest and index offline `.doccarchive` documentation from local Xcode SDKs and DerivedData.      |
+| `npm run download-model` (or `apple-doc-plugin download-model`)     | Automated download of local GGUF (`embeddinggemma-2-Q8_0.gguf`) into local cache without HuggingFace CLI.  |
+| `npm run embed-index`                                               | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).                |
+| `npm run repair-index`                                              | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit).             |
+| `npm run build:binary` (or `scripts/build-binary.sh`)               | Build standalone native runner and release distribution archive.                                           |
+| `npm test`                                                          | Run complete test suite (277 tests).                                                                       |
+| `npm run check`                                                     | Run TypeScript typechecking and Prettier verification.                                                     |
+
+---
+
+## Standalone Distribution & Homebrew
+
+### Homebrew (macOS)
+
+Install via Homebrew using the official formula:
+
+```bash
+brew install packaging/homebrew/apple-doc-plugin.rb
+```
+
+### Standalone Binary Packaging
+
+Build a self-contained executable runner and release tarball:
+
+```bash
+./scripts/build-binary.sh --tarball
+```
+
+Produces `bin/apple-doc-plugin-native` and `dist/apple-doc-plugin-<version>-<platform>.tar.gz`.
+
+---
+
+## Troubleshooting
+
+- **Check health first**: Run `npm run doctor` — every warning or failure includes a recommended fix command.
+- **Native addon compilation**: If `npm install` fails compiling `better-sqlite3`, install native build tools (`xcode-select --install` on macOS, or `build-essential` on Linux).
+- **Full Troubleshooting Guide**: See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for in-depth solutions for every diagnostic check.
+
+---
+
+## Prior Art
+
+The MCP tool contract follows conventions established by [MightyDillah/apple-doc-mcp](https://github.com/MightyDillah/apple-doc-mcp). While that project routes live queries to Apple's CDN on-the-fly, this project provides a high-speed local SQLite FTS5 database, Reciprocal Rank Fusion hybrid semantic search, DocC Markdown rendering, and integrated agent development rules.
+
+---
 
 ## License
 

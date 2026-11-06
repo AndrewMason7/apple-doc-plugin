@@ -32,7 +32,7 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 ### Grounding Workflow
 
 1. **Search Before Implementing (Prefer `semantic_search`)**:
-   - **Default & Primary Search**: Use `semantic_search` for both symbol lookups (`NavigationSplitView`) and behavioral intents (`"prevent user from dragging sheet down to close"`). The underlying Gemini hybrid search engine matches intent and ranked symbols with superior relevance.
+   - **Default & Primary Search**: Use `semantic_search` for both symbol lookups (`NavigationSplitView`) and behavioral intents (`"prevent user from dragging sheet down to close"`). The underlying hybrid search engine matches intent and ranked symbols with superior relevance.
    - **Wildcard Globbing (Secondary)**: Use `search_symbols` only when you specifically need raw wildcard globbing (`Grid*`, `*Style`, `Navigation*View`, `Grid?tem`).
    - **Kind Filtering**: You can safely filter by standard kinds (`symbolType: "func"` or `"var"`). The engine automatically aliases `func` to DocC `method`, `typemethod`, and `instancemethod`.
 2. **Point Lookup with Bare Titles (`get_documentation`)**:
@@ -47,15 +47,15 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 
 ## Available MCP Tools Reference
 
-The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 65,787 symbols, wildcard matching, DocC Markdown extraction, and Gemini hybrid multimodal vector search.
+The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 65,787 symbols, wildcard matching, DocC Markdown extraction, and hybrid vector search (Gemini or local offline GGUF).
 
-| Tool                         | Priority / Purpose                                                                                                                                                                                                                     | Key Arguments                                                           |
-| :--------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
-| `semantic_search`            | **[PRIMARY & PREFERRED] Hybrid Search**. Natural language intent & symbol search powered by Gemini hybrid embeddings + FTS5 (falls back to lexical if offline). Guards against demoting symbols on sparse vectors (<100 items).        | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
-| `search_symbols`             | **(Secondary) Lexical Search**. Fast local FTS5 BM25 search with title boost, universal wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), and kind aliasing (`func` matches `method`). Returns runnable `Doc Call` in matches. | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
-| `get_documentation`          | **Point Lookup**. Resolves by symbol title (`NavigationStack`) or path (`swiftui/navigationstack`). Returns candidate list if ambiguous and `isError: true` if unresolvable. Local SQLite first, CDN fallback.                         | `path` (required), `framework` (optional)                               |
-| `discover_technologies`      | Database-backed discovery listing indexed frameworks with exact symbol counts and valid tool JSON pagination.                                                                                                                          | `query`, `page`, `pageSize`                                             |
-| `get_version` / `index_info` | Returns server version and runtime index metadata (symbols count, frameworks, freshness).                                                                                                                                              | None                                                                    |
+| Tool                         | Priority / Purpose                                                                                                                                                                                                                                     | Key Arguments                                                           |
+| :--------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| `semantic_search`            | **[PRIMARY & PREFERRED] Hybrid Search**. Natural language intent & symbol search powered by hybrid vector embeddings (Gemini or local GGUF) + FTS5 (falls back to lexical if offline). Guards against demoting symbols on sparse vectors (<100 items). | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
+| `search_symbols`             | **(Secondary) Lexical Search**. Fast local FTS5 BM25 search with title boost, universal wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), and kind aliasing (`func` matches `method`). Returns runnable `Doc Call` in matches.                 | `query` (required), `framework`, `symbolType`, `platform`, `maxResults` |
+| `get_documentation`          | **Point Lookup**. Resolves by symbol title (`NavigationStack`) or path (`swiftui/navigationstack`). Returns candidate list if ambiguous and `isError: true` if unresolvable. Local SQLite first, CDN fallback.                                         | `path` (required), `framework` (optional)                               |
+| `discover_technologies`      | Database-backed discovery listing indexed frameworks with exact symbol counts and valid tool JSON pagination.                                                                                                                                          | `query`, `page`, `pageSize`                                             |
+| `get_version` / `index_info` | Returns server version and runtime index metadata (symbols count, frameworks, freshness).                                                                                                                                                              | None                                                                    |
 
 ### Tool Invocation Examples
 
@@ -93,17 +93,43 @@ Query Apple's official diagrams and layout behaviors:
 
 #### 3. Cross-Platform Terminology Translation (`semantic_search`)
 
-Translate concepts from React, Vue, or Android:
+The search engine features a built-in **Query Expansion Layer** that automatically maps Web, React, and Android idioms into Apple native symbols:
 
 ```json
 {
-	"query": "react useEffect on mount equivalent in swiftui"
+	"query": "useEffect"
 }
 ```
 
-Resolves to `.onAppear` and `.task`.
+Automatically maps and expands candidate symbols for `.task(id:_:)`, `.onAppear(perform:)`, and `.onChange(of:_:)`.
 
-#### 4. Search Exact Symbol or Prefix (`search_symbols`)
+```json
+{
+	"query": "SharedPreferences"
+}
+```
+
+Automatically maps to `@AppStorage` and `UserDefaults`.
+
+```json
+{
+	"query": "display: flex"
+}
+```
+
+Automatically maps to `HStack`, `VStack`, `ZStack`, and `Spacer`.
+
+#### 4. Server Management & CLI Utilities
+
+When guiding users or diagnosing the environment:
+
+- **One-Click IDE Configuration**: `apple-doc-plugin install --target cursor|claude-desktop|windsurf|antigravity`
+- **First-Run Verification & Bootstrapping**: `apple-doc-plugin setup` (inspects database and detects embedding providers)
+- **Local GGUF Offline Model**: `apple-doc-plugin download-model`
+- **Pre-computed 768-d Vector Index**: `apple-doc-plugin download-vectors`
+- **Diagnostics**: `apple-doc-plugin doctor`
+
+#### 5. Search Exact Symbol or Prefix (`search_symbols`)
 
 ```json
 {

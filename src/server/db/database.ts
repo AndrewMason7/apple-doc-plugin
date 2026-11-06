@@ -1,6 +1,72 @@
-import Database from 'better-sqlite3';
+import type DatabaseConstructor from 'better-sqlite3';
+import type {
+	Database as SqliteDatabase,
+	Options as SqliteOptions,
+} from 'better-sqlite3';
+import { createRequire } from 'node:module';
+import { statSync } from 'node:fs';
 import { SCHEMA_SQL } from './schema.js';
 import { logger } from '../logger.js';
+import {
+	canonicalFrameworkFromSlug,
+	frameworkSlugFromPath,
+} from './path-attribution.js';
+import { levenshteinDistance } from '../services/levenshtein.js';
+
+const nodeRequire = createRequire(import.meta.url);
+let BetterSqlite3: typeof DatabaseConstructor | null = null;
+try {
+	BetterSqlite3 = nodeRequire('better-sqlite3');
+} catch (err) {
+	logger.warn(
+		'Failed to load native better-sqlite3 module:',
+		err instanceof Error ? err.message : String(err),
+	);
+}
+
+let sqliteVec: any = null;
+try {
+	sqliteVec = nodeRequire('sqlite-vec');
+} catch (err) {
+	logger.debug('sqlite-vec module not available:', err);
+}
+
+/**
+ * Minimum number of embedded semantic items before the search engine will fuse
+ * vector results with FTS5. Below this the server is lexical-only, and every
+ * status surface must say so.
+ */
+export const MIN_SEMANTIC_ITEMS_FOR_HYBRID = 100;
+
+/** Kinds that carry no classification and must never satisfy a kind filter. */
+const UNCLASSIFIED_KINDS = ['symbol', 'unknown'] as const;
+
+export interface EmbeddingStatus {
+	semanticItemCount: number;
+	threshold: number;
+	hybridEnabled: boolean;
+	mode: 'hybrid' | 'lexical-only';
+	/** True when any vectors exist at all (e.g. framework cards, media previews). */
+	storageHasVectors: boolean;
+}
+
+/**
+ * Result of the readability canary. A readable database still needs its own
+ * probes; an unreadable one means every other getter is about to lie.
+ */
+export type DbReadability =
+	| { readable: true; schemaVersion: number }
+	| { readable: false; error: string };
+
+export interface FreshnessInfo {
+	builtAt: string;
+	source: 'meta' | 'db-file-mtime' | 'unknown';
+}
+
+export interface KindCount {
+	kind: string;
+	count: number;
+}
 
 export interface DbSymbol {
 	id: string;
@@ -52,15 +118,46 @@ function safeParsePlatforms(val: unknown): string[] {
 
 export class AppleDocsDB {
 	public readonly dbPath: string;
-	private db: Database.Database;
+	private db: SqliteDatabase;
 	private vectorCache: SemanticItem[] | null = null;
+	private hasVec = false;
+	private vecDimensions = 768;
 
-	constructor(dbPath: string, options: Database.Options = {}) {
+	constructor(dbPath: string, options: SqliteOptions = {}) {
+		if (!BetterSqlite3) {
+			throw new Error(
+				'better-sqlite3 native binding is not available in this environment',
+			);
+		}
 		this.dbPath = dbPath;
-		this.db = new Database(dbPath, options);
+		this.db = new BetterSqlite3(dbPath, options);
+
+		if (sqliteVec && this.db) {
+			try {
+				sqliteVec.load(this.db);
+				this.hasVec = true;
+			} catch (err) {
+				logger.debug('Failed to load sqlite-vec extension into database:', err);
+				this.hasVec = false;
+			}
+		}
+
 		if (!options.readonly) {
 			this.db.pragma('journal_mode = WAL');
 			this.db.exec(SCHEMA_SQL);
+			if (this.hasVec) {
+				try {
+					this.db.exec(`
+						CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
+							id TEXT PRIMARY KEY,
+							embedding FLOAT[768] DISTANCE_METRIC=COSINE
+						);
+					`);
+					this.syncVecIndex();
+				} catch (err) {
+					logger.debug('Failed to create vec_items virtual table:', err);
+				}
+			}
 			// Safe column migrations for existing databases
 			try {
 				this.db.exec('ALTER TABLE semantic_items ADD COLUMN media_url TEXT');
@@ -78,6 +175,25 @@ export class AppleDocsDB {
 					logger.warn('Failed to apply media_type migration:', msg);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Readability canary. better-sqlite3 opens a path lazily: a file that is not
+	 * SQLite reports no error at construction time, and every getter below
+	 * swallows the failure into 0/[]. One PRAGMA therefore decides whether any
+	 * other number this class returns can be believed — without it, a corrupt
+	 * index is indistinguishable from an empty one.
+	 */
+	probeReadability(): DbReadability {
+		try {
+			const version = this.db.pragma('schema_version', { simple: true });
+			return { readable: true, schemaVersion: Number(version) };
+		} catch (err) {
+			return {
+				readable: false,
+				error: err instanceof Error ? err.message : String(err),
+			};
 		}
 	}
 
@@ -155,21 +271,376 @@ export class AppleDocsDB {
 		}
 	}
 
-	hasEmbeddings(): boolean {
+	getFrameworkPrimarySymbolCounts(): Array<{
+		framework: string;
+		count: number;
+	}> {
 		try {
-			const row = this.db
-				.prepare(`SELECT count(*) as count FROM semantic_items`)
-				.get() as {
-				count: number;
-			};
-			return (row?.count ?? 0) > 0;
+			const rows = this.db
+				.prepare(
+					`SELECT framework, count(*) as count FROM symbols WHERE is_primary_type = 1 GROUP BY framework`,
+				)
+				.all() as Array<{ framework: string; count: number }>;
+			return rows;
 		} catch (err) {
 			logger.warn(
-				'Failed to check embeddings count:',
+				'Failed to get framework primary symbol counts:',
 				err instanceof Error ? err.message : String(err),
 			);
-			return false;
+			return [];
 		}
+	}
+
+	/**
+	 * Full embedding/search-mode status. The search path needs
+	 * MIN_SEMANTIC_ITEMS_FOR_HYBRID vectors before it will fuse semantically, so
+	 * reporting "embeddings present" from a raw row count is not the same claim
+	 * as "hybrid search is enabled" — keep both facts.
+	 */
+	getEmbeddingStatus(): EmbeddingStatus {
+		const semanticItemCount = this.getSemanticItemCount();
+		const hybridEnabled = semanticItemCount >= MIN_SEMANTIC_ITEMS_FOR_HYBRID;
+
+		return {
+			semanticItemCount,
+			threshold: MIN_SEMANTIC_ITEMS_FOR_HYBRID,
+			hybridEnabled,
+			mode: hybridEnabled ? 'hybrid' : 'lexical-only',
+			storageHasVectors: semanticItemCount > 0,
+		};
+	}
+
+	/** True when *any* vectors exist — not a claim that hybrid search is active. */
+	hasEmbeddings(): boolean {
+		return this.getEmbeddingStatus().storageHasVectors;
+	}
+
+	getKindDistribution(): KindCount[] {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT kind, count(*) as count FROM symbols GROUP BY kind ORDER BY count DESC`,
+				)
+				.all() as KindCount[];
+			return rows;
+		} catch (err) {
+			logger.warn(
+				'Failed to get kind distribution:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return [];
+		}
+	}
+
+	/**
+	 * Document count of the FTS5 shadow table. `symbols_fts` is an external-content
+	 * table (content='symbols'), so a plain `count(*)` there is served from `symbols`
+	 * and can never disagree with getSymbolCount(). Only the docsize shadow table
+	 * reflects what the index actually holds.
+	 */
+	getFtsCount(): number {
+		try {
+			const row = this.db
+				.prepare(`SELECT count(*) as count FROM symbols_fts_docsize`)
+				.get() as { count: number } | undefined;
+			return row?.count ?? 0;
+		} catch (err) {
+			logger.warn(
+				'Failed to count FTS rows:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Distinct vector widths currently stored. More than one value (or a value
+	 * that differs from the active provider) means queries cannot be scored
+	 * against part of the corpus.
+	 */
+	getVectorDimensions(): number[] {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT DISTINCT (LENGTH(embedding) / 4.0) AS dims FROM semantic_items ORDER BY dims ASC`,
+				)
+				.all() as Array<{ dims: number }>;
+			return rows
+				.map((row) => row.dims)
+				.filter((d) => Number.isFinite(d) && d > 0);
+		} catch (err) {
+			logger.warn(
+				'Failed to read vector dimensions:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return [];
+		}
+	}
+
+	/**
+	 * Width of the stored vectors, in dimensions, from a single row.
+	 *
+	 * Deliberately cheap: `get_version` is called on every request and a full
+	 * `DISTINCT` over 19k blob rows costs ~240 ms on the shipped corpus. This
+	 * catches the case that matters — a uniformly old (3072-d) corpus queried at
+	 * 768-d — while `getVectorDimensions()` remains the authoritative check for
+	 * a mixed store, which doctor runs.
+	 */
+	getStoredVectorWidth(): number | null {
+		try {
+			const row = this.db
+				.prepare(
+					`SELECT LENGTH(embedding) / 4 AS dims FROM semantic_items LIMIT 1`,
+				)
+				.get() as { dims: number } | undefined;
+			return typeof row?.dims === 'number' && row.dims > 0 ? row.dims : null;
+		} catch (err) {
+			logger.warn(
+				'Failed to read the stored vector width:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return null;
+		}
+	}
+
+	/** Rows stored with a generic `symbol`/`unknown` kind, i.e. unclassified. */
+	countUnknownKind(): number {
+		try {
+			const placeholders = UNCLASSIFIED_KINDS.map(() => '?').join(', ');
+			const row = this.db
+				.prepare(
+					`SELECT count(*) as count FROM symbols WHERE lower(kind) IN (${placeholders})`,
+				)
+				.get(...UNCLASSIFIED_KINDS) as { count: number } | undefined;
+			return row?.count ?? 0;
+		} catch (err) {
+			logger.warn(
+				'Failed to count unclassified symbols:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Rows whose `framework` column contradicts the framework segment of their
+	 * own path — the cross-framework false positives that leak through
+	 * framework-scoped searches.
+	 */
+	countFrameworkPathMismatches(): number {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT framework, path FROM symbols WHERE path LIKE '/documentation/%'`,
+				)
+				.all() as Array<{ framework: string; path: string }>;
+
+			let mismatches = 0;
+			for (const row of rows) {
+				const expected = canonicalFrameworkFromSlug(
+					frameworkSlugFromPath(row.path),
+				);
+				if (!expected) continue;
+				if (expected.toLowerCase() !== row.framework.toLowerCase()) {
+					mismatches++;
+				}
+			}
+			return mismatches;
+		} catch (err) {
+			logger.warn(
+				'Failed to count framework/path mismatches:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Snapshot freshness. Falls back to the database file mtime and names that
+	 * provenance, so a derived timestamp is never mistaken for a build stamp.
+	 */
+	getFreshness(): FreshnessInfo {
+		const recorded = this.getMeta('built_at');
+		if (recorded && recorded.trim()) {
+			return { builtAt: recorded.trim(), source: 'meta' };
+		}
+
+		try {
+			const stats = statSync(this.dbPath);
+			return {
+				builtAt: new Date(stats.mtimeMs).toISOString(),
+				source: 'db-file-mtime',
+			};
+		} catch (err) {
+			logger.debug(
+				'Failed to stat database for freshness:',
+				err instanceof Error ? err.message : String(err),
+			);
+			return { builtAt: 'unknown', source: 'unknown' };
+		}
+	}
+
+	updateSymbolKind(id: string, kind: string, isPrimaryType?: boolean): void {
+		const primary = isPrimaryType ? 1 : 0;
+		this.db
+			.prepare(`UPDATE symbols SET kind = ?, is_primary_type = ? WHERE id = ?`)
+			.run(kind, primary, id);
+	}
+
+	updateSymbolFramework(id: string, framework: string): void {
+		this.db
+			.prepare(`UPDATE symbols SET framework = ? WHERE id = ?`)
+			.run(framework, id);
+	}
+
+	/** Rows whose framework attribution can be checked against their path. */
+	getFrameworkAttributionCandidates(): Array<{
+		id: string;
+		path: string;
+		framework: string;
+		title: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, path, framework, title FROM symbols WHERE path LIKE '/documentation/%'`,
+			)
+			.all() as Array<{
+			id: string;
+			path: string;
+			framework: string;
+			title: string;
+		}>;
+	}
+
+	/**
+	 * Default embedding selection: primary types plus anything Apple documented.
+	 * Documented symbols sort first so a limited run spends its budget on the
+	 * rows that carry real meaning.
+	 */
+	getEmbeddingCandidateSymbols(): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         WHERE is_primary_type = 1
+            OR lower(kind) IN ('struct', 'class', 'protocol', 'enum', 'macro')
+            OR (abstract IS NOT NULL AND abstract != '')
+         ORDER BY is_primary_type DESC,
+                  (CASE WHEN abstract IS NOT NULL AND abstract != '' THEN 0 ELSE 1 END) ASC,
+                  title ASC`,
+			)
+			.all() as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/** Every symbol, for an exhaustive embedding pass. */
+	getAllSymbolsForEmbedding(): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         ORDER BY is_primary_type DESC, title ASC`,
+			)
+			.all() as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/**
+	 * Members (methods, properties, initializers…) of the frameworks people
+	 * actually reach for, that still have no abstract. Cheap ingestion only ever
+	 * documented top-level types, which leaves conceptual queries about view
+	 * modifiers with nothing to match against.
+	 */
+	getMemberSymbolsForEnrichment(
+		frameworks: string[] = ['SwiftUI', 'UIKit'],
+	): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		framework: string;
+		abstract: string;
+		path: string;
+	}> {
+		const frameworkPlaceholders = frameworks.map(() => '?').join(', ');
+		return this.db
+			.prepare(
+				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
+         FROM symbols
+         WHERE framework IN (${frameworkPlaceholders})
+           AND lower(kind) IN ('method', 'property', 'init', 'subscript', 'case', 'op', 'func', 'var')
+           AND (abstract IS NULL OR abstract = '')
+         ORDER BY framework ASC, path ASC`,
+			)
+			.all(...frameworks) as Array<{
+			id: string;
+			title: string;
+			kind: string;
+			framework: string;
+			abstract: string;
+			path: string;
+		}>;
+	}
+
+	/** Ids already present in the semantic layer — the resume key set. */
+	getSemanticItemIds(): Set<string> {
+		const rows = this.db
+			.prepare(`SELECT id FROM semantic_items`)
+			.all() as Array<{ id: string }>;
+		return new Set(rows.map((row) => row.id));
+	}
+
+	updateSymbolAbstract(id: string, abstract: string): void {
+		this.db
+			.prepare(`UPDATE symbols SET abstract = ? WHERE id = ?`)
+			.run(abstract, id);
+	}
+
+	/** Rows stored with a generic `symbol`/`unknown` kind. */
+	getUnclassifiedSymbols(): Array<{
+		id: string;
+		path: string;
+		framework: string;
+		kind: string;
+		title: string;
+	}> {
+		const placeholders = UNCLASSIFIED_KINDS.map(() => '?').join(', ');
+		return this.db
+			.prepare(
+				`SELECT id, path, framework, kind, title FROM symbols WHERE lower(kind) IN (${placeholders})`,
+			)
+			.all(...UNCLASSIFIED_KINDS) as Array<{
+			id: string;
+			path: string;
+			framework: string;
+			kind: string;
+			title: string;
+		}>;
 	}
 
 	getSemanticItemCount(): number {
@@ -198,13 +669,23 @@ export class AppleDocsDB {
       INSERT INTO symbols (id, framework, title, kind, abstract, path, platforms, is_primary_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        framework = excluded.framework,
-        title = excluded.title,
-        kind = excluded.kind,
-        abstract = CASE WHEN excluded.abstract IS NOT NULL AND excluded.abstract != '' THEN excluded.abstract ELSE symbols.abstract END,
-        path = excluded.path,
-        platforms = CASE WHEN excluded.platforms IS NOT NULL AND excluded.platforms != '[]' AND excluded.platforms != '' THEN excluded.platforms ELSE symbols.platforms END,
-        is_primary_type = excluded.is_primary_type
+      framework = excluded.framework,
+      title = excluded.title,
+      kind = CASE
+      WHEN lower(excluded.kind) IN ('symbol', 'unknown')
+      AND lower(symbols.kind) NOT IN ('symbol', 'unknown')
+      THEN symbols.kind
+      ELSE excluded.kind
+      END,
+      abstract = CASE WHEN excluded.abstract IS NOT NULL AND excluded.abstract != '' THEN excluded.abstract ELSE symbols.abstract END,
+      path = excluded.path,
+      platforms = CASE WHEN excluded.platforms IS NOT NULL AND excluded.platforms != '[]' AND excluded.platforms != '' THEN excluded.platforms ELSE symbols.platforms END,
+      is_primary_type = CASE
+      WHEN lower(excluded.kind) IN ('symbol', 'unknown')
+      AND lower(symbols.kind) NOT IN ('symbol', 'unknown')
+      THEN symbols.is_primary_type
+      ELSE excluded.is_primary_type
+      END
     `);
 		stmt.run(
 			sym.id,
@@ -218,28 +699,65 @@ export class AppleDocsDB {
 		);
 	}
 
-	insertSemanticItem(item: SemanticItem): void {
+	insertSemanticItems(items: SemanticItem[]): void {
+		if (items.length === 0) return;
 		this.vectorCache = null; // Invalidate vector cache on new writes
-		const buffer = Buffer.from(
-			item.embedding.buffer,
-			item.embedding.byteOffset,
-			item.embedding.byteLength,
-		);
-		const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, media_url, media_type, embedding)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-		stmt.run(
-			item.id,
-			item.framework,
-			item.title,
-			item.kind,
-			item.summary,
-			item.path,
-			item.mediaUrl || null,
-			item.mediaType || null,
-			buffer,
-		);
+
+		const insertSem = this.db.prepare(`
+			INSERT OR REPLACE INTO semantic_items (id, framework, title, kind, summary, path, media_url, media_type, embedding)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+
+		const hasVec = this.hasVec;
+		const deleteVec = hasVec
+			? this.db.prepare('DELETE FROM vec_items WHERE id = ?')
+			: null;
+		const insertVec = hasVec
+			? this.db.prepare('INSERT INTO vec_items(id, embedding) VALUES (?, ?)')
+			: null;
+		const vecDims = this.vecDimensions;
+
+		const runBatch = this.db.transaction((batch: SemanticItem[]) => {
+			for (const item of batch) {
+				const buffer = Buffer.from(
+					item.embedding.buffer,
+					item.embedding.byteOffset,
+					item.embedding.byteLength,
+				);
+				insertSem.run(
+					item.id,
+					item.framework,
+					item.title,
+					item.kind,
+					item.summary,
+					item.path,
+					item.mediaUrl || null,
+					item.mediaType || null,
+					buffer,
+				);
+
+				if (
+					hasVec &&
+					deleteVec &&
+					insertVec &&
+					item.embedding &&
+					item.embedding.length === vecDims
+				) {
+					try {
+						deleteVec.run(item.id);
+						insertVec.run(item.id, item.embedding);
+					} catch (err) {
+						logger.debug('Failed to insert into vec_items:', err);
+					}
+				}
+			}
+		});
+
+		runBatch(items);
+	}
+
+	insertSemanticItem(item: SemanticItem): void {
+		this.insertSemanticItems([item]);
 	}
 
 	getSemanticItems(framework?: string): SemanticItem[] {
@@ -707,6 +1225,326 @@ export class AppleDocsDB {
 			.prepare('SELECT DISTINCT framework FROM symbols ORDER BY framework')
 			.all() as any[];
 		return rows.map((r) => r.framework);
+	}
+
+	getPrimarySymbols(
+		framework: string,
+		limit = 100,
+	): Array<{
+		id: string;
+		title: string;
+		kind: string;
+		path: string;
+		abstract: string;
+	}> {
+		try {
+			const rows = this.db
+				.prepare(
+					`SELECT id, title, kind, path, abstract
+					 FROM symbols
+					 WHERE framework = ? COLLATE NOCASE AND is_primary_type = 1
+					 ORDER BY title ASC
+					 LIMIT ?`,
+				)
+				.all(framework, limit) as Array<{
+				id: string;
+				title: string;
+				kind: string;
+				path: string;
+				abstract: string;
+			}>;
+			return rows;
+		} catch (err) {
+			logger.debug('getPrimarySymbols failed:', err);
+			return [];
+		}
+	}
+
+	findFuzzySuggestions(
+		query: string,
+		framework?: string,
+		maxSuggestions = 3,
+	): Array<{
+		title: string;
+		framework: string;
+		path: string;
+		kind: string;
+		distance: number;
+	}> {
+		const raw = query.trim();
+		if (!raw || raw.length < 2) return [];
+
+		// Extract symbol name and infer framework if path format (e.g. SwiftUI/NavgationStack -> NavgationStack)
+		let targetFramework = framework;
+		let targetName = raw;
+		if (raw.includes('/')) {
+			const parts = raw.split('/').filter(Boolean);
+			targetName = parts.at(-1) || raw;
+			if (!targetFramework) {
+				const inferred = canonicalFrameworkFromSlug(frameworkSlugFromPath(raw));
+				if (inferred) {
+					targetFramework = inferred;
+				}
+			}
+		}
+
+		// Clean method parenthesis if provided (e.g. onAppear() -> onAppear)
+		const cleanTargetName = targetName.replace(/\(.*\)$/, '');
+
+		const maxDist =
+			cleanTargetName.length <= 4 ? 1 : cleanTargetName.length <= 8 ? 2 : 3;
+
+		let sql = `
+			SELECT title, framework, path, kind, is_primary_type
+			FROM symbols
+			WHERE (abs(length(title) - ?) <= ?
+			   OR is_primary_type = 1
+			   OR path LIKE '%/' || ? || '%')
+		`;
+		const params: (string | number)[] = [
+			cleanTargetName.length,
+			maxDist,
+			cleanTargetName.toLowerCase(),
+		];
+
+		if (targetFramework) {
+			sql += ` AND framework = ? COLLATE NOCASE`;
+			params.push(targetFramework);
+		}
+
+		try {
+			const rows = this.db.prepare(sql).all(...params) as Array<{
+				title: string;
+				framework: string;
+				path: string;
+				kind: string;
+				is_primary_type: number;
+			}>;
+
+			const scored: Array<{
+				title: string;
+				framework: string;
+				path: string;
+				kind: string;
+				isPrimary: boolean;
+				distance: number;
+			}> = [];
+
+			const seen = new Set<string>();
+
+			for (const row of rows) {
+				const key = `${row.framework}:${row.path}`;
+				if (seen.has(key)) continue;
+				seen.add(key);
+
+				const distTitle = levenshteinDistance(cleanTargetName, row.title);
+				const lastPathSeg = row.path.split('/').filter(Boolean).at(-1) || '';
+				const shortSlug = lastPathSeg.replace(/\(.*\)$/, '');
+				const distSlug = shortSlug
+					? levenshteinDistance(cleanTargetName, shortSlug)
+					: 999;
+
+				const bestDist = Math.min(distTitle, distSlug);
+				if (bestDist <= maxDist) {
+					scored.push({
+						title: row.title,
+						framework: row.framework,
+						path: row.path,
+						kind: row.kind,
+						isPrimary: Boolean(row.is_primary_type),
+						distance: bestDist,
+					});
+				}
+			}
+
+			scored.sort((a, b) => {
+				if (a.distance !== b.distance) return a.distance - b.distance;
+				if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+				return a.title.length - b.title.length;
+			});
+
+			return scored
+				.slice(0, maxSuggestions)
+				.map(({ title, framework, path, kind, distance }) => ({
+					title,
+					framework,
+					path,
+					kind,
+					distance,
+				}));
+		} catch (err) {
+			logger.debug('findFuzzySuggestions failed:', err);
+			return [];
+		}
+	}
+
+	syncVecIndex(): void {
+		if (!this.hasVec) return;
+		try {
+			const tblCheck = this.db
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type='table' AND name='vec_items'",
+				)
+				.get();
+			if (!tblCheck) return;
+
+			const targetBytes = this.vecDimensions * 4;
+			const semRow = this.db
+				.prepare(
+					'SELECT count(*) as c FROM semantic_items WHERE length(embedding) = ?',
+				)
+				.get(targetBytes) as { c: number } | undefined;
+			const vecRow = this.db
+				.prepare('SELECT count(*) as c FROM vec_items')
+				.get() as { c: number } | undefined;
+
+			const semCount = semRow?.c ?? 0;
+			const vecCount = vecRow?.c ?? 0;
+
+			if (semCount > 0 && vecCount < semCount) {
+				if (vecCount === 0) {
+					this.db
+						.prepare(
+							`INSERT INTO vec_items(id, embedding)
+							 SELECT id, embedding FROM semantic_items
+							 WHERE length(embedding) = ?`,
+						)
+						.run(targetBytes);
+				} else {
+					this.db
+						.prepare(
+							`INSERT INTO vec_items(id, embedding)
+							 SELECT id, embedding FROM semantic_items
+							 WHERE length(embedding) = ?
+							 AND id NOT IN (SELECT id FROM vec_items)`,
+						)
+						.run(targetBytes);
+				}
+			}
+		} catch (err) {
+			logger.debug('Failed to sync vec_items:', err);
+		}
+	}
+
+	importVectorsFromDb(sourceDbPath: string): number {
+		this.db.prepare('ATTACH DATABASE ? AS src').run(sourceDbPath);
+		try {
+			const insertSql = `
+				INSERT OR REPLACE INTO main.semantic_items
+				(id, framework, title, kind, summary, path, embedding, media_url, media_type)
+				SELECT id, framework, title, kind, summary, path, embedding, media_url, media_type
+				FROM src.semantic_items;
+			`;
+			const result = this.db.prepare(insertSql).run();
+			const count = result.changes;
+
+			if (this.hasVec) {
+				try {
+					this.db.transaction(() => {
+						this.db.exec(`
+							DELETE FROM vec_items WHERE id IN (SELECT id FROM src.semantic_items);
+							INSERT INTO vec_items(id, embedding)
+							SELECT id, embedding FROM src.semantic_items
+							WHERE length(embedding) = 3072;
+						`);
+					})();
+				} catch (err) {
+					logger.debug('Failed to sync vec_items on import:', err);
+				}
+			}
+
+			this.vectorCache = null;
+
+			const status = this.getEmbeddingStatus();
+			this.setMeta('embedded_at', new Date().toISOString());
+			this.setMeta('semantic_item_count', String(status.semanticItemCount));
+
+			return count;
+		} finally {
+			try {
+				this.db.prepare('DETACH DATABASE src').run();
+			} catch {}
+		}
+	}
+
+	isVecAccelerated(): boolean {
+		return this.hasVec;
+	}
+
+	queryVectorNearest(
+		queryVec: Float32Array,
+		limit = 20,
+		framework?: string,
+	): Array<{
+		id: string;
+		framework: string;
+		title: string;
+		kind: string;
+		summary: string;
+		path: string;
+		mediaUrl?: string;
+		mediaType?: string;
+		similarity: number;
+	}> {
+		if (!this.hasVec || queryVec.length !== this.vecDimensions) {
+			return [];
+		}
+		try {
+			const tblCheck = this.db
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type='table' AND name='vec_items'",
+				)
+				.get();
+			if (!tblCheck) return [];
+
+			let rows: any[];
+			if (framework) {
+				const fetchLimit = Math.max(limit * 20, 200);
+				const stmt = this.db.prepare(`
+					SELECT s.id, s.framework, s.title, s.kind, s.summary, s.path, s.media_url, s.media_type, v.distance
+					FROM vec_items v
+					JOIN semantic_items s ON v.id = s.id
+					WHERE v.embedding MATCH ? AND k = ? AND LOWER(s.framework) = LOWER(?)
+					ORDER BY v.distance ASC
+				`);
+				rows = stmt.all(queryVec, fetchLimit, framework) as any[];
+			} else {
+				const stmt = this.db.prepare(`
+					SELECT s.id, s.framework, s.title, s.kind, s.summary, s.path, s.media_url, s.media_type, v.distance
+					FROM vec_items v
+					JOIN semantic_items s ON v.id = s.id
+					WHERE v.embedding MATCH ? AND k = ?
+					ORDER BY v.distance ASC
+				`);
+				rows = stmt.all(queryVec, limit) as any[];
+			}
+
+			return rows.map((r) => ({
+				id: r.id,
+				framework: r.framework,
+				title: r.title,
+				kind: r.kind,
+				summary: r.summary,
+				path: r.path,
+				mediaUrl: r.media_url || undefined,
+				mediaType: r.media_type || undefined,
+				similarity: Math.max(
+					0,
+					1 - (typeof r.distance === 'number' ? r.distance : 0),
+				),
+			}));
+		} catch (err) {
+			logger.debug(
+				'queryVectorNearest failed, falling back to in-memory search:',
+				err,
+			);
+			return [];
+		}
+	}
+
+	checkpointAndVacuum(): void {
+		this.db.pragma('wal_checkpoint(TRUNCATE)');
+		this.db.exec('VACUUM');
 	}
 
 	close(): void {

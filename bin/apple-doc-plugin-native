@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+import { dirname, join, resolve } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const scriptPath = existsSync(__filename)
+	? realpathSync(__filename)
+	: __filename;
+const scriptDir = dirname(scriptPath);
+
+const candidates = [
+	join(scriptDir, '..', 'dist', 'index.js'),
+	join(
+		scriptDir,
+		'..',
+		'lib',
+		'node_modules',
+		'apple-doc-plugin',
+		'dist',
+		'index.js',
+	),
+	process.env.APPLE_DOCS_PLUGIN_ROOT
+		? join(process.env.APPLE_DOCS_PLUGIN_ROOT, 'dist', 'index.js')
+		: null,
+].filter(Boolean);
+
+let mainEntry = null;
+for (const cand of candidates) {
+	if (cand && existsSync(cand)) {
+		mainEntry = cand;
+		break;
+	}
+}
+
+if (!mainEntry) {
+	console.error(
+		'Error: apple-doc-plugin entry point not found. Searched:\n' +
+			candidates.map((c) => '  - ' + c).join('\n'),
+	);
+	process.exit(1);
+}
+
+await import(mainEntry);

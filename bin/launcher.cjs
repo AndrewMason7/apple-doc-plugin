@@ -38,6 +38,33 @@ if (!fs.existsSync(distIndex)) {
 	}
 }
 
+// Verify better-sqlite3 native bindings integrity
+try {
+	require('better-sqlite3');
+} catch (nativeErr) {
+	const msg = nativeErr?.message || '';
+	if (
+		msg.includes('bindings') ||
+		msg.includes('NODE_MODULE_VERSION') ||
+		msg.includes('invalid ELF header') ||
+		msg.includes('mach-o file')
+	) {
+		try {
+			process.stderr.write(
+				'[apple-doc-plugin] Native better-sqlite3 binding mismatch; rebuilding...\n',
+			);
+			execSync('npm rebuild better-sqlite3', {
+				cwd: pluginRoot,
+				stdio: ['ignore', 'ignore', 'inherit'],
+			});
+		} catch (rebuildErr) {
+			process.stderr.write(
+				'[apple-doc-plugin] Warning: Native sqlite rebuild deferred. Server will continue in dynamic DocC CDN fallback mode.\n',
+			);
+		}
+	}
+}
+
 // Sanitize environment variables if literal template strings were passed
 if (
 	process.env.APPLE_DOCS_DB_PATH &&

@@ -60,14 +60,36 @@ const formatTopicSections = (
 	return content;
 };
 
+const formatFuzzySuggestions = (
+	suggestions: Array<{
+		title: string;
+		framework: string;
+		path: string;
+		kind: string;
+	}>,
+): string[] => {
+	if (suggestions.length === 0) return [];
+	return [
+		'',
+		'**Did you mean?**',
+		...suggestions.map((s) => {
+			const targetArg = s.title.includes(' ') ? s.path : s.title;
+			return `• **${s.title}** (${s.framework} ${s.kind})\n   Path: \`${s.path}\`\n   Call: \`get_documentation({ "path": "${targetArg}", "framework": "${s.framework}" })\``;
+		}),
+	];
+};
+
 export const buildGetDocumentationHandler = (context: ServerContext) => {
 	const { client, db } = context;
 
 	return async (args: {
 		path: string;
 		framework?: string;
+		concise?: boolean | string;
 	}): Promise<ToolResponse> => {
-		const { path, framework: frameworkArg } = args;
+		const { path, framework: frameworkArg, concise = false } = args;
+		const isConcise =
+			concise === true || String(concise).toLowerCase() === 'true';
 		if (typeof path !== 'string' || path.trim().length === 0) {
 			return {
 				isError: true,
@@ -154,6 +176,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 		}
 
 		if (!activeTechnology) {
+			const suggestions = db?.findFuzzySuggestions(path, frameworkArg) ?? [];
 			return {
 				isError: true,
 				content: [
@@ -161,6 +184,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 						type: 'text',
 						text: [
 							`UNRESOLVED: Could not resolve Apple technology or framework for "${path}".`,
+							...formatFuzzySuggestions(suggestions),
 							'',
 							'**Suggestions:**',
 							`• Pass an explicit framework parameter: \`get_documentation({ "path": "${path}", "framework": "SwiftUI" })\``,
@@ -219,21 +243,23 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 				content.push(header(2, 'Declaration'), declaration, '');
 			}
 
-			if (description) {
-				content.push(header(2, 'Overview'), description, '');
-			}
-
 			const parameters = formatParameters(data.primaryContentSections);
 			if (parameters) {
 				content.push(parameters, '');
 			}
 
-			const discussion = formatDiscussion(data.primaryContentSections);
-			if (discussion) {
-				content.push(header(2, 'Discussion'), discussion, '');
+			if (description) {
+				content.push(header(2, 'Overview'), description, '');
 			}
 
-			content.push(...formatTopicSections(data, client));
+			if (!isConcise) {
+				const discussion = formatDiscussion(data.primaryContentSections);
+				if (discussion) {
+					content.push(header(2, 'Discussion'), discussion, '');
+				}
+
+				content.push(...formatTopicSections(data, client));
+			}
 
 			return {
 				content: [{ text: content.join('\n').trim(), type: 'text' }],
@@ -268,6 +294,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 			}
 
 			const errorMsg = error instanceof Error ? error.message : String(error);
+			const suggestions = db?.findFuzzySuggestions(path, frameworkArg) ?? [];
 			return {
 				isError: true,
 				content: [
@@ -275,6 +302,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 						type: 'text',
 						text: [
 							`UNRESOLVED: Failed to load documentation for "${path}": ${errorMsg}`,
+							...formatFuzzySuggestions(suggestions),
 							'',
 							'**Suggestions:**',
 							`• Verify the symbol spelling or query using \`search_symbols({ "query": "${path}" })\``,

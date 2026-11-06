@@ -1,0 +1,10 @@
+# Prettier has no parser mapped for the `.example` extension, so it would
+# report `.env.example` as unformatted and fail `--check`.
+.env.example
+
+# Test and runtime caches
+.pytest_cache/
+__pycache__/
+*.pyc
+.cache-test-*
+

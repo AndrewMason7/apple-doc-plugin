@@ -7,6 +7,19 @@ export const CORE_FRAMEWORKS = [
 	'AppKit',
 	'Observation',
 	'CoreLocation',
+	'StoreKit',
+	'WidgetKit',
+	'AuthenticationServices',
+	'LocalAuthentication',
+	'Security',
+	'AVFoundation',
+	'AVKit',
+	'UserNotifications',
+	'MapKit',
+	'RealityKit',
+	'Vision',
+	'CoreData',
+	'WebKit',
 ] as const;
 
 export type CoreFramework = (typeof CORE_FRAMEWORKS)[number];

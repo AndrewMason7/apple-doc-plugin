@@ -5,7 +5,7 @@ When assisting with Apple platform development (iOS, macOS, watchOS, tvOS, visio
 ## 1. Always Prefer `semantic_search` for Apple APIs
 
 - **PRIMARY SEARCH TOOL**: Always use `semantic_search` as your default tool for discovering, searching, and verifying Apple APIs, framework symbols, and UI patterns.
-- `semantic_search` leverages Gemini 3072-dimensional hybrid vector embeddings fused with SQLite FTS5. It understands both exact API names (`NavigationSplitView`) and natural language concepts (`"prevent sheet swipe dismiss"`, `"secure keychain token storage"`).
+- `semantic_search` leverages hybrid vector embeddings (768-d Gemini or local offline EmbeddingGemma) fused with SQLite FTS5. It understands both exact API names (`NavigationSplitView`) and natural language concepts (`"prevent sheet swipe dismiss"`, `"secure keychain token storage"`).
 - **Secondary Tool (`search_symbols`)**: Only use `search_symbols` when you specifically require raw wildcard globbing (`Grid*`, `*Style`). For all other queries, prefer `semantic_search`.
 - **Never Hallucinate APIs**: Never guess API names, function signatures, or view modifiers. Always verify with `semantic_search` or `get_documentation`.
 - Use `get_documentation` to check parameter semantics, Swift declarations, deprecation notices, and return types. Pass bare symbol titles (`path: "NavigationStack"`) directly, or copy the exact runnable `Doc Call` from search results. When a symbol name is ambiguous across frameworks, specify `framework`.

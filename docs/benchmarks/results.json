@@ -1,0 +1,930 @@
+{
+	"summary": {
+		"totalQueries": 12,
+		"corpusSize": 59,
+		"gemma": {
+			"mrr": 0.835858585858586,
+			"recall1": 75,
+			"recall3": 91.66666666666666,
+			"recall5": 91.66666666666666,
+			"meanTargetScore": 0.7198623474084482,
+			"meanDistractorScore": 0.6978590007315266,
+			"meanMargin": 0.022003346676921432,
+			"meanLatencyMs": 26.166666666666668,
+			"initTimeMs": 3160
+		},
+		"gemini": {
+			"mrr": 0.9166666666666666,
+			"recall1": 83.33333333333334,
+			"recall3": 100,
+			"recall5": 100,
+			"meanTargetScore": 0.7315362648914375,
+			"meanDistractorScore": 0.6604731018849314,
+			"meanMargin": 0.0710631630065061,
+			"meanLatencyMs": 335.6666666666667,
+			"initTimeMs": 616
+		}
+	},
+	"results": [
+		{
+			"query": "prevent sheet swipe dismiss",
+			"category": "Behavioral Intent",
+			"targetTitle": "func interactiveDismissDisabled(Bool) -> some View",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.7908890252823227,
+				"topDistractorTitle": "class func performWithoutAnimation(() -> Void)",
+				"topDistractorScore": 0.7070383728626124,
+				"margin": 0.08385065241971035,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/interactivedismissdisabled(_:)",
+						"title": "func interactiveDismissDisabled(Bool) -> some View",
+						"score": 0.7908890252823227
+					},
+					{
+						"id": "/documentation/uikit/uiview/performwithoutanimation(_:)",
+						"title": "class func performWithoutAnimation(() -> Void)",
+						"score": 0.7070383728626124
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/accessibilityshowbuttonshapes",
+						"title": "var accessibilityShowButtonShapes: Bool",
+						"score": 0.679614536546472
+					},
+					{
+						"id": "/documentation/swiftui/view/scrolldismisseskeyboard(_:)",
+						"title": "func scrollDismissesKeyboard(ScrollDismissesKeyboardMode) -> some View",
+						"score": 0.6691386501359485
+					},
+					{
+						"id": "/documentation/uikit/uitableview/rowanimation/middle",
+						"title": "case middle",
+						"score": 0.6652531089702197
+					}
+				],
+				"latencyMs": 39
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7452906028664332,
+				"topDistractorTitle": "func scrollDismissesKeyboard(ScrollDismissesKeyboardMode) -> some View",
+				"topDistractorScore": 0.660548769903732,
+				"margin": 0.08474183296270121,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/interactivedismissdisabled(_:)",
+						"title": "func interactiveDismissDisabled(Bool) -> some View",
+						"score": 0.7452906028664332
+					},
+					{
+						"id": "/documentation/swiftui/view/scrolldismisseskeyboard(_:)",
+						"title": "func scrollDismissesKeyboard(ScrollDismissesKeyboardMode) -> some View",
+						"score": 0.660548769903732
+					},
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.633540306539086
+					},
+					{
+						"id": "/documentation/uikit/uiview/performwithoutanimation(_:)",
+						"title": "class func performWithoutAnimation(() -> Void)",
+						"score": 0.6294547377916261
+					},
+					{
+						"id": "/documentation/uikit/uiscrollview/alwaysbouncevertical",
+						"title": "var alwaysBounceVertical: Bool",
+						"score": 0.6130694268612872
+					}
+				],
+				"latencyMs": 306
+			}
+		},
+		{
+			"query": "run async code when view appears or value changes",
+			"category": "Behavioral Intent",
+			"targetTitle": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.7458041979979031,
+				"topDistractorTitle": "var openSettings: OpenSettingsAction",
+				"topDistractorScore": 0.7109848691502666,
+				"margin": 0.0348193288476365,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/task(id:name:priority:file:line:_:)",
+						"title": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.7458041979979031
+					},
+					{
+						"id": "/documentation/swiftui/view/task(name:priority:file:line:_:)",
+						"title": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.7245363177106016
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.7109848691502666
+					},
+					{
+						"id": "/documentation/swiftui/view/subscriptionintroductoryoffer(applyoffer:compactjws:)",
+						"title": "func subscriptionIntroductoryOffer(applyOffer: (Product, Product.SubscriptionInfo) -> Bool, compactJWS: (Product, Product.SubscriptionInfo) async throws -> String) -> some View",
+						"score": 0.6859608809853691
+					},
+					{
+						"id": "/documentation/swiftui/view/onappear(perform:)",
+						"title": "func onAppear(perform: (() -> Void)?) -> some View",
+						"score": 0.68362172381335
+					}
+				],
+				"latencyMs": 32
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7353400188263767,
+				"topDistractorTitle": "func onAppear(perform: (() -> Void)?) -> some View",
+				"topDistractorScore": 0.7173139208837604,
+				"margin": 0.018026097942616226,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/task(id:name:priority:file:line:_:)",
+						"title": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.7353400188263767
+					},
+					{
+						"id": "/documentation/swiftui/view/onappear(perform:)",
+						"title": "func onAppear(perform: (() -> Void)?) -> some View",
+						"score": 0.7173139208837604
+					},
+					{
+						"id": "/documentation/swiftui/view/task(name:priority:file:line:_:)",
+						"title": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.7064638794606002
+					},
+					{
+						"id": "/documentation/swiftui/appstorage",
+						"title": "AppStorage",
+						"score": 0.6627527746059446
+					},
+					{
+						"id": "/documentation/swiftui/view/subscriptionintroductoryoffer(applyoffer:compactjws:)",
+						"title": "func subscriptionIntroductoryOffer(applyOffer: (Product, Product.SubscriptionInfo) -> Bool, compactJWS: (Product, Product.SubscriptionInfo) async throws -> String) -> some View",
+						"score": 0.6338559825187243
+					}
+				],
+				"latencyMs": 349
+			}
+		},
+		{
+			"query": "code to run before view appears",
+			"category": "Behavioral Intent",
+			"targetTitle": "func onAppear(perform: (() -> Void)?) -> some View",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.7782109621697327,
+				"topDistractorTitle": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+				"topDistractorScore": 0.766567480652867,
+				"margin": 0.011643481516865783,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/onappear(perform:)",
+						"title": "func onAppear(perform: (() -> Void)?) -> some View",
+						"score": 0.7782109621697327
+					},
+					{
+						"id": "/documentation/swiftui/view/task(name:priority:file:line:_:)",
+						"title": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.766567480652867
+					},
+					{
+						"id": "/documentation/swiftui/view/task(id:name:priority:file:line:_:)",
+						"title": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.7471330024326944
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.7235672284635213
+					},
+					{
+						"id": "/documentation/uikit/uiview/performwithoutanimation(_:)",
+						"title": "class func performWithoutAnimation(() -> Void)",
+						"score": 0.6943010895476741
+					}
+				],
+				"latencyMs": 27
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7620295078114259,
+				"topDistractorTitle": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+				"topDistractorScore": 0.7002293544278905,
+				"margin": 0.061800153383535394,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/onappear(perform:)",
+						"title": "func onAppear(perform: (() -> Void)?) -> some View",
+						"score": 0.7620295078114259
+					},
+					{
+						"id": "/documentation/swiftui/view/task(name:priority:file:line:_:)",
+						"title": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.7002293544278905
+					},
+					{
+						"id": "/documentation/swiftui/view/task(id:name:priority:file:line:_:)",
+						"title": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.676334754948206
+					},
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.6653422741944878
+					},
+					{
+						"id": "/documentation/swiftui/navigationsplitview",
+						"title": "NavigationSplitView",
+						"score": 0.6426898037274501
+					}
+				],
+				"latencyMs": 378
+			}
+		},
+		{
+			"query": "multi column navigation with sidebar and detail",
+			"category": "Architectural / Layout",
+			"targetTitle": "NavigationSplitView",
+			"gemma": {
+				"rank": 2,
+				"targetScore": 0.7195050956659743,
+				"topDistractorTitle": "case large",
+				"topDistractorScore": 0.7211375411483026,
+				"margin": -0.0016324454823283263,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.7211375411483026
+					},
+					{
+						"id": "/documentation/swiftui/navigationsplitview",
+						"title": "NavigationSplitView",
+						"score": 0.7195050956659743
+					},
+					{
+						"id": "/documentation/swiftui/tabviewcustomization",
+						"title": "TabViewCustomization",
+						"score": 0.6776201967914095
+					},
+					{
+						"id": "/documentation/uikit/uimenu/identifier-swift.struct/substitutionoptions",
+						"title": "static let substitutionOptions: UIMenu.Identifier",
+						"score": 0.6242404389970624
+					},
+					{
+						"id": "/documentation/swiftui/table/init(_:sortorder:columns:)",
+						"title": "init<Data, Sort>(Data, sortOrder: Binding<[Sort]>, columns: () -> Columns)",
+						"score": 0.6169192102095034
+					}
+				],
+				"latencyMs": 23
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7660443226510296,
+				"topDistractorTitle": "case large",
+				"topDistractorScore": 0.7078336658043574,
+				"margin": 0.05821065684667226,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/navigationsplitview",
+						"title": "NavigationSplitView",
+						"score": 0.7660443226510296
+					},
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.7078336658043574
+					},
+					{
+						"id": "/documentation/swiftui/tabviewcustomization",
+						"title": "TabViewCustomization",
+						"score": 0.678981319253671
+					},
+					{
+						"id": "/documentation/uikit/uitableview/rowanimation/middle",
+						"title": "case middle",
+						"score": 0.6350504922483
+					},
+					{
+						"id": "/documentation/swiftui/spacer",
+						"title": "Spacer",
+						"score": 0.6198213883599832
+					}
+				],
+				"latencyMs": 275
+			}
+		},
+		{
+			"query": "dismiss keyboard automatically when scrolling",
+			"category": "Behavioral Intent",
+			"targetTitle": "func scrollDismissesKeyboard(ScrollDismissesKeyboardMode) -> some View",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.7914604761064866,
+				"topDistractorTitle": "func interactiveDismissDisabled(Bool) -> some View",
+				"topDistractorScore": 0.7093776944672163,
+				"margin": 0.0820827816392703,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/scrolldismisseskeyboard(_:)",
+						"title": "func scrollDismissesKeyboard(ScrollDismissesKeyboardMode) -> some View",
+						"score": 0.7914604761064866
+					},
+					{
+						"id": "/documentation/swiftui/view/interactivedismissdisabled(_:)",
+						"title": "func interactiveDismissDisabled(Bool) -> some View",
+						"score": 0.7093776944672163
+					},
+					{
+						"id": "/documentation/uikit/uiscrollview/alwaysbouncevertical",
+						"title": "var alwaysBounceVertical: Bool",
+						"score": 0.6707919787866534
+					},
+					{
+						"id": "/documentation/uikit/uiview/performwithoutanimation(_:)",
+						"title": "class func performWithoutAnimation(() -> Void)",
+						"score": 0.6670781735147236
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/accessibilityshowbuttonshapes",
+						"title": "var accessibilityShowButtonShapes: Bool",
+						"score": 0.6586868151851791
+					}
+				],
+				"latencyMs": 22
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7931175574138792,
+				"topDistractorTitle": "func interactiveDismissDisabled(Bool) -> some View",
+				"topDistractorScore": 0.6592766201863538,
+				"margin": 0.13384093722752544,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/scrolldismisseskeyboard(_:)",
+						"title": "func scrollDismissesKeyboard(ScrollDismissesKeyboardMode) -> some View",
+						"score": 0.7931175574138792
+					},
+					{
+						"id": "/documentation/swiftui/view/interactivedismissdisabled(_:)",
+						"title": "func interactiveDismissDisabled(Bool) -> some View",
+						"score": 0.6592766201863538
+					},
+					{
+						"id": "/documentation/uikit/uiscrollview/alwaysbouncevertical",
+						"title": "var alwaysBounceVertical: Bool",
+						"score": 0.6590777884585168
+					},
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.6446094159980971
+					},
+					{
+						"id": "/documentation/uikit/uitableview/rowanimation/middle",
+						"title": "case middle",
+						"score": 0.6234999516544363
+					}
+				],
+				"latencyMs": 503
+			}
+		},
+		{
+			"query": "generate haptic vibration for user impact",
+			"category": "Hardware / Sensory",
+			"targetTitle": "UIImpactFeedbackGenerator",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.7720228454306615,
+				"topDistractorTitle": "static var lift: HoverEffect",
+				"topDistractorScore": 0.6870881866360055,
+				"margin": 0.084934658794656,
+				"top5": [
+					{
+						"id": "/documentation/uikit/uiimpactfeedbackgenerator",
+						"title": "UIImpactFeedbackGenerator",
+						"score": 0.7720228454306615
+					},
+					{
+						"id": "/documentation/swiftui/hovereffect/lift",
+						"title": "static var lift: HoverEffect",
+						"score": 0.6870881866360055
+					},
+					{
+						"id": "/documentation/swiftui/defaultpickerstyle/init()",
+						"title": "init()",
+						"score": 0.6622730925489521
+					},
+					{
+						"id": "/documentation/swiftui/attributedtextformatting/transferable/init(text:in:)",
+						"title": "init(text: AttributedString, in: EnvironmentValues)",
+						"score": 0.6420791131999075
+					},
+					{
+						"id": "/documentation/uikit/uiactivity/activitytitle",
+						"title": "var activityTitle: String?",
+						"score": 0.6411199559786499
+					}
+				],
+				"latencyMs": 23
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7903009577717159,
+				"topDistractorTitle": "func gesture(_:)",
+				"topDistractorScore": 0.6140707590760033,
+				"margin": 0.17623019869571266,
+				"top5": [
+					{
+						"id": "/documentation/uikit/uiimpactfeedbackgenerator",
+						"title": "UIImpactFeedbackGenerator",
+						"score": 0.7903009577717159
+					},
+					{
+						"id": "/documentation/swiftui/view/gesture(_:)",
+						"title": "func gesture(_:)",
+						"score": 0.6140707590760033
+					},
+					{
+						"id": "/documentation/swiftui/hovereffect/lift",
+						"title": "static var lift: HoverEffect",
+						"score": 0.6017686794365825
+					},
+					{
+						"id": "/documentation/corelocation/cllocationmanager",
+						"title": "CLLocationManager",
+						"score": 0.59361052722545
+					},
+					{
+						"id": "/documentation/swiftui/defaultpickerstyle/init()",
+						"title": "init()",
+						"score": 0.5935107340171824
+					}
+				],
+				"latencyMs": 295
+			}
+		},
+		{
+			"query": "fetch location coordinates and track device gps",
+			"category": "Hardware / Sensory",
+			"targetTitle": "CLLocationManager",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.6260267160399422,
+				"topDistractorTitle": "init?(coder: NSCoder)",
+				"topDistractorScore": 0.5840633873832747,
+				"margin": 0.04196332865666752,
+				"top5": [
+					{
+						"id": "/documentation/corelocation/cllocationmanager",
+						"title": "CLLocationManager",
+						"score": 0.6260267160399422
+					},
+					{
+						"id": "/documentation/uikit/uicubictimingparameters/init(coder:)",
+						"title": "init?(coder: NSCoder)",
+						"score": 0.5840633873832747
+					},
+					{
+						"id": "/documentation/uikit/uiactivity/activitytitle",
+						"title": "var activityTitle: String?",
+						"score": 0.580703410229576
+					},
+					{
+						"id": "/documentation/swiftui/unitpoint3d/bottomleadingfront",
+						"title": "static let bottomLeadingFront: UnitPoint3D",
+						"score": 0.5772324950449733
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.5708307253330047
+					}
+				],
+				"latencyMs": 23
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7026756247473291,
+				"topDistractorTitle": "case large",
+				"topDistractorScore": 0.5787808628323045,
+				"margin": 0.12389476191502469,
+				"top5": [
+					{
+						"id": "/documentation/corelocation/cllocationmanager",
+						"title": "CLLocationManager",
+						"score": 0.7026756247473291
+					},
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.5787808628323045
+					},
+					{
+						"id": "/documentation/uikit/uidocumentinteractioncontrollerdelegate/documentinteractioncontrollerrectforpreview(_:)",
+						"title": "func documentInteractionControllerRectForPreview(UIDocumentInteractionController) -> CGRect",
+						"score": 0.5680200336566653
+					},
+					{
+						"id": "/documentation/swiftui/view/gesture(_:)",
+						"title": "func gesture(_:)",
+						"score": 0.5576152836555892
+					},
+					{
+						"id": "/documentation/swiftui/view/task(id:name:priority:file:line:_:)",
+						"title": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.5519145091317403
+					}
+				],
+				"latencyMs": 293
+			}
+		},
+		{
+			"query": "persisted user preferences property wrapper",
+			"category": "State & Storage",
+			"targetTitle": "AppStorage",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.7608633726896556,
+				"topDistractorTitle": "var accessibilityShowButtonShapes: Bool",
+				"topDistractorScore": 0.7326994651038546,
+				"margin": 0.028163907585801007,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/appstorage",
+						"title": "AppStorage",
+						"score": 0.7608633726896556
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/accessibilityshowbuttonshapes",
+						"title": "var accessibilityShowButtonShapes: Bool",
+						"score": 0.7326994651038546
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.7164761801888051
+					},
+					{
+						"id": "/documentation/swiftui/scene/defaultappstorage(_:)",
+						"title": "func defaultAppStorage(UserDefaults) -> some Scene",
+						"score": 0.7121354414991697
+					},
+					{
+						"id": "/documentation/swiftui/defaultpickerstyle/init()",
+						"title": "init()",
+						"score": 0.6859735368972083
+					}
+				],
+				"latencyMs": 26
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7663040942649597,
+				"topDistractorTitle": "var openSettings: OpenSettingsAction",
+				"topDistractorScore": 0.6517618267227547,
+				"margin": 0.11454226754220498,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/appstorage",
+						"title": "AppStorage",
+						"score": 0.7663040942649597
+					},
+					{
+						"id": "/documentation/swiftui/scene/defaultappstorage(_:)",
+						"title": "func defaultAppStorage(UserDefaults) -> some Scene",
+						"score": 0.680302106433027
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.6517618267227547
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/accessibilityshowbuttonshapes",
+						"title": "var accessibilityShowButtonShapes: Bool",
+						"score": 0.6402459771711854
+					},
+					{
+						"id": "/documentation/uikit/uiimagepickercontroller/videoexportpreset",
+						"title": "var videoExportPreset: String",
+						"score": 0.6400299735161946
+					}
+				],
+				"latencyMs": 361
+			}
+		},
+		{
+			"query": "react useEffect hook equivalent in swiftui",
+			"category": "Cross-Framework Concept",
+			"targetTitle": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+			"gemma": {
+				"rank": 33,
+				"targetScore": 0.5894707983420419,
+				"topDistractorTitle": "init(text: AttributedString, in: EnvironmentValues)",
+				"topDistractorScore": 0.6746011284496833,
+				"margin": -0.08513033010764148,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/attributedtextformatting/transferable/init(text:in:)",
+						"title": "init(text: AttributedString, in: EnvironmentValues)",
+						"score": 0.6746011284496833
+					},
+					{
+						"id": "/documentation/uikit/uimenu/identifier-swift.struct/substitutionoptions",
+						"title": "static let substitutionOptions: UIMenu.Identifier",
+						"score": 0.6570060941914564
+					},
+					{
+						"id": "/documentation/combine/publisher/sink(receivecompletion:receivevalue:)",
+						"title": "func sink(receiveCompletion: (Subscribers.Completion<Self.Failure>) -> Void, receiveValue: (Self.Output) -> Void) -> AnyCancellable",
+						"score": 0.6501800198048482
+					},
+					{
+						"id": "/documentation/swiftui/view/gesture(_:)",
+						"title": "func gesture(_:)",
+						"score": 0.6469295636324399
+					},
+					{
+						"id": "/documentation/uikit/uiactivity/activitytitle",
+						"title": "var activityTitle: String?",
+						"score": 0.6379997077632193
+					}
+				],
+				"latencyMs": 24
+			},
+			"gemini": {
+				"rank": 2,
+				"targetScore": 0.6636276519190932,
+				"topDistractorTitle": "func onAppear(perform: (() -> Void)?) -> some View",
+				"topDistractorScore": 0.6782210402529281,
+				"margin": -0.014593388333834834,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/view/onappear(perform:)",
+						"title": "func onAppear(perform: (() -> Void)?) -> some View",
+						"score": 0.6782210402529281
+					},
+					{
+						"id": "/documentation/swiftui/view/task(id:name:priority:file:line:_:)",
+						"title": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.6636276519190932
+					},
+					{
+						"id": "/documentation/swiftui/appstorage",
+						"title": "AppStorage",
+						"score": 0.651666865595725
+					},
+					{
+						"id": "/documentation/swiftui/view/task(name:priority:file:line:_:)",
+						"title": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.6422587302376607
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.6207613668510059
+					}
+				],
+				"latencyMs": 300
+			}
+		},
+		{
+			"query": "android shared preferences key value persistence",
+			"category": "Cross-Framework Concept",
+			"targetTitle": "AppStorage",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.6941020078437876,
+				"topDistractorTitle": "var openSettings: OpenSettingsAction",
+				"topDistractorScore": 0.6859722286033026,
+				"margin": 0.008129779240484969,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/scene/defaultappstorage(_:)",
+						"title": "func defaultAppStorage(UserDefaults) -> some Scene",
+						"score": 0.6941020078437876
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.6859722286033026
+					},
+					{
+						"id": "/documentation/swiftui/appstorage",
+						"title": "AppStorage",
+						"score": 0.6736031322360352
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/accessibilityshowbuttonshapes",
+						"title": "var accessibilityShowButtonShapes: Bool",
+						"score": 0.6667582106988367
+					},
+					{
+						"id": "/documentation/uikit/uiimagepickercontroller/videoexportpreset",
+						"title": "var videoExportPreset: String",
+						"score": 0.6128903170647744
+					}
+				],
+				"latencyMs": 26
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.6424089839773374,
+				"topDistractorTitle": "UIPickerView",
+				"topDistractorScore": 0.602976721015041,
+				"margin": 0.039432262962296405,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/appstorage",
+						"title": "AppStorage",
+						"score": 0.6424089839773374
+					},
+					{
+						"id": "/documentation/swiftui/scene/defaultappstorage(_:)",
+						"title": "func defaultAppStorage(UserDefaults) -> some Scene",
+						"score": 0.6230978720142075
+					},
+					{
+						"id": "/documentation/uikit/uipickerview",
+						"title": "UIPickerView",
+						"score": 0.602976721015041
+					},
+					{
+						"id": "/documentation/uikit/uiimagepickercontroller/videoexportpreset",
+						"title": "var videoExportPreset: String",
+						"score": 0.5975127154786163
+					},
+					{
+						"id": "/documentation/swiftui/environmentvalues/opensettings",
+						"title": "var openSettings: OpenSettingsAction",
+						"score": 0.5939412404658214
+					}
+				],
+				"latencyMs": 348
+			}
+		},
+		{
+			"query": "vertical flexbox layout with expanding spacing",
+			"category": "Cross-Framework Concept",
+			"targetTitle": "VStack",
+			"gemma": {
+				"rank": 1,
+				"targetScore": 0.7451816981736292,
+				"topDistractorTitle": "case large",
+				"topDistractorScore": 0.7196610952127478,
+				"margin": 0.025520602960881433,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/spacer",
+						"title": "Spacer",
+						"score": 0.7451816981736292
+					},
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.7196610952127478
+					},
+					{
+						"id": "/documentation/swiftui/vstack",
+						"title": "VStack",
+						"score": 0.6803161171132116
+					},
+					{
+						"id": "/documentation/uikit/uiscrollview/alwaysbouncevertical",
+						"title": "var alwaysBounceVertical: Bool",
+						"score": 0.674616495636193
+					},
+					{
+						"id": "/documentation/swiftui/navigationsplitview",
+						"title": "NavigationSplitView",
+						"score": 0.6655846542487461
+					}
+				],
+				"latencyMs": 26
+			},
+			"gemini": {
+				"rank": 1,
+				"targetScore": 0.7242492492066114,
+				"topDistractorTitle": "case large",
+				"topDistractorScore": 0.6668042572241691,
+				"margin": 0.05744499198244224,
+				"top5": [
+					{
+						"id": "/documentation/swiftui/spacer",
+						"title": "Spacer",
+						"score": 0.7242492492066114
+					},
+					{
+						"id": "/documentation/swiftui/vstack",
+						"title": "VStack",
+						"score": 0.6728910344214829
+					},
+					{
+						"id": "/documentation/swiftui/navigationbaritem/titledisplaymode/large",
+						"title": "case large",
+						"score": 0.6668042572241691
+					},
+					{
+						"id": "/documentation/uikit/uitableview/rowanimation/middle",
+						"title": "case middle",
+						"score": 0.6409773984721141
+					},
+					{
+						"id": "/documentation/uikit/uiscrollview/alwaysbouncevertical",
+						"title": "var alwaysBounceVertical: Bool",
+						"score": 0.637100070714118
+					}
+				],
+				"latencyMs": 312
+			}
+		},
+		{
+			"query": "listen to publisher stream and cancel subscription",
+			"category": "Reactive Streams",
+			"targetTitle": "Subscribers.Sink",
+			"gemma": {
+				"rank": 2,
+				"targetScore": 0.6248109731592397,
+				"topDistractorTitle": "Publishers.SwitchToLatest",
+				"topDistractorScore": 0.6751165591081866,
+				"margin": -0.05030558594894685,
+				"top5": [
+					{
+						"id": "/documentation/combine/publishers/switchtolatest",
+						"title": "Publishers.SwitchToLatest",
+						"score": 0.6751165591081866
+					},
+					{
+						"id": "/documentation/combine/publisher/sink(receivecompletion:receivevalue:)",
+						"title": "func sink(receiveCompletion: (Subscribers.Completion<Self.Failure>) -> Void, receiveValue: (Self.Output) -> Void) -> AnyCancellable",
+						"score": 0.6248109731592397
+					},
+					{
+						"id": "/documentation/swiftui/view/subscriptionintroductoryoffer(applyoffer:compactjws:)",
+						"title": "func subscriptionIntroductoryOffer(applyOffer: (Product, Product.SubscriptionInfo) -> Bool, compactJWS: (Product, Product.SubscriptionInfo) async throws -> String) -> some View",
+						"score": 0.6162602201871608
+					},
+					{
+						"id": "/documentation/combine/subscribers/sink",
+						"title": "Subscribers.Sink",
+						"score": 0.5987391256459867
+					},
+					{
+						"id": "/documentation/uikit/uiactivity/activitytitle",
+						"title": "var activityTitle: String?",
+						"score": 0.5945233662503591
+					}
+				],
+				"latencyMs": 23
+			},
+			"gemini": {
+				"rank": 2,
+				"targetScore": 0.6870466072410588,
+				"topDistractorTitle": "Publishers.SwitchToLatest",
+				"topDistractorScore": 0.6878594242898822,
+				"margin": -0.000812817048823411,
+				"top5": [
+					{
+						"id": "/documentation/combine/publishers/switchtolatest",
+						"title": "Publishers.SwitchToLatest",
+						"score": 0.6878594242898822
+					},
+					{
+						"id": "/documentation/combine/publisher/sink(receivecompletion:receivevalue:)",
+						"title": "func sink(receiveCompletion: (Subscribers.Completion<Self.Failure>) -> Void, receiveValue: (Self.Output) -> Void) -> AnyCancellable",
+						"score": 0.6870466072410588
+					},
+					{
+						"id": "/documentation/combine/subscribers/sink",
+						"title": "Subscribers.Sink",
+						"score": 0.6867727865551106
+					},
+					{
+						"id": "/documentation/swiftui/view/task(id:name:priority:file:line:_:)",
+						"title": "func task<T>(id: T, name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.6109469569588454
+					},
+					{
+						"id": "/documentation/swiftui/view/task(name:priority:file:line:_:)",
+						"title": "func task(name: String?, priority: TaskPriority, file: String, line: Int, sending () async -> Void) -> some View",
+						"score": 0.6002712159737189
+					}
+				],
+				"latencyMs": 308
+			}
+		}
+	]
+}

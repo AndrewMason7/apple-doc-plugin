@@ -1,22 +1,121 @@
 import { AppleDocsDB } from '../db/database.js';
 import { CORE_FRAMEWORKS } from '../db/frameworks.js';
+import {
+	canonicalFrameworkFromSlug,
+	frameworkSlugFromPath,
+} from '../db/path-attribution.js';
 
+/**
+ * Resolve the framework that owns a DocC path.
+ *
+ * DocC references mix absolute paths (`/documentation/uikit/nsview`), bundle
+ * identifiers (`doc://com.apple.SwiftUI/documentation/SwiftUI/AnyView`), bare
+ * slugs (`uikit`) and relative paths (`swiftui/view`). Only the segment after
+ * `documentation/` is authoritative; anything unrecognised keeps the caller's
+ * fallback instead of being mis-attributed to the page being indexed.
+ */
 export function resolveFrameworkFromPath(
 	path: string,
 	fallback: string,
 ): string {
-	const match = path.replace(/^\/+/, '').match(/^documentation\/([^/]+)/i);
-	if (!match) return fallback;
-	const slug = match[1].toLowerCase();
+	const slug = frameworkSlugFromPath(path);
+	if (!slug) return fallback;
 	if (slug === fallback.toLowerCase()) return fallback;
-	if (slug === 'swift') return 'Swift';
-	if (slug === 'synchronization') return 'Synchronization';
-	if (slug === 'regexbuilder') return 'RegexBuilder';
-	if (slug === 'distributed') return 'Distributed';
-	const known = CORE_FRAMEWORKS.find((cf) => cf.toLowerCase() === slug);
-	if (known) return known;
-	return match[1].charAt(0).toUpperCase() + match[1].slice(1);
+
+	const canonical = canonicalFrameworkFromSlug(slug);
+	if (!canonical) return fallback;
+
+	return canonical;
 }
+
+/**
+ * Canonical DocC symbol kinds keyed by every heading form Apple publishes in
+ * `symbolKind` and `roleHeading`. Without an entry here the kind is *unknown* —
+ * we never guess a type from a title, because a wrong kind corrupts filters.
+ */
+const SYMBOL_KIND_ALIASES: Record<string, string> = {
+	structure: 'struct',
+	struct: 'struct',
+	class: 'class',
+	protocol: 'protocol',
+	enumeration: 'enum',
+	enum: 'enum',
+	macro: 'macro',
+	'type alias': 'typealias',
+	typealias: 'typealias',
+	'instance method': 'method',
+	'type method': 'method',
+	'class method': 'method',
+	func: 'func',
+	function: 'func',
+	method: 'method',
+	'instance property': 'property',
+	'type property': 'property',
+	'class property': 'property',
+	property: 'property',
+	'global variable': 'var',
+	variable: 'var',
+	var: 'var',
+	initializer: 'init',
+	init: 'init',
+	operator: 'op',
+	case: 'case',
+	subscript: 'subscript',
+	'instance subscript': 'subscript',
+	'type subscript': 'subscript',
+	'associated type': 'associatedtype',
+	module: 'module',
+	article: 'article',
+	collection: 'collection',
+	'ui preview': 'ui_preview',
+	guide: 'guide',
+	tutorial: 'tutorial',
+	overview: 'overview',
+	'sample code': 'sampleCode',
+	samplecode: 'sampleCode',
+};
+
+/** Kinds that carry no classification and must never satisfy a kind filter. */
+export const UNKNOWN_KINDS = ['symbol', 'unknown'] as const;
+
+export const isUnknownKind = (kind: string | undefined): boolean =>
+	typeof kind !== 'string' ||
+	UNKNOWN_KINDS.includes(kind.trim().toLowerCase() as 'symbol' | 'unknown');
+
+/**
+ * Derive a symbol kind from DocC payloads.
+ *
+ * `metadata.symbolKind` / `roleHeading` are authoritative; reference objects in
+ * a page's `references` map usually carry neither, and in that case the honest
+ * answer is `unknown` — not `symbol`, which reads like a classification and
+ * silently satisfies nothing (or worse, everything) when filtered.
+ */
+export function resolveSymbolKind(ref: any): string {
+	if (!ref || typeof ref !== 'object') return 'unknown';
+
+	for (const authority of [ref.symbolKind, ref.roleHeading]) {
+		if (typeof authority !== 'string') continue;
+		const key = authority.trim().toLowerCase();
+		if (!key) continue;
+		const mapped = SYMBOL_KIND_ALIASES[key];
+		if (mapped) return mapped;
+	}
+
+	if (typeof ref.kind === 'string') {
+		const kind = ref.kind.trim().toLowerCase();
+		if (kind === 'article') return 'article';
+		if (kind === 'collection') return 'collection';
+		if (UNKNOWN_KINDS.includes(kind as 'symbol' | 'unknown')) return 'unknown';
+		if (kind) return kind;
+	}
+
+	return 'unknown';
+}
+
+const PRIMARY_TYPE_KINDS = ['struct', 'class', 'protocol', 'enum', 'macro'];
+
+export const isPrimaryTypeKind = (kind: string): boolean =>
+	PRIMARY_TYPE_KINDS.includes(kind.toLowerCase());
 
 function extractAbstract(abstractObj: any): string {
 	if (!abstractObj) return '';
@@ -93,6 +192,82 @@ const FRAMEWORK_DEFAULT_PLATFORMS: Record<string, string[]> = {
 		'watchOS',
 		'visionOS',
 	],
+	StoreKit: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'tvOS',
+		'visionOS',
+		'watchOS',
+	],
+	WidgetKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'watchOS', 'visionOS'],
+	AuthenticationServices: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'tvOS',
+		'visionOS',
+		'watchOS',
+	],
+	LocalAuthentication: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'visionOS',
+		'watchOS',
+	],
+	Security: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'tvOS',
+		'visionOS',
+		'watchOS',
+	],
+	AVFoundation: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'tvOS',
+		'visionOS',
+		'watchOS',
+	],
+	AVKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS'],
+	UserNotifications: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'tvOS',
+		'visionOS',
+		'watchOS',
+	],
+	MapKit: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'tvOS',
+		'visionOS',
+		'watchOS',
+	],
+	RealityKit: ['iOS', 'iPadOS', 'macOS', 'visionOS'],
+	Vision: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS'],
+	CoreData: [
+		'iOS',
+		'iPadOS',
+		'Mac Catalyst',
+		'macOS',
+		'tvOS',
+		'visionOS',
+		'watchOS',
+	],
+	WebKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'visionOS'],
 };
 
 export function indexFrameworkData(
@@ -101,43 +276,73 @@ export function indexFrameworkData(
 	data: any,
 	defaultPlatforms?: string[],
 ): number {
-	if (!data?.references || typeof data.references !== 'object') return 0;
 	let count = 0;
 
 	const frameworkPlatforms = Array.isArray(data?.metadata?.platforms)
 		? data.metadata.platforms.map((p: any) => p?.name || '').filter(Boolean)
 		: defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || [];
 
-	for (const [id, ref] of Object.entries<any>(data.references)) {
-		if (!ref || typeof ref !== 'object') continue;
-		if (ref.kind !== 'symbol' && ref.kind !== 'article') continue;
-		if (!ref.title) continue;
+	// Index page root symbol if present
+	if (data?.metadata?.title && (data?.identifier?.url || data?.identifier)) {
+		const rawUrl =
+			typeof data.identifier?.url === 'string'
+				? data.identifier.url
+				: typeof data.identifier === 'string'
+					? data.identifier
+					: '';
+		const pagePath = rawUrl.replace(/^doc:\/\/[^/]+/, '');
+		if (pagePath.startsWith('/documentation/')) {
+			const kind = resolveSymbolKind({
+				symbolKind: data.metadata?.symbolKind,
+				roleHeading: data.metadata?.roleHeading,
+				kind: data.kind || 'symbol',
+			});
+			const isPrimary = isPrimaryTypeKind(kind);
+			const targetFramework = resolveFrameworkFromPath(pagePath, framework);
+			db.insertSymbol({
+				id: pagePath,
+				framework: targetFramework,
+				title: data.metadata.title,
+				kind,
+				abstract: extractAbstract(data.abstract),
+				path: pagePath,
+				platforms: frameworkPlatforms,
+				isPrimaryType: isPrimary,
+			});
+			count++;
+		}
+	}
 
-		const abstractText = extractAbstract(ref.abstract);
-		const platforms: string[] =
-			Array.isArray(ref.platforms) && ref.platforms.length > 0
-				? ref.platforms.map((p: any) => p?.name || '').filter(Boolean)
-				: frameworkPlatforms;
+	if (data?.references && typeof data.references === 'object') {
+		for (const [id, ref] of Object.entries<any>(data.references)) {
+			if (!ref || typeof ref !== 'object') continue;
+			if (ref.kind !== 'symbol' && ref.kind !== 'article') continue;
+			if (!ref.title) continue;
 
-		const kind = ref.symbolKind || ref.kind || 'symbol';
-		const isPrimary = ['struct', 'class', 'protocol', 'enum', 'macro'].includes(
-			kind.toLowerCase(),
-		);
+			const abstractText = extractAbstract(ref.abstract);
+			const platforms: string[] =
+				Array.isArray(ref.platforms) && ref.platforms.length > 0
+					? ref.platforms.map((p: any) => p?.name || '').filter(Boolean)
+					: frameworkPlatforms;
 
-		const symbolPath = ref.url || id;
-		const targetFramework = resolveFrameworkFromPath(symbolPath, framework);
+			const kind = resolveSymbolKind(ref);
+			const isPrimary = isPrimaryTypeKind(kind);
 
-		db.insertSymbol({
-			id: symbolPath,
-			framework: targetFramework,
-			title: ref.title,
-			kind,
-			abstract: abstractText,
-			path: symbolPath,
-			platforms,
-			isPrimaryType: isPrimary,
-		});
-		count++;
+			const symbolPath = ref.url || id;
+			const targetFramework = resolveFrameworkFromPath(symbolPath, framework);
+
+			db.insertSymbol({
+				id: symbolPath,
+				framework: targetFramework,
+				title: ref.title,
+				kind,
+				abstract: abstractText,
+				path: symbolPath,
+				platforms,
+				isPrimaryType: isPrimary,
+			});
+			count++;
+		}
 	}
 
 	return count;
@@ -226,19 +431,16 @@ export function indexFrameworkTree(
 
 	function walk(node: DocCIndexNode) {
 		if (node.path && node.title && node.type && node.type !== 'groupMarker') {
-			const isPrimary = [
-				'struct',
-				'class',
-				'protocol',
-				'enum',
-				'macro',
-			].includes(node.type.toLowerCase());
+			// The DocC navigation tree is the authoritative source for primary
+			// type kinds, so it is normalised through the same resolver.
+			const kind = resolveSymbolKind({ symbolKind: node.type });
+			const isPrimary = isPrimaryTypeKind(kind);
 			const targetFramework = resolveFrameworkFromPath(node.path, framework);
 			db.insertSymbol({
 				id: node.path,
 				framework: targetFramework,
 				title: node.title,
-				kind: node.type,
+				kind,
 				abstract: '', // Populated on-demand or during deep crawl
 				path: node.path,
 				platforms: nodePlatforms,
