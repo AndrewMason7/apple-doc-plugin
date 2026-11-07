@@ -244,8 +244,7 @@ export class Logger implements ILogger {
 			typeof level === 'number'
 				? level
 				: parseLogLevel(level, this.levelState.level);
-		// Decouple levelState if set directly on this instance
-		this.levelState = { level: parsed };
+		this.levelState.level = parsed;
 	}
 
 	getLevel(): LogLevel {

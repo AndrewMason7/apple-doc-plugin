@@ -79,3 +79,5 @@ export { parseLogLevel, LOG_LEVEL_NAMES, NAME_TO_LOG_LEVEL } from './level.js';
 export * from './formatters/index.js';
 export * from './redactor.js';
 export * from './error-serializer.js';
+export * from './stdio-guard.js';
+export * from './mcp-transport.js';

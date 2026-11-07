@@ -5,7 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './server/app.js';
 import { loadEnvironment } from './server/env.js';
-import { logger } from './server/logger.js';
+import {
+	logger,
+	installStdioGuard,
+	attachMcpLogging,
+} from './server/logger/index.js';
 import { runCliRouter } from './cli/router.js';
 
 // Attach process lifecycle safety guards to keep MCP stdio stream alive
@@ -31,6 +35,8 @@ async function main() {
 
 	// Default: Launch MCP stdio server
 	const server = createServer();
+	installStdioGuard(logger);
+	attachMcpLogging(logger, server);
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
 	logger.info('Apple Developer Documentation MCP server running on stdio');

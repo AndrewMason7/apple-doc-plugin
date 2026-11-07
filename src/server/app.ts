@@ -38,6 +38,7 @@ export const createServer = () => {
 				tools: {},
 				resources: {},
 				prompts: {},
+				logging: {},
 			},
 		},
 	);
