@@ -3,7 +3,7 @@ import { serializeError } from './error-serializer.js';
 
 /**
  * Checks if an object property key name suggests sensitive content.
- * Matches common secret keys (password, token, secret, apiKey, etc.) case-insensitively.
+ * Matches common secret keys (password, token, secret, apiKey, cookie, authorization, etc.) case-insensitively.
  */
 export function isSensitiveKey(key: string): boolean {
 	if (!key || typeof key !== 'string') {
@@ -17,13 +17,16 @@ export function isSensitiveKey(key: string): boolean {
 		normalized.includes('apikey') ||
 		normalized.includes('privatekey') ||
 		normalized.includes('token') ||
-		normalized.includes('credential')
+		normalized.includes('credential') ||
+		normalized.includes('cookie') ||
+		normalized.includes('session') ||
+		normalized.includes('authorization') ||
+		normalized.includes('authentication')
 	) {
 		return true;
 	}
 	if (
 		normalized === 'auth' ||
-		normalized === 'authorization' ||
 		(normalized.startsWith('auth') &&
 			(key.includes('Token') ||
 				key.includes('Header') ||
@@ -34,12 +37,8 @@ export function isSensitiveKey(key: string): boolean {
 		return true;
 	}
 	if (
-		normalized === 'cookie' ||
-		normalized === 'cookies' ||
-		normalized === 'session' ||
-		normalized === 'sessionid' ||
-		normalized === 'cert' ||
-		normalized === 'certificate' ||
+		normalized.includes('cert') ||
+		normalized.includes('certificate') ||
 		normalized === 'signature'
 	) {
 		return true;
@@ -116,9 +115,9 @@ export function redactSensitiveText(text: string): string {
 		'$1[REDACTED]',
 	);
 
-	// Sensitive key=value or key: value in plain text
+	// Sensitive key=value or key: value in plain text (supports GEMINI_API_KEY=..., apiKey: ..., etc.)
 	result = result.replace(
-		/((?:password|passwd|client_secret|clientSecret|secretKey)\s*[:=]\s*["']?)[^\s"',;&]+(["']?)/gi,
+		/((?:password|passwd|client_secret|clientSecret|secretKey|(?:[a-zA-Z0-9_]+_)?api_?key|access_token|token|secret)\s*[:=]\s*["']?)[^\s"',;&]+(["']?)/gi,
 		'$1[REDACTED]$2',
 	);
 
@@ -192,9 +191,8 @@ function redactInternal(
 		return `[TypedArray ${val.byteLength} bytes]`;
 	}
 
-	// Error handling
+	// Error handling (serializeError handles its own cycle tracking via seen)
 	if (val instanceof Error) {
-		seen.add(val);
 		return serializeError(val, seen, depth);
 	}
 
@@ -214,10 +212,16 @@ function redactInternal(
 		return result;
 	}
 
-	// Plain / general object handling
+	// Plain / general object handling with getter safety
 	const result: Record<string, unknown> = {};
-	const entries = Object.entries(val);
-	for (const [key, propVal] of entries) {
+	let keys: string[] = [];
+	try {
+		keys = Object.keys(val);
+	} catch {
+		return '[UnreadableObject]';
+	}
+
+	for (const key of keys) {
 		if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
 			continue;
 		}
@@ -225,6 +229,7 @@ function redactInternal(
 			result[key] = '[REDACTED]';
 		} else {
 			try {
+				const propVal = (val as Record<string, unknown>)[key];
 				result[key] = redactInternal(propVal, options, depth + 1, seen);
 			} catch {
 				result[key] = '[Unreadable]';

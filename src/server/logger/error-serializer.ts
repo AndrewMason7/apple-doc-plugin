@@ -84,9 +84,7 @@ export function serializeError(
 	const name =
 		typeof errObj.name === 'string' && errObj.name.length > 0
 			? errObj.name
-			: isErrorInstance
-				? 'Error'
-				: 'Error';
+			: 'Error';
 
 	let rawMessage: string;
 	if (typeof errObj.message === 'string') {
@@ -150,7 +148,14 @@ export function serializeError(
 		'prototype',
 	]);
 
-	for (const [key, val] of Object.entries(errObj)) {
+	let keys: string[] = [];
+	try {
+		keys = Object.keys(errObj);
+	} catch {
+		keys = [];
+	}
+
+	for (const key of keys) {
 		if (standardKeys.has(key)) {
 			continue;
 		}
@@ -158,6 +163,7 @@ export function serializeError(
 			serialized[key] = '[REDACTED]';
 		} else {
 			try {
+				const val = errObj[key];
 				serialized[key] = redactSensitiveData(val, { maxDepth: 3 });
 			} catch {
 				serialized[key] = '[Unreadable]';

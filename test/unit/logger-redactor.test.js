@@ -229,3 +229,67 @@ test('serializeError: serializes AggregateError nested errors array', () => {
 	assert.equal(serialized.errors[0]?.message, 'Sub-error 1');
 	assert.equal(serialized.errors[1]?.message, 'Sub-error 2');
 });
+
+test('redactSensitiveData: preserves Error name, message, and stack without marking non-circular errors as circular', () => {
+	const realError = new Error('Database connection timeout');
+	const sanitized = redactSensitiveData({ err: realError });
+	assert.ok(sanitized.err);
+	assert.equal(sanitized.err.name, 'Error');
+	assert.equal(sanitized.err.message, 'Database connection timeout');
+	assert.ok(sanitized.err.stack);
+	assert.notEqual(sanitized.err.message, '[Circular]');
+});
+
+test('redactSensitiveText: masks arbitrary key/token assignments in plain text', () => {
+	const text1 = 'Config loaded: GEMINI_API_KEY=my_secret_gemini_key_123';
+	const text2 = 'Debug log: apiKey: "super-secret-12345"';
+	const text3 = 'Auth info: token=bearer_xyz_789 and secret: 999888';
+	assert.doesNotMatch(redactSensitiveText(text1), /my_secret_gemini_key_123/);
+	assert.match(redactSensitiveText(text1), /GEMINI_API_KEY=\[REDACTED\]/);
+	assert.doesNotMatch(redactSensitiveText(text2), /super-secret-12345/);
+	assert.doesNotMatch(redactSensitiveText(text3), /bearer_xyz_789/);
+});
+
+test('redactSensitiveData: masks headers like Set-Cookie, proxy-authorization, and session IDs', () => {
+	const headers = {
+		'Set-Cookie': 'session=abc1234; Secure; HttpOnly',
+		'proxy-authorization': 'Basic dXNlcjpwYXNz',
+		'x-session-id': 'sess_999888',
+		'authentication-token': 'auth_111222',
+		'content-type': 'application/json',
+		author: 'William Shakespeare',
+	};
+
+	const sanitized = redactSensitiveData(headers);
+	assert.equal(sanitized['Set-Cookie'], '[REDACTED]');
+	assert.equal(sanitized['proxy-authorization'], '[REDACTED]');
+	assert.equal(sanitized['x-session-id'], '[REDACTED]');
+	assert.equal(sanitized['authentication-token'], '[REDACTED]');
+	assert.equal(sanitized['content-type'], 'application/json');
+	assert.equal(sanitized.author, 'William Shakespeare');
+});
+
+test('redactSensitiveData and serializeError: safely handle throwing property getters', () => {
+	const evilObj = {
+		normal: 'fine',
+		get bomb() {
+			throw new Error('Explosion');
+		},
+	};
+
+	const sanitized = redactSensitiveData(evilObj);
+	assert.equal(sanitized.normal, 'fine');
+	assert.equal(sanitized.bomb, '[Unreadable]');
+
+	const evilErr = new Error('Failure');
+	Object.defineProperty(evilErr, 'evilProp', {
+		get() {
+			throw new Error('Getter failed');
+		},
+		enumerable: true,
+	});
+
+	const serialized = serializeError(evilErr);
+	assert.equal(serialized.message, 'Failure');
+	assert.equal(serialized.evilProp, '[Unreadable]');
+});
