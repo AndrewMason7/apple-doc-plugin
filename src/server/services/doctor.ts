@@ -3,6 +3,7 @@ import type { AppleDocsDB, FreshnessInfo } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
 import { isVirtualDbPath } from '../db/db-path.js';
 import type { EmbeddingProvider } from './search/embedding-provider.js';
+import { logger } from '../logger.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 
@@ -53,6 +54,7 @@ const SKIPPED_IDS: Array<[string, string]> = [
 	['semantic_layer', 'Semantic layer'],
 	['dimension_consistency', 'Vector dimensions'],
 	['snapshot_freshness', 'Snapshot age'],
+	['logging_config', 'Logging configuration'],
 ];
 
 const check = (
@@ -381,6 +383,31 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 							'ok',
 							`${ageLabel} (${source})`,
 						);
+		}),
+	);
+
+	// 11. Logging configuration & diagnostic buffer
+	checks.push(
+		safe('logging_config', 'Logging configuration', '', () => {
+			const levelName = logger.getLevelName();
+			const ring = logger.getRingBuffer();
+			const errors = ring
+				.getRecent()
+				.filter((e) => e.level.toLowerCase() === 'error').length;
+			if (errors > 0) {
+				return check(
+					'logging_config',
+					'Logging configuration',
+					'warn',
+					`level: ${levelName}, ${errors} recent error(s) in diagnostic buffer`,
+				);
+			}
+			return check(
+				'logging_config',
+				'Logging configuration',
+				'ok',
+				`level: ${levelName}, ring buffer: ${ring.size()}/${ring.getCapacity()}`,
+			);
 		}),
 	);
 

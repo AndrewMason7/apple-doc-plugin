@@ -12,6 +12,7 @@ import {
 	formatDoctorReport,
 	runDoctor,
 } from '../../dist/server/services/doctor.js';
+import { logger } from '../../dist/server/logger.js';
 
 const ALL_CHECK_IDS = [
 	'node_version',
@@ -24,6 +25,7 @@ const ALL_CHECK_IDS = [
 	'semantic_layer',
 	'dimension_consistency',
 	'snapshot_freshness',
+	'logging_config',
 ];
 
 // One temp root for the whole file, removed once every test has run.
@@ -535,4 +537,41 @@ test('formatDoctorReport marks every check and prints next steps only when neede
 		/2 failures, 0 warnings\./,
 		'failures must win over a contradictory ok flag',
 	);
+});
+
+test('runDoctor: includes logging_config check without mutating report structure', () => {
+	const ring = logger.getRingBuffer();
+	ring.clear();
+	const ctx = makeContext();
+	addSymbol(ctx.db, 0);
+
+	const report = runDoctor(ctx);
+	const loggingCheck = report.checks.find((c) => c.id === 'logging_config');
+	assert.ok(loggingCheck, 'Doctor report must include logging_config check');
+	assert.strictEqual(loggingCheck.title, 'Logging configuration');
+	assert.strictEqual(typeof loggingCheck.status, 'string');
+	assert.strictEqual(loggingCheck.status, 'ok');
+	assert.match(loggingCheck.detail, /level: \w+, ring buffer: \d+\/\d+/);
+});
+
+test('runDoctor: reports warn on logging_config when diagnostic buffer contains error entries', () => {
+	const ctx = makeContext();
+	addSymbol(ctx.db, 0);
+
+	const ring = logger.getRingBuffer();
+	ring.clear();
+	try {
+		ring.push({
+			timestamp: new Date().toISOString(),
+			level: 'error',
+			message: 'simulated failure in diagnostic buffer',
+		});
+		const report = runDoctor(ctx);
+		const loggingCheck = report.checks.find((c) => c.id === 'logging_config');
+		assert.ok(loggingCheck, 'Doctor report must include logging_config check');
+		assert.strictEqual(loggingCheck.status, 'warn');
+		assert.match(loggingCheck.detail, /recent error\(s\) in diagnostic buffer/);
+	} finally {
+		ring.clear();
+	}
 });
