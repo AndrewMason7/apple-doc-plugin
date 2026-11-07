@@ -22,17 +22,25 @@ export const NAME_TO_LOG_LEVEL: Record<string, LogLevel> = {
 };
 
 /**
- * Parses a string log level name into a numeric LogLevel enum value.
+ * Parses a string log level name or numeric LogLevel into a numeric LogLevel enum value.
  * Performs case-insensitive matching and strips surrounding whitespace.
  *
- * @param name - The level name to parse (e.g. 'debug', 'WARN', 'info')
+ * @param name - The level name or numeric LogLevel to parse (e.g. 'debug', 'WARN', LogLevel.DEBUG)
  * @param defaultLevel - Fallback level if name is undefined or unrecognized (defaults to INFO)
  */
 export function parseLogLevel(
-	name?: string,
+	name?: string | number | unknown,
 	defaultLevel: LogLevel = LogLevel.INFO,
 ): LogLevel {
-	if (!name) {
+	if (name === undefined || name === null) {
+		return defaultLevel;
+	}
+	if (typeof name === 'number') {
+		return LOG_LEVEL_NAMES[name as LogLevel] !== undefined
+			? (name as LogLevel)
+			: defaultLevel;
+	}
+	if (typeof name !== 'string') {
 		return defaultLevel;
 	}
 	const normalized = name.trim().toLowerCase();
