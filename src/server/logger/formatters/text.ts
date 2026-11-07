@@ -18,19 +18,23 @@ function formatTimestamp(timestamp?: unknown): string {
 }
 
 function safeStringify(value: unknown): string {
-	const seen = new WeakSet();
-	return JSON.stringify(value, (_key, val) => {
-		if (typeof val === 'bigint') {
-			return val.toString();
-		}
-		if (typeof val === 'object' && val !== null) {
-			if (seen.has(val)) {
-				return '[Circular]';
+	try {
+		const seen = new WeakSet();
+		return JSON.stringify(value, (_key, val) => {
+			if (typeof val === 'bigint') {
+				return val.toString();
 			}
-			seen.add(val);
-		}
-		return val;
-	});
+			if (typeof val === 'object' && val !== null) {
+				if (seen.has(val)) {
+					return '[Circular]';
+				}
+				seen.add(val);
+			}
+			return val;
+		});
+	} catch {
+		return '[Unreadable]';
+	}
 }
 
 /**

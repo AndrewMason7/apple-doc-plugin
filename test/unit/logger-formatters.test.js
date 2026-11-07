@@ -192,3 +192,25 @@ test('formatters/index: re-exports formatTextEntry and formatJsonEntry', () => {
 	assert.equal(typeof formatTextFromIndex, 'function');
 	assert.equal(typeof formatJsonFromIndex, 'function');
 });
+
+test('formatTextEntry: safeStringify falls back to [Unreadable] when serialization throws', () => {
+	const evilObject = {};
+	Object.defineProperty(evilObject, 'prop', {
+		get() {
+			throw new Error('Getter boom');
+		},
+		enumerable: true,
+	});
+
+	const entry = {
+		timestamp: new Date('2026-11-07T12:00:00.000Z'),
+		level: LogLevel.INFO,
+		levelName: 'info',
+		message: 'Test message',
+		bindings: { evil: evilObject },
+		args: [],
+	};
+
+	const text = formatTextEntry(entry);
+	assert.match(text, /\[Unreadable\]/);
+});

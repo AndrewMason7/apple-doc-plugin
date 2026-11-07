@@ -60,6 +60,9 @@ export class LogRingBuffer {
 	 * Pushes a new snapshot into the ring buffer, evicting the oldest item if at capacity.
 	 */
 	push(snapshot: LogEntrySnapshot): void {
+		if (!snapshot || typeof snapshot !== 'object') {
+			return;
+		}
 		const safeSnapshot = this.sanitizeSnapshot(snapshot);
 		this.buffer[this.tail] = safeSnapshot;
 		this.tail = (this.tail + 1) % this.capacity;

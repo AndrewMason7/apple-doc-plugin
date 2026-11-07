@@ -4,6 +4,7 @@ import type {
 	LogEntrySnapshot,
 	LogDestination,
 	LoggerOptions,
+	LogFormat,
 	ILogger,
 	SerializedError,
 } from './types.js';
@@ -18,10 +19,15 @@ interface LevelState {
 	level: LogLevel;
 }
 
+interface FormatState {
+	format: LogFormat;
+}
+
 export type LogSubscriber = (entry: LogEntry) => void;
 
 export interface InternalLoggerConfig extends LoggerOptions {
 	levelState?: LevelState;
+	formatState?: FormatState;
 	subscribers?: Set<LogSubscriber>;
 	ringBuffer?: LogRingBuffer;
 }
@@ -38,7 +44,7 @@ const defaultDestination: LogDestination = (message: string) => {
  */
 export class Logger implements ILogger {
 	private levelState: LevelState;
-	private format: 'text' | 'json';
+	private formatState: FormatState;
 	private redact: boolean;
 	private destination: LogDestination;
 	private ringBuffer: LogRingBuffer;
@@ -58,7 +64,12 @@ export class Logger implements ILogger {
 			this.levelState = { level: initialLevel };
 		}
 
-		this.format = options.format === 'json' ? 'json' : 'text';
+		if (options.formatState) {
+			this.formatState = options.formatState;
+		} else {
+			const initialFormat = options.format === 'json' ? 'json' : 'text';
+			this.formatState = { format: initialFormat };
+		}
 		this.redact = options.redact ?? true;
 		this.destination = options.destination ?? defaultDestination;
 
@@ -159,7 +170,9 @@ export class Logger implements ILogger {
 
 		// Format output for sink
 		const formatted =
-			this.format === 'json' ? formatJsonEntry(entry) : formatTextEntry(entry);
+			this.formatState.format === 'json'
+				? formatJsonEntry(entry)
+				: formatTextEntry(entry);
 
 		// Dispatch to destination (stderr default)
 		try {
@@ -203,23 +216,23 @@ export class Logger implements ILogger {
 	}
 
 	trace(msg: string, ...args: unknown[]): void {
-		this.log(10, 'trace', msg, args);
+		this.log(LogLevel.TRACE, 'trace', msg, args);
 	}
 
 	debug(msg: string, ...args: unknown[]): void {
-		this.log(20, 'debug', msg, args);
+		this.log(LogLevel.DEBUG, 'debug', msg, args);
 	}
 
 	info(msg: string, ...args: unknown[]): void {
-		this.log(30, 'info', msg, args);
+		this.log(LogLevel.INFO, 'info', msg, args);
 	}
 
 	warn(msg: string, ...args: unknown[]): void {
-		this.log(40, 'warn', msg, args);
+		this.log(LogLevel.WARN, 'warn', msg, args);
 	}
 
 	error(msg: string, ...args: unknown[]): void {
-		this.log(50, 'error', msg, args);
+		this.log(LogLevel.ERROR, 'error', msg, args);
 	}
 
 	child(bindings: Record<string, unknown>): Logger {
@@ -230,7 +243,7 @@ export class Logger implements ILogger {
 
 		return new Logger({
 			levelState: this.levelState,
-			format: this.format,
+			formatState: this.formatState,
 			redact: this.redact,
 			destination: this.destination,
 			ringBuffer: this.ringBuffer,
@@ -249,6 +262,16 @@ export class Logger implements ILogger {
 
 	getLevel(): LogLevel {
 		return this.levelState.level;
+	}
+
+	setFormat(format: LogFormat | string): void {
+		const normalized =
+			typeof format === 'string' ? format.trim().toLowerCase() : '';
+		this.formatState.format = normalized === 'json' ? 'json' : 'text';
+	}
+
+	getFormat(): LogFormat {
+		return this.formatState.format;
 	}
 
 	getLevelName(): string {

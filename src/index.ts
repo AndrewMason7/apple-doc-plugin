@@ -26,6 +26,13 @@ const __dirname = dirname(__filename);
 const projectEnv = join(__dirname, '../.env');
 loadEnvironment(projectEnv);
 
+if (process.env.LOG_LEVEL) {
+	logger.setLevel(process.env.LOG_LEVEL);
+}
+if (process.env.LOG_FORMAT) {
+	logger.setFormat(process.env.LOG_FORMAT);
+}
+
 async function main() {
 	const args = process.argv.slice(2);
 	const exitCode = await runCliRouter(args);

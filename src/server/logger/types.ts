@@ -82,5 +82,7 @@ export interface ILogger {
 	child(bindings: Record<string, unknown>): ILogger;
 	setLevel(level: LogLevel | string): void;
 	getLevel(): LogLevel;
+	setFormat(format: LogFormat | string): void;
+	getFormat(): LogFormat;
 	isLevelEnabled(level: LogLevel | string): boolean;
 }

@@ -38,20 +38,82 @@ test('installStdioGuard: intercepts console.info and formats multiple arguments'
 test('installStdioGuard: restores original console methods upon uninstall', () => {
 	const originalLog = console.log;
 	const originalInfo = console.info;
+	const originalDebug = console.debug;
+	const originalDir = console.dir;
 
 	const testLogger = createLogger({ destination: () => {} });
 	const uninstall = installStdioGuard(testLogger);
 
 	assert.notEqual(console.log, originalLog);
 	assert.notEqual(console.info, originalInfo);
+	assert.notEqual(console.debug, originalDebug);
+	assert.notEqual(console.dir, originalDir);
 
 	uninstall();
 
 	assert.equal(console.log, originalLog);
 	assert.equal(console.info, originalInfo);
+	assert.equal(console.debug, originalDebug);
+	assert.equal(console.dir, originalDir);
 
 	// Calling uninstall again should be safe and idempotent
 	assert.doesNotThrow(() => uninstall());
+});
+
+test('installStdioGuard: intercepts console.debug and routes to targetLogger.debug', () => {
+	const intercepted = [];
+	const testLogger = createLogger({
+		level: 'debug',
+		destination: (msg) => intercepted.push(msg),
+	});
+
+	const uninstall = installStdioGuard(testLogger);
+	try {
+		console.debug('Debug diagnostics payload: %d', 101);
+		assert.equal(intercepted.length, 1);
+		assert.match(intercepted[0], /Debug diagnostics payload: 101/);
+		assert.match(intercepted[0], /\[DEBUG\]/);
+	} finally {
+		uninstall();
+	}
+});
+
+test('installStdioGuard: intercepts console.dir and formats using inspect into targetLogger.info', () => {
+	const intercepted = [];
+	const testLogger = createLogger({
+		destination: (msg) => intercepted.push(msg),
+	});
+
+	const uninstall = installStdioGuard(testLogger);
+	try {
+		console.dir({ framework: 'SwiftUI', symbols: 42 });
+		assert.equal(intercepted.length, 1);
+		assert.match(intercepted[0], /framework: 'SwiftUI'/);
+		assert.match(intercepted[0], /symbols: 42/);
+	} finally {
+		uninstall();
+	}
+});
+
+test('installStdioGuard: distinguishes between console.log() empty string and console.log(undefined)', () => {
+	const intercepted = [];
+	const testLogger = createLogger({
+		destination: (msg) => intercepted.push(msg),
+	});
+
+	const uninstall = installStdioGuard(testLogger);
+	try {
+		console.log(undefined);
+		assert.equal(intercepted.length, 1);
+		assert.match(intercepted[0], /undefined/);
+
+		console.log();
+		assert.equal(intercepted.length, 2);
+		// With empty args, it logs an empty message (just badge)
+		assert.match(intercepted[1], /\[INFO\]\s*$/);
+	} finally {
+		uninstall();
+	}
 });
 
 test('installStdioGuard: defaults to root logger when no logger parameter passed', () => {

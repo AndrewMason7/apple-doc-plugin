@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
 	redactSensitiveText,
 	redactSensitiveData,
+	isSensitiveKey,
 } from '../../dist/server/logger/redactor.js';
 import { serializeError } from '../../dist/server/logger/error-serializer.js';
 
@@ -292,4 +293,35 @@ test('redactSensitiveData and serializeError: safely handle throwing property ge
 	const serialized = serializeError(evilErr);
 	assert.equal(serialized.message, 'Failure');
 	assert.equal(serialized.evilProp, '[Unreadable]');
+});
+
+test('isSensitiveKey: refines cert matching avoiding false positives on certainty and concert', () => {
+	// Sensitive cert keys should match
+	assert.equal(isSensitiveKey('cert'), true);
+	assert.equal(isSensitiveKey('clientCert'), true);
+	assert.equal(isSensitiveKey('sslCert'), true);
+	assert.equal(isSensitiveKey('certKey'), true);
+	assert.equal(isSensitiveKey('certificate'), true);
+	assert.equal(isSensitiveKey('ssl_certificate'), true);
+	assert.equal(isSensitiveKey('cert_file'), true);
+	assert.equal(isSensitiveKey('signature'), true);
+
+	// Words containing cert that are not certificates should NOT match
+	assert.equal(isSensitiveKey('certainty'), false);
+	assert.equal(isSensitiveKey('concert'), false);
+	assert.equal(isSensitiveKey('concertTickets'), false);
+	assert.equal(isSensitiveKey('uncertainty'), false);
+
+	// Data structure redaction preserves non-sensitive words
+	const data = {
+		certainty: 0.99,
+		concert: 'Carnegie Hall',
+		clientCert: 'BEGIN CERTIFICATE DATA',
+		certificate: 'ROOT CA',
+	};
+	const sanitized = redactSensitiveData(data);
+	assert.equal(sanitized.certainty, 0.99);
+	assert.equal(sanitized.concert, 'Carnegie Hall');
+	assert.equal(sanitized.clientCert, '[REDACTED]');
+	assert.equal(sanitized.certificate, '[REDACTED]');
 });

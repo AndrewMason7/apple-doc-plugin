@@ -229,6 +229,65 @@ test('Logger: setLevel, getLevel, and isLevelEnabled operate correctly', () => {
 	assert.equal(testLogger.isLevelEnabled('warn'), true);
 });
 
+test('Logger: setFormat and getFormat dynamically updates format across logger and child loggers', () => {
+	const output = [];
+	const testLogger = createLogger({
+		level: LogLevel.DEBUG,
+		format: 'text',
+		destination: (msg) => output.push(msg),
+	});
+
+	const child = testLogger.child({ module: 'format-test' });
+
+	assert.equal(testLogger.getFormat(), 'text');
+	assert.equal(child.getFormat(), 'text');
+
+	testLogger.info('Message in text format');
+	assert.equal(output.length, 1);
+	assert.match(output[0], /\[INFO\] Message in text format/);
+
+	// Change format to JSON dynamically
+	testLogger.setFormat('json');
+	assert.equal(testLogger.getFormat(), 'json');
+	assert.equal(child.getFormat(), 'json');
+
+	child.info('Message in json format');
+	assert.equal(output.length, 2);
+	assert.doesNotThrow(() => JSON.parse(output[1]));
+	const parsed = JSON.parse(output[1]);
+	assert.equal(parsed.message, 'Message in json format');
+	assert.equal(parsed.module, 'format-test');
+
+	// Switch back to text
+	testLogger.setFormat('text');
+	assert.equal(testLogger.getFormat(), 'text');
+	child.info('Back to text format');
+	assert.equal(output.length, 3);
+	assert.match(output[2], /Back to text format/);
+});
+
+test('LogRingBuffer: ignores non-object or null snapshots safely', () => {
+	const ring = new LogRingBuffer(5);
+	// @ts-expect-error test non-object runtime inputs
+	ring.push(null);
+	// @ts-expect-error test non-object runtime inputs
+	ring.push(undefined);
+	// @ts-expect-error test non-object runtime inputs
+	ring.push('not an object');
+	// @ts-expect-error test non-object runtime inputs
+	ring.push(42);
+
+	assert.equal(ring.size(), 0);
+	assert.equal(ring.getRecent().length, 0);
+
+	ring.push({
+		timestamp: '2026-11-07T12:00:00.000Z',
+		level: 'info',
+		message: 'Valid snapshot',
+	});
+	assert.equal(ring.size(), 1);
+});
+
 test('Logger: root singleton and backwards-compatible export from src/server/logger.ts', () => {
 	assert.ok(singletonLogger instanceof Logger);
 	assert.ok(rootLogger instanceof Logger);

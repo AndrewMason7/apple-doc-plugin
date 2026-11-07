@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { SetLevelRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../dist/server/logger/index.js';
 import {
 	attachMcpLogging,
@@ -199,4 +200,66 @@ test('Logger: child loggers inherit dynamic level changes from setLevel', () => 
 
 	child.debug('Child debug message');
 	assert.equal(output.length, 1);
+});
+
+test('attachMcpLogging: includes error stack or message in data payload when entry has error', () => {
+	const dispatched = [];
+	const mockMcpServer = {
+		sendLoggingMessage: async (params) => {
+			dispatched.push(params);
+		},
+	};
+
+	const testLogger = createLogger({
+		level: LogLevel.DEBUG,
+		destination: () => {},
+	});
+	const detach = attachMcpLogging(testLogger, mockMcpServer);
+
+	const sampleErr = new Error('Database connection timeout');
+	testLogger.error('Operation failed', sampleErr);
+
+	assert.equal(dispatched.length, 1);
+	assert.equal(dispatched[0].level, 'error');
+	assert.match(dispatched[0].data, /Operation failed/);
+	assert.match(dispatched[0].data, /Database connection timeout/);
+
+	// Plain object error
+	testLogger.error('Object error', { message: 'Network failed', code: 500 });
+	assert.equal(dispatched.length, 2);
+	assert.match(dispatched[1].data, /Object error/);
+	assert.match(dispatched[1].data, /Network failed/);
+
+	detach();
+});
+
+test('attachMcpLogging: registers SetLevelRequestSchema on server and dynamically updates logger level', async () => {
+	const registeredHandlers = new Map();
+	const mockMcpServer = {
+		sendLoggingMessage: async () => {},
+		setRequestHandler: (schema, handler) => {
+			registeredHandlers.set(schema, handler);
+		},
+	};
+
+	const testLogger = createLogger({
+		level: LogLevel.INFO,
+		destination: () => {},
+	});
+	const detach = attachMcpLogging(testLogger, mockMcpServer);
+
+	assert.equal(registeredHandlers.has(SetLevelRequestSchema), true);
+	assert.equal(testLogger.getLevel(), LogLevel.INFO);
+
+	// Simulate client invoking setLevel to 'debug'
+	const handler = registeredHandlers.get(SetLevelRequestSchema);
+	const res = await handler({ params: { level: 'debug' } });
+	assert.deepEqual(res, {});
+	assert.equal(testLogger.getLevel(), LogLevel.DEBUG);
+
+	// Simulate client invoking setLevel to 'error'
+	await handler({ params: { level: 'error' } });
+	assert.equal(testLogger.getLevel(), LogLevel.ERROR);
+
+	detach();
 });

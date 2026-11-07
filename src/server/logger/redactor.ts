@@ -37,10 +37,16 @@ export function isSensitiveKey(key: string): boolean {
 		return true;
 	}
 	if (
-		normalized.includes('cert') ||
-		normalized.includes('certificate') ||
-		normalized === 'signature'
+		!normalized.includes('certain') &&
+		!normalized.includes('concert') &&
+		(normalized.includes('certificate') ||
+			normalized.endsWith('cert') ||
+			normalized === 'cert' ||
+			normalized.startsWith('cert'))
 	) {
+		return true;
+	}
+	if (normalized === 'signature') {
 		return true;
 	}
 	return false;

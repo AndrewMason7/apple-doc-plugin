@@ -24,42 +24,48 @@ test('MCP stdio protocol isolation: stdout receives only valid JSON-RPC frames w
 		stderrData += d.toString();
 	});
 
-	// Send MCP initialize request
-	const initReq =
-		JSON.stringify({
-			jsonrpc: '2.0',
-			id: 1,
-			method: 'initialize',
-			params: {
-				protocolVersion: '2024-11-05',
-				capabilities: {},
-				clientInfo: { name: 'test-client', version: '1.0.0' },
-			},
-		}) + '\n';
+	try {
+		// Send MCP initialize request
+		const initReq =
+			JSON.stringify({
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'initialize',
+				params: {
+					protocolVersion: '2024-11-05',
+					capabilities: {},
+					clientInfo: { name: 'test-client', version: '1.0.0' },
+				},
+			}) + '\n';
 
-	proc.stdin.write(initReq);
+		proc.stdin.write(initReq);
 
-	await new Promise((resolve) => setTimeout(resolve, 800));
-	proc.kill('SIGTERM');
+		await new Promise((resolve) => setTimeout(resolve, 800));
 
-	// Assert stdout is valid JSON-RPC only
-	const stdoutLines = stdoutData.trim().split('\n').filter(Boolean);
-	assert.ok(
-		stdoutLines.length > 0,
-		'Stdout should receive at least one JSON-RPC frame',
-	);
-	for (const line of stdoutLines) {
-		assert.doesNotThrow(
-			() => JSON.parse(line),
-			`Stdout line must be valid JSON: "${line}"`,
+		// Assert stdout is valid JSON-RPC only
+		const stdoutLines = stdoutData.trim().split('\n').filter(Boolean);
+		assert.ok(
+			stdoutLines.length > 0,
+			'Stdout should receive at least one JSON-RPC frame',
 		);
-		const parsed = JSON.parse(line);
-		assert.equal(parsed.jsonrpc, '2.0');
-	}
+		for (const line of stdoutLines) {
+			assert.doesNotThrow(
+				() => JSON.parse(line),
+				`Stdout line must be valid JSON: "${line}"`,
+			);
+			const parsed = JSON.parse(line);
+			assert.equal(parsed.jsonrpc, '2.0');
+		}
 
-	// Assert stderr received structured logs
-	assert.ok(stderrData.length > 0, 'Stderr should contain startup log output');
-	assert.match(stderrData, /apple-doc-plugin|MCP server/);
+		// Assert stderr received structured logs
+		assert.ok(
+			stderrData.length > 0,
+			'Stderr should contain startup log output',
+		);
+		assert.match(stderrData, /apple-doc-plugin|MCP server/);
+	} finally {
+		proc.kill('SIGTERM');
+	}
 });
 
 test('MCP stdio protocol isolation: stdout receives only valid JSON-RPC frames while logs go to stderr (Text format)', async () => {
@@ -78,42 +84,48 @@ test('MCP stdio protocol isolation: stdout receives only valid JSON-RPC frames w
 		stderrData += d.toString();
 	});
 
-	// Send MCP initialize request
-	const initReq =
-		JSON.stringify({
-			jsonrpc: '2.0',
-			id: 1,
-			method: 'initialize',
-			params: {
-				protocolVersion: '2024-11-05',
-				capabilities: {},
-				clientInfo: { name: 'test-client', version: '1.0.0' },
-			},
-		}) + '\n';
+	try {
+		// Send MCP initialize request
+		const initReq =
+			JSON.stringify({
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'initialize',
+				params: {
+					protocolVersion: '2024-11-05',
+					capabilities: {},
+					clientInfo: { name: 'test-client', version: '1.0.0' },
+				},
+			}) + '\n';
 
-	proc.stdin.write(initReq);
+		proc.stdin.write(initReq);
 
-	await new Promise((resolve) => setTimeout(resolve, 800));
-	proc.kill('SIGTERM');
+		await new Promise((resolve) => setTimeout(resolve, 800));
 
-	// Assert stdout is valid JSON-RPC only
-	const stdoutLines = stdoutData.trim().split('\n').filter(Boolean);
-	assert.ok(
-		stdoutLines.length > 0,
-		'Stdout should receive at least one JSON-RPC frame',
-	);
-	for (const line of stdoutLines) {
-		assert.doesNotThrow(
-			() => JSON.parse(line),
-			`Stdout line must be valid JSON: "${line}"`,
+		// Assert stdout is valid JSON-RPC only
+		const stdoutLines = stdoutData.trim().split('\n').filter(Boolean);
+		assert.ok(
+			stdoutLines.length > 0,
+			'Stdout should receive at least one JSON-RPC frame',
 		);
-		const parsed = JSON.parse(line);
-		assert.equal(parsed.jsonrpc, '2.0');
-	}
+		for (const line of stdoutLines) {
+			assert.doesNotThrow(
+				() => JSON.parse(line),
+				`Stdout line must be valid JSON: "${line}"`,
+			);
+			const parsed = JSON.parse(line);
+			assert.equal(parsed.jsonrpc, '2.0');
+		}
 
-	// Assert stderr received text logs
-	assert.ok(stderrData.length > 0, 'Stderr should contain startup log output');
-	assert.match(stderrData, /apple-doc-plugin|MCP server/);
+		// Assert stderr received text logs
+		assert.ok(
+			stderrData.length > 0,
+			'Stderr should contain startup log output',
+		);
+		assert.match(stderrData, /apple-doc-plugin|MCP server/);
+	} finally {
+		proc.kill('SIGTERM');
+	}
 });
 
 test('MCP stdio protocol isolation: interactive flow (initialize -> tools/list) maintains pristine stdout wire format', async () => {
@@ -132,66 +144,69 @@ test('MCP stdio protocol isolation: interactive flow (initialize -> tools/list) 
 		stderrData += d.toString();
 	});
 
-	// Step 1: Initialize
-	proc.stdin.write(
-		JSON.stringify({
-			jsonrpc: '2.0',
-			id: 1,
-			method: 'initialize',
-			params: {
-				protocolVersion: '2024-11-05',
-				capabilities: {},
-				clientInfo: { name: 'test-client', version: '1.0.0' },
-			},
-		}) + '\n',
-	);
-
-	await new Promise((resolve) => setTimeout(resolve, 300));
-
-	// Step 2: Initialized notification + list tools
-	proc.stdin.write(
-		JSON.stringify({
-			jsonrpc: '2.0',
-			method: 'notifications/initialized',
-		}) + '\n',
-	);
-
-	proc.stdin.write(
-		JSON.stringify({
-			jsonrpc: '2.0',
-			id: 2,
-			method: 'tools/list',
-			params: {},
-		}) + '\n',
-	);
-
-	await new Promise((resolve) => setTimeout(resolve, 500));
-	proc.kill('SIGTERM');
-
-	const stdoutLines = stdoutData.trim().split('\n').filter(Boolean);
-	assert.ok(
-		stdoutLines.length >= 2,
-		'Should receive responses for initialize and tools/list',
-	);
-
-	let foundToolsList = false;
-	for (const line of stdoutLines) {
-		assert.doesNotThrow(
-			() => JSON.parse(line),
-			`Stdout line must be valid JSON: "${line}"`,
+	try {
+		// Step 1: Initialize
+		proc.stdin.write(
+			JSON.stringify({
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'initialize',
+				params: {
+					protocolVersion: '2024-11-05',
+					capabilities: {},
+					clientInfo: { name: 'test-client', version: '1.0.0' },
+				},
+			}) + '\n',
 		);
-		const parsed = JSON.parse(line);
-		assert.equal(parsed.jsonrpc, '2.0');
-		if (parsed.id === 2 && parsed.result?.tools) {
-			foundToolsList = true;
-			assert.ok(Array.isArray(parsed.result.tools));
-			assert.ok(parsed.result.tools.length > 0);
-		}
-	}
 
-	assert.ok(
-		foundToolsList,
-		'Should have received valid tools list response on stdout',
-	);
-	assert.ok(stderrData.length > 0, 'Stderr should have received logs');
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		// Step 2: Initialized notification + list tools
+		proc.stdin.write(
+			JSON.stringify({
+				jsonrpc: '2.0',
+				method: 'notifications/initialized',
+			}) + '\n',
+		);
+
+		proc.stdin.write(
+			JSON.stringify({
+				jsonrpc: '2.0',
+				id: 2,
+				method: 'tools/list',
+				params: {},
+			}) + '\n',
+		);
+
+		await new Promise((resolve) => setTimeout(resolve, 500));
+
+		const stdoutLines = stdoutData.trim().split('\n').filter(Boolean);
+		assert.ok(
+			stdoutLines.length >= 2,
+			'Should receive responses for initialize and tools/list',
+		);
+
+		let foundToolsList = false;
+		for (const line of stdoutLines) {
+			assert.doesNotThrow(
+				() => JSON.parse(line),
+				`Stdout line must be valid JSON: "${line}"`,
+			);
+			const parsed = JSON.parse(line);
+			assert.equal(parsed.jsonrpc, '2.0');
+			if (parsed.id === 2 && parsed.result?.tools) {
+				foundToolsList = true;
+				assert.ok(Array.isArray(parsed.result.tools));
+				assert.ok(parsed.result.tools.length > 0);
+			}
+		}
+
+		assert.ok(
+			foundToolsList,
+			'Should have received valid tools list response on stdout',
+		);
+		assert.ok(stderrData.length > 0, 'Stderr should have received logs');
+	} finally {
+		proc.kill('SIGTERM');
+	}
 });

@@ -11,6 +11,7 @@
 import util from 'node:util';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
+import { SetLevelRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Logger } from './logger.js';
 import { LogLevel } from './types.js';
 import type { LogEntry } from './types.js';
@@ -21,6 +22,10 @@ export interface McpLoggingServer {
 		data: unknown;
 		logger?: string;
 	}): Promise<void> | unknown;
+	setRequestHandler?: (
+		schema: unknown,
+		handler: (request: any, extra?: any) => Promise<any> | any,
+	) => void;
 }
 
 /**
@@ -76,6 +81,30 @@ export function attachMcpLogging(
 		return () => {};
 	}
 
+	// Register setLevel handler on MCP server if supported
+	if (
+		typeof (server as { setRequestHandler?: unknown }).setRequestHandler ===
+		'function'
+	) {
+		try {
+			(
+				server as {
+					setRequestHandler: (
+						schema: unknown,
+						handler: (request: {
+							params: { level: LoggingLevel };
+						}) => Promise<Record<string, never>>,
+					) => void;
+				}
+			).setRequestHandler(SetLevelRequestSchema, async (request) => {
+				targetLogger.setLevel(request.params.level);
+				return {};
+			});
+		} catch {
+			// Ignore if setRequestHandler fails or is unsupported
+		}
+	}
+
 	let isDispatching = false;
 
 	const unsubscribe = targetLogger.subscribe((entry: LogEntry) => {
@@ -84,10 +113,27 @@ export function attachMcpLogging(
 		}
 
 		const mcpLevel = mapToMcpLogLevel(entry.level);
-		const data =
+		let data =
 			entry.args && entry.args.length > 0
 				? util.format(entry.message, ...entry.args)
 				: entry.message;
+
+		if (entry.error) {
+			if (entry.error instanceof Error) {
+				data += `\n${entry.error.stack || entry.error.message}`;
+			} else if (typeof entry.error === 'object' && entry.error !== null) {
+				const errObj = entry.error as Record<string, unknown>;
+				let fallback: string;
+				try {
+					fallback = JSON.stringify(entry.error);
+				} catch {
+					fallback = String(entry.error);
+				}
+				data += `\n${errObj.stack || errObj.message || fallback}`;
+			} else {
+				data += `\n${String(entry.error)}`;
+			}
+		}
 		const loggerName =
 			entry.module ??
 			(entry.bindings?.module as string | undefined) ??
