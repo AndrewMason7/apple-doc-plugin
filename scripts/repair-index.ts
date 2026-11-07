@@ -219,6 +219,18 @@ async function repairIndex() {
 	db.rebuildFTS();
 	db.setMeta('repaired_at', new Date().toISOString());
 	db.setMeta('symbol_count', String(db.getSymbolCount()));
+	// Keep the metadata derivable: `semantic_item_count` must reflect the
+	// vector table, not a stale number from a previous build, or a repaired
+	// snapshot claims vectors it does not have.
+	db.setMeta('semantic_item_count', String(db.getSemanticItemCount()));
+	// A snapshot repaired without a rebuild still needs a build stamp, or
+	// freshness falls back to the database file mtime.
+	if (!db.getMeta('built_at')) {
+		db.setMeta(
+			'built_at',
+			db.getMeta('repaired_at') ?? new Date().toISOString(),
+		);
+	}
 
 	console.error(
 		`\n✅ Repair complete — ${reattributed} framework fix(es), ${resolved} kind fix(es).`,
