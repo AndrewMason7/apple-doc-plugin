@@ -30,6 +30,14 @@ export interface IdiomDefinition {
 	description: string;
 	/** Synonyms or alternate spellings to match */
 	aliases?: string[];
+	/**
+	 * Match identifier-shaped terms case-sensitively. Several idioms are also
+	 * common English words (`Room`, `Retrofit`); without this, a query like
+	 * "chat room layout" injects SwiftData symbols the caller never asked for.
+	 * Lowercase aliases keep case-insensitive matching, so `Room` still matches
+	 * "Room database" while "room" does not.
+	 */
+	caseSensitive?: boolean;
 }
 
 export const CROSS_FRAMEWORK_IDIOMS: IdiomDefinition[] = [
@@ -159,7 +167,7 @@ export const CROSS_FRAMEWORK_IDIOMS: IdiomDefinition[] = [
 		appleSymbols: ['Observable', '@Observable', 'ObservableObject'],
 		frameworks: ['Observation', 'SwiftUI'],
 		description: 'View-model architecture pattern for SwiftUI views',
-		aliases: ['view_model', 'viewmodel'],
+		aliases: ['view_model', 'viewmodel', 'view model'],
 	},
 
 	// 3. Storage & Persistence
@@ -204,6 +212,7 @@ export const CROSS_FRAMEWORK_IDIOMS: IdiomDefinition[] = [
 		idiom: 'Room',
 		ecosystem: 'android',
 		category: 'storage',
+		caseSensitive: true,
 		appleSymbols: [
 			'SwiftData',
 			'ModelContainer',
@@ -326,6 +335,7 @@ export const CROSS_FRAMEWORK_IDIOMS: IdiomDefinition[] = [
 		idiom: 'Retrofit',
 		ecosystem: 'android',
 		category: 'networking',
+		caseSensitive: true,
 		appleSymbols: ['URLSession', 'URLRequest', 'data(from:)'],
 		frameworks: ['Foundation'],
 		description: 'HTTP client networking via URLSession',
@@ -442,8 +452,14 @@ export function expandQuery(query: string): QueryExpansionResult {
 
 			// For single-token idiom
 			if (!normTerm.includes(' ') && !normTerm.includes(':')) {
-				const escaped = escapeRegex(normTerm);
-				const regex = new RegExp(`(^|\\b|\\W)${escaped}(\\b|\\W|$)`, 'i');
+				// A case-sensitive idiom must be built from its original
+				// spelling: sourcing the pattern from the lowercased copy would
+				// turn "Room" back into a match for the English word "room".
+				const caseSensitive = Boolean(def.caseSensitive) && /[A-Z]/.test(term);
+				const patternSource = caseSensitive ? term : normTerm;
+				const escaped = escapeRegex(patternSource);
+				const flags = caseSensitive ? '' : 'i';
+				const regex = new RegExp(`(^|\\b|\\W)${escaped}(\\b|\\W|$)`, flags);
 				if (regex.test(trimmed)) {
 					isMatched = true;
 					break;

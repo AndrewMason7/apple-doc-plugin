@@ -161,3 +161,32 @@ test('expandQuery: Android onDestroy maps to onDisappear and deinit', () => {
 	assert.ok(res.mappedSymbols.includes('onDisappear'));
 	assert.ok(res.mappedSymbols.includes('deinit'));
 });
+
+test('expandQuery: matches "Room" case-sensitively so the English word "room" stays out', () => {
+	// Regression: "chat room layout" used to match the Room idiom and inject
+	// SwiftData/CoreData symbols the caller never asked for.
+	const lower = expandQuery('chat room layout');
+	assert.strictEqual(lower.hasExpansion, false);
+	assert.strictEqual(lower.matchedIdioms.length, 0);
+
+	const upper = expandQuery('Room database');
+	assert.strictEqual(upper.hasExpansion, true);
+	assert.ok(upper.mappedSymbols.includes('SwiftData'));
+	assert.ok(upper.mappedSymbols.includes('ModelContainer'));
+});
+
+test('expandQuery: matches "Retrofit" case-sensitively', () => {
+	assert.strictEqual(
+		expandQuery('retrofit an existing app').hasExpansion,
+		false,
+	);
+	const res = expandQuery('Retrofit client');
+	assert.strictEqual(res.hasExpansion, true);
+	assert.ok(res.mappedSymbols.includes('URLSession'));
+});
+
+test('expandQuery: maps the "view model" phrase to Observable', () => {
+	const res = expandQuery('view model architecture');
+	assert.strictEqual(res.hasExpansion, true);
+	assert.ok(res.mappedSymbols.includes('Observable'));
+});
