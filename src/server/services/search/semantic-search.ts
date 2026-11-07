@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { GoogleAuth } from 'google-auth-library';
 import type { EmbeddingProvider } from './embedding-provider.js';
 import { withRetry } from './retry.js';
+import { logger } from '../../logger.js';
+
+const log = logger.child({ module: 'semantic-search' });
 
 export interface SemanticMatch {
 	id: string;
@@ -258,14 +261,14 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 
 			if (isTimeout || isNetworkError || isAuthError || isRateLimitOrServer) {
 				this.tripCircuitBreaker(30_000);
-				console.error(
-					`Warning: Gemini API error (${status || err.code || 'timeout'}) during ${action}. Circuit breaker tripped for 30s.`,
+				log.warn(
+					`Gemini API error (${status || err.code || 'timeout'}) during ${action}. Circuit breaker tripped for 30s.`,
 				);
 				return;
 			}
 		}
-		console.error(
-			`Warning: Gemini API call failed during ${action}:`,
+		log.error(
+			`Gemini API call failed during ${action}:`,
 			err instanceof Error ? err.message : err,
 		);
 	}
@@ -481,8 +484,8 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 							const status = axios.isAxiosError(error)
 								? error.response?.status
 								: undefined;
-							console.error(
-								`   ⚠ batch retry ${attempt}/5 after HTTP ${status ?? 'network error'} (waiting ${delayMs}ms)`,
+							log.warn(
+								`batch retry ${attempt}/5 after HTTP ${status ?? 'network error'} (waiting ${delayMs}ms)`,
 							);
 							this.handleApiError(error, 'embedDocuments');
 						},

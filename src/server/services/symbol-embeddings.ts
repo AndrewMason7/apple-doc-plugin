@@ -1,5 +1,8 @@
 import type { AppleDocsDB } from '../db/database.js';
 import type { EmbeddingProvider } from './search/embedding-provider.js';
+import { logger } from '../logger.js';
+
+const log = logger.child({ module: 'embeddings' });
 
 /** A symbol row shaped for embedding (subset of the symbols table). */
 export interface EmbeddingCandidate {
@@ -168,8 +171,8 @@ export async function embedSymbols(
 						})),
 					)) ?? vectors;
 			} catch (err) {
-				console.error(
-					`   ⚠ batch failed (${chunk.length} items): ${err instanceof Error ? err.message : String(err)}`,
+				log.warn(
+					`batch failed (${chunk.length} items): ${err instanceof Error ? err.message : String(err)}`,
 				);
 			}
 
@@ -185,8 +188,8 @@ export async function embedSymbols(
 						);
 					} catch (err) {
 						vector = null;
-						console.error(
-							`   ⚠ ${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
+						log.warn(
+							`${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
 						);
 					}
 				}
@@ -210,8 +213,8 @@ export async function embedSymbols(
 				vector = await provider.embedDocument(text, candidate.title);
 			} catch (err) {
 				failed++;
-				console.error(
-					`   ⚠ ${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
+				log.warn(
+					`${candidate.id}: ${err instanceof Error ? err.message : String(err)}`,
 				);
 				continue;
 			}

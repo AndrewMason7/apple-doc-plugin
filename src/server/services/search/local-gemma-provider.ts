@@ -2,6 +2,9 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { EmbeddingProvider } from './embedding-provider.js';
+import { logger } from '../../logger.js';
+
+const log = logger.child({ module: 'gemma-provider' });
 
 export function getDefaultLocalModelPath(): string {
 	if (process.env.APPLE_DOCS_EMBEDDING_MODEL_PATH) {
@@ -89,8 +92,8 @@ export class LocalGemmaEmbeddingProvider implements EmbeddingProvider {
 					this.embeddingContext =
 						await this.modelInstance.createEmbeddingContext();
 				} catch (err) {
-					console.error(
-						'Warning: Failed to initialize in-process LocalGemmaEmbeddingProvider:',
+					log.warn(
+						'Failed to initialize in-process LocalGemmaEmbeddingProvider:',
 						err instanceof Error ? err.message : err,
 					);
 					this.failedInit = true;
@@ -115,8 +118,8 @@ export class LocalGemmaEmbeddingProvider implements EmbeddingProvider {
 			if (!vector || vector.length === 0) return null;
 			return l2Normalize(vector);
 		} catch (err) {
-			console.error(
-				'Warning: LocalGemmaEmbeddingProvider embedQuery failed:',
+			log.warn(
+				'LocalGemmaEmbeddingProvider embedQuery failed:',
 				err instanceof Error ? err.message : err,
 			);
 			return null;
@@ -142,8 +145,8 @@ export class LocalGemmaEmbeddingProvider implements EmbeddingProvider {
 			if (!vector || vector.length === 0) return null;
 			return l2Normalize(vector);
 		} catch (err) {
-			console.error(
-				'Warning: LocalGemmaEmbeddingProvider embedDocument failed:',
+			log.warn(
+				'LocalGemmaEmbeddingProvider embedDocument failed:',
 				err instanceof Error ? err.message : err,
 			);
 			return null;

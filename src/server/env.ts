@@ -1,13 +1,16 @@
 import { existsSync } from 'node:fs';
+import { logger as rootLogger } from './logger.js';
 
 export interface EnvLoadResult {
 	loaded: boolean;
 	error?: string;
 }
 
+const log = rootLogger.child({ module: 'env' });
+
 export function loadEnvironment(
 	explicitPath?: string,
-	logger: (message: string) => void = console.error,
+	logger: (message: string) => void = (msg: string) => log.info(msg),
 ): EnvLoadResult {
 	if (typeof process.loadEnvFile !== 'function') {
 		return { loaded: false };

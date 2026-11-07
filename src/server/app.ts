@@ -11,6 +11,9 @@ import { AppleDocsDB } from './db/database.js';
 import { resolveDbPath } from './db/db-path.js';
 import { HybridSearchEngine } from './services/search/hybrid-search.js';
 import { loadEnvironment } from './env.js';
+import { logger } from './logger.js';
+
+const log = logger.child({ module: 'app' });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -62,9 +65,9 @@ export const createServer = () => {
 			db = new AppleDocsDB(dbPath, { readonly: true });
 			searchEngine = new HybridSearchEngine(db);
 		} catch (err) {
-			console.error(
+			log.error(
 				'Failed to open pre-indexed SQLite database, falling back to dynamic search:',
-				err instanceof Error ? err.message : err,
+				err,
 			);
 			db = undefined;
 			searchEngine = undefined;
