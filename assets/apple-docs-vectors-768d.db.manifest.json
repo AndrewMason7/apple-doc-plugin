@@ -1,0 +1,31 @@
+{
+	"formatVersion": 1,
+	"filename": "apple-docs-vectors-768d.db.gz",
+	"sha256": "a149456a10616291676282a17aba250c49ac6c929a88c75c80481a31135ecb86",
+	"byteSize": 56979923,
+	"totalVectors": 19473,
+	"dimensions": 768,
+	"exportedAt": "2026-11-07T19:53:46.894843Z",
+	"frameworks": [
+		"AVKit",
+		"AppKit",
+		"BundleResources",
+		"Combine",
+		"CoreData",
+		"CoreLocation",
+		"Distributed",
+		"Foundation",
+		"MapKit",
+		"ObjectiveC",
+		"Observation",
+		"PassKit",
+		"RegexBuilder",
+		"Swift",
+		"SwiftData",
+		"SwiftUI",
+		"Synchronization",
+		"UIKit",
+		"WebKit",
+		"visionOS"
+	]
+}
