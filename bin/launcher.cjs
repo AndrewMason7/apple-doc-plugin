@@ -8,11 +8,14 @@ const pluginRoot = path.resolve(__dirname, '..');
 const nodeModules = path.join(pluginRoot, 'node_modules');
 const distIndex = path.join(pluginRoot, 'dist', 'index.js');
 
-// Auto-bootstrap dependencies if missing (e.g. fresh clone or remote plugin install)
+// Auto-bootstrap dependencies if missing (e.g. fresh clone or remote plugin install).
+// Development dependencies are required here: `npm run build` runs `tsc`, and
+// `--omit=dev` leaves TypeScript and @types/node out, so the build emits a wall
+// of TS2580/TS2307 errors (it still emits JS, but the noise hides real ones).
 if (!fs.existsSync(nodeModules)) {
 	try {
 		process.stderr.write('[apple-doc-plugin] Installing dependencies...\n');
-		execSync('npm install --omit=dev --no-audit --no-fund', {
+		execSync('npm install --no-audit --no-fund', {
 			cwd: pluginRoot,
 			stdio: ['ignore', 'ignore', 'inherit'],
 		});
