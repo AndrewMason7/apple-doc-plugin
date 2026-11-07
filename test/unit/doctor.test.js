@@ -551,7 +551,10 @@ test('runDoctor: includes logging_config check without mutating report structure
 	assert.strictEqual(loggingCheck.title, 'Logging configuration');
 	assert.strictEqual(typeof loggingCheck.status, 'string');
 	assert.strictEqual(loggingCheck.status, 'ok');
-	assert.match(loggingCheck.detail, /level: \w+, ring buffer: \d+\/\d+/);
+	assert.match(
+		loggingCheck.detail,
+		/level: \w+, format: \w+, ring buffer: \d+\/\d+/,
+	);
 });
 
 test('runDoctor: reports warn on logging_config when diagnostic buffer contains error entries', () => {
@@ -571,7 +574,50 @@ test('runDoctor: reports warn on logging_config when diagnostic buffer contains 
 		assert.ok(loggingCheck, 'Doctor report must include logging_config check');
 		assert.strictEqual(loggingCheck.status, 'warn');
 		assert.match(loggingCheck.detail, /recent error\(s\) in diagnostic buffer/);
+		assert.strictEqual(loggingCheck.nextStep, 'DEBUG=1 npm run doctor');
 	} finally {
 		ring.clear();
+	}
+});
+
+test('runDoctor: warns when LOG_LEVEL is invalid with a copy-pasteable nextStep', () => {
+	const prevLogLevel = process.env.LOG_LEVEL;
+	process.env.LOG_LEVEL = 'bogus_level';
+	try {
+		const ctx = makeContext();
+		addSymbol(ctx.db, 0);
+		const report = runDoctor(ctx);
+		const loggingCheck = report.checks.find((c) => c.id === 'logging_config');
+		assert.ok(loggingCheck);
+		assert.strictEqual(loggingCheck.status, 'warn');
+		assert.match(loggingCheck.detail, /invalid LOG_LEVEL/);
+		assert.strictEqual(loggingCheck.nextStep, 'export LOG_LEVEL=info');
+	} finally {
+		if (prevLogLevel === undefined) {
+			delete process.env.LOG_LEVEL;
+		} else {
+			process.env.LOG_LEVEL = prevLogLevel;
+		}
+	}
+});
+
+test('runDoctor: warns when LOG_FORMAT is invalid with a copy-pasteable nextStep', () => {
+	const prevLogFormat = process.env.LOG_FORMAT;
+	process.env.LOG_FORMAT = 'xml';
+	try {
+		const ctx = makeContext();
+		addSymbol(ctx.db, 0);
+		const report = runDoctor(ctx);
+		const loggingCheck = report.checks.find((c) => c.id === 'logging_config');
+		assert.ok(loggingCheck);
+		assert.strictEqual(loggingCheck.status, 'warn');
+		assert.match(loggingCheck.detail, /invalid LOG_FORMAT/);
+		assert.strictEqual(loggingCheck.nextStep, 'export LOG_FORMAT=text');
+	} finally {
+		if (prevLogFormat === undefined) {
+			delete process.env.LOG_FORMAT;
+		} else {
+			process.env.LOG_FORMAT = prevLogFormat;
+		}
 	}
 });

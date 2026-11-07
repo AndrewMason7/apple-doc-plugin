@@ -3,7 +3,7 @@ import type { AppleDocsDB, FreshnessInfo } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
 import { isVirtualDbPath } from '../db/db-path.js';
 import type { EmbeddingProvider } from './search/embedding-provider.js';
-import { logger } from '../logger.js';
+import { logger, NAME_TO_LOG_LEVEL } from '../logger.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 
@@ -389,7 +389,37 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 	// 11. Logging configuration & diagnostic buffer
 	checks.push(
 		safe('logging_config', 'Logging configuration', '', () => {
+			if (process.env.LOG_LEVEL) {
+				const normalizedLevel = process.env.LOG_LEVEL.trim().toLowerCase();
+				if (NAME_TO_LOG_LEVEL[normalizedLevel] === undefined) {
+					return check(
+						'logging_config',
+						'Logging configuration',
+						'warn',
+						`invalid LOG_LEVEL="${process.env.LOG_LEVEL}" (expected trace, debug, info, warn, error, silent)`,
+						'export LOG_LEVEL=info',
+					);
+				}
+			}
+
+			if (process.env.LOG_FORMAT) {
+				const normalizedFormat = process.env.LOG_FORMAT.trim().toLowerCase();
+				if (normalizedFormat !== 'text' && normalizedFormat !== 'json') {
+					return check(
+						'logging_config',
+						'Logging configuration',
+						'warn',
+						`invalid LOG_FORMAT="${process.env.LOG_FORMAT}" (expected text, json)`,
+						'export LOG_FORMAT=text',
+					);
+				}
+			}
+
 			const levelName = logger.getLevelName();
+			const formatMode =
+				process.env.LOG_FORMAT?.trim().toLowerCase() === 'json'
+					? 'json'
+					: 'text';
 			const ring = logger.getRingBuffer();
 			const errors = ring
 				.getRecent()
@@ -400,13 +430,14 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 					'Logging configuration',
 					'warn',
 					`level: ${levelName}, ${errors} recent error(s) in diagnostic buffer`,
+					'DEBUG=1 npm run doctor',
 				);
 			}
 			return check(
 				'logging_config',
 				'Logging configuration',
 				'ok',
-				`level: ${levelName}, ring buffer: ${ring.size()}/${ring.getCapacity()}`,
+				`level: ${levelName}, format: ${formatMode}, ring buffer: ${ring.size()}/${ring.getCapacity()}`,
 			);
 		}),
 	);
