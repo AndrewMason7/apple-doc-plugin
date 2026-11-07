@@ -45,6 +45,18 @@ export const semanticIdForSymbol = (symbolId: string): string =>
 	`sym-${symbolId}`;
 
 /**
+ * Inverse of {@link semanticIdForSymbol}.
+ *
+ * Rank fusion keys on id, so the `sym-` prefix must come back off before RRF:
+ * with it left on, a semantic hit can never meet its lexical twin, and the same
+ * document is emitted twice — once as `fts`, once as `semantic` — which also
+ * makes `source: 'hybrid'` unreachable. Non-symbol ids (`tech-`, `media-`)
+ * pass through unchanged.
+ */
+export const semanticSymbolId = (id: string): string =>
+	id.startsWith('sym-') ? id.slice(4) : id;
+
+/**
  * Document text handed to the embedding model.
  *
  * Apple's abstract IS the document — the provider already prefixes the title
