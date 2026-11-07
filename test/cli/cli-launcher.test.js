@@ -14,6 +14,7 @@ test('CLI launcher: --help prints subcommands and exits 0', async () => {
 		});
 	});
 
+	assert.equal(result.stderr, '', 'Stderr must be completely clean for --help');
 	assert.ok(
 		result.stdout.includes(
 			'Apple Developer Documentation MCP Server & Toolkit',
@@ -26,6 +27,40 @@ test('CLI launcher: --help prints subcommands and exits 0', async () => {
 	assert.ok(result.stdout.includes('setup'));
 	assert.ok(result.stdout.includes('export-vectors'));
 	assert.ok(result.stdout.includes('index-xcode'));
+});
+
+test('CLI launcher: --help is not polluted by logger output even with verbose LOG_LEVEL=trace and LOG_FORMAT=json', async () => {
+	const result = await new Promise((resolve, reject) => {
+		execFile(
+			'node',
+			[distIndex, '--help'],
+			{ env: { ...process.env, LOG_LEVEL: 'trace', LOG_FORMAT: 'json' } },
+			(error, stdout, stderr) => {
+				if (error) return reject(error);
+				resolve({ stdout, stderr });
+			},
+		);
+	});
+
+	assert.equal(
+		result.stderr,
+		'',
+		'Stderr must not receive logger output for CLI help',
+	);
+	assert.ok(
+		result.stdout.includes(
+			'Apple Developer Documentation MCP Server & Toolkit',
+		),
+	);
+	// Verify stdout contains no stray JSON log lines
+	for (const line of result.stdout.split('\n')) {
+		const trimmed = line.trim();
+		if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+			assert.fail(
+				`Stdout contained unexpected JSON logger output: "${trimmed}"`,
+			);
+		}
+	}
 });
 
 test('CLI launcher: export-vectors --help prints usage and exits 0', async () => {
