@@ -118,7 +118,7 @@ test('resolveTargetConfigPath: correctly resolves across platforms', () => {
 	}, /Unsupported target/);
 });
 
-test('installMcpServer: creates new config file when none exists', () => {
+test('installMcpServer: creates new config file when none exists (defaults to npx mode)', () => {
 	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-install-'));
 	const targetConfig = path.join(tempDir, 'mcp.json');
 
@@ -135,6 +135,27 @@ test('installMcpServer: creates new config file when none exists', () => {
 	const saved = JSON.parse(fs.readFileSync(targetConfig, 'utf8'));
 	assert.ok(saved.mcpServers);
 	assert.ok(saved.mcpServers['apple-docs']);
+	assert.strictEqual(saved.mcpServers['apple-docs'].command, 'npx');
+	assert.deepStrictEqual(saved.mcpServers['apple-docs'].args, [
+		'-y',
+		'apple-doc-plugin',
+	]);
+});
+
+test('installMcpServer: mode "local" writes node and launcher.cjs', () => {
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-install-'));
+	const targetConfig = path.join(tempDir, 'mcp.json');
+
+	const result = installMcpServer({
+		target: 'cursor',
+		configPath: targetConfig,
+		mode: 'local',
+	});
+
+	assert.strictEqual(result.serverConfig.command, 'node');
+	assert.ok(result.serverConfig.args[0].includes('launcher.cjs'));
+
+	const saved = JSON.parse(fs.readFileSync(targetConfig, 'utf8'));
 	assert.strictEqual(saved.mcpServers['apple-docs'].command, 'node');
 	assert.ok(saved.mcpServers['apple-docs'].args[0].includes('launcher.cjs'));
 });
@@ -254,4 +275,37 @@ test('runInstallerCli: --env flags configure server environment variables', asyn
 		saved.mcpServers['apple-docs'].env.APPLE_DOCS_DB_PATH,
 		'/custom/db.db',
 	);
+});
+
+test('runInstallerCli: --local flag forces local launcher mode', async () => {
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-install-'));
+	const targetConfig = path.join(tempDir, 'mcp.json');
+
+	const code = await runInstallerCli({
+		argv: ['--target', 'cursor', '--config-path', targetConfig, '--local'],
+		print: () => {},
+	});
+
+	assert.strictEqual(code, 0);
+	const saved = JSON.parse(fs.readFileSync(targetConfig, 'utf8'));
+	assert.strictEqual(saved.mcpServers['apple-docs'].command, 'node');
+	assert.ok(saved.mcpServers['apple-docs'].args[0].includes('launcher.cjs'));
+});
+
+test('runInstallerCli: default mode writes npx portable configuration', async () => {
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-install-'));
+	const targetConfig = path.join(tempDir, 'mcp.json');
+
+	const code = await runInstallerCli({
+		argv: ['--target', 'cursor', '--config-path', targetConfig],
+		print: () => {},
+	});
+
+	assert.strictEqual(code, 0);
+	const saved = JSON.parse(fs.readFileSync(targetConfig, 'utf8'));
+	assert.strictEqual(saved.mcpServers['apple-docs'].command, 'npx');
+	assert.deepStrictEqual(saved.mcpServers['apple-docs'].args, [
+		'-y',
+		'apple-doc-plugin',
+	]);
 });

@@ -16,6 +16,8 @@ export type InstallerTarget =
 	| 'antigravity'
 	| 'vscode';
 
+export type InstallMode = 'npx' | 'local';
+
 export interface InstallServerConfig {
 	command: string;
 	args: string[];
@@ -25,6 +27,8 @@ export interface InstallServerConfig {
 export interface InstallOptions {
 	/** Target IDE / Agent */
 	target: InstallerTarget | string;
+	/** Installation mode: "npx" (default, portable) or "local" (repository launcher) */
+	mode?: InstallMode;
 	/** Custom config destination override */
 	configPath?: string;
 	/** Name of the MCP server key in mcpServers object (defaults to "apple-docs") */
@@ -254,11 +258,23 @@ export function installMcpServer(options: InstallOptions): InstallResult {
 		});
 
 	const serverName = options.serverName || 'apple-docs';
-	const projectRoot = getProjectRoot();
-	const defaultLauncher = resolve(projectRoot, 'bin', 'launcher.cjs');
+	const mode = options.mode ?? 'npx';
 
-	const command = options.command || 'node';
-	const args = options.args || [defaultLauncher];
+	let defaultCommand: string;
+	let defaultArgs: string[];
+
+	if (mode === 'local') {
+		const projectRoot = getProjectRoot();
+		const defaultLauncher = resolve(projectRoot, 'bin', 'launcher.cjs');
+		defaultCommand = 'node';
+		defaultArgs = [defaultLauncher];
+	} else {
+		defaultCommand = 'npx';
+		defaultArgs = ['-y', 'apple-doc-plugin'];
+	}
+
+	const command = options.command || defaultCommand;
+	const args = options.args || defaultArgs;
 
 	const serverConfig: InstallServerConfig = {
 		command,

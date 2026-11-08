@@ -2,6 +2,7 @@ import {
 	installMcpServer,
 	resolveTargetConfigPath,
 	type InstallerTarget,
+	type InstallMode,
 } from '../../server/services/installer.js';
 
 export interface InstallerCliOptions {
@@ -19,7 +20,9 @@ Options:
   -t, --target <name>      Target IDE or agent: cursor, claude-desktop, windsurf, antigravity, vscode
   --config-path <path>     Explicit configuration file path override
   --name <name>            Custom MCP server key name (default: "apple-docs")
-  --command <cmd>          Executable command (default: "node")
+  --npx                    Configure using portable npx command (default)
+  --local                  Configure using repository launcher path
+  --command <cmd>          Executable command override
   --args <args>            Space-separated command arguments (default: path to bin/launcher.cjs)
   --env <KEY=VALUE>        Environment variable to pass (can be repeated)
   --dry-run                Print the resolved path and config JSON without writing to disk
@@ -99,10 +102,13 @@ export async function runInstallerCli(
 	const dryRun = argv.includes('--dry-run');
 	const force = argv.includes('--force');
 	const json = argv.includes('--json');
+	const isLocal = argv.includes('--local');
+	const mode: InstallMode = isLocal ? 'local' : 'npx';
 
 	try {
 		const result = installMcpServer({
 			target: target as InstallerTarget,
+			mode,
 			configPath,
 			serverName,
 			command,
