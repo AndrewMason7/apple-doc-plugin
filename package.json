@@ -11,7 +11,6 @@
 		"dist/",
 		"data/apple-docs.db",
 		"bin/",
-		"scripts/",
 		"plugin.json",
 		"plugin.yaml",
 		"bridges/",
@@ -42,6 +41,7 @@
 	"scripts": {
 		"clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true })\"",
 		"build": "npm run clean && tsc && chmod +x dist/index.js",
+		"prepublishOnly": "npm run check && npm test",
 		"build:index": "tsx scripts/build-index.ts",
 		"repair-index": "tsx scripts/repair-index.ts",
 		"test": "npm run build && node --test test/**/*.test.js",
