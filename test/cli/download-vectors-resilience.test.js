@@ -4,9 +4,13 @@ import { createServer } from 'node:http';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import test from 'node:test';
 import { AppleDocsDB } from '../../dist/server/db/database.js';
-import { downloadVectors } from '../../dist/server/services/download-vectors.js';
+import {
+	downloadVectors,
+	findLocalVectorArtifact,
+} from '../../dist/server/services/download-vectors.js';
 
 test('downloadVectors falls back to secondary mirror when primary mirror fails', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'dl-mirror-test-'));
@@ -137,6 +141,100 @@ test('downloadVectors validates SHA-256 and rejects corrupted mirror data', asyn
 	}
 });
 
+test('downloadVectors prefers an explicit URL over the bundled artifact', async (t) => {
+	const bundled = findLocalVectorArtifact();
+	if (!bundled) {
+		t.skip('no bundled vector artifact in this install layout');
+		return;
+	}
+
+	const dir = mkdtempSync(join(tmpdir(), 'dl-precedence-'));
+	const mockVectorDbPath = join(dir, 'mock-vectors.db');
+	const targetDbPath = join(dir, 'target.db');
+
+	const mockDb = new AppleDocsDB(mockVectorDbPath);
+	const vec = new Float32Array(768);
+	vec[0] = 0.6;
+	mockDb.insertSemanticItem({
+		id: 'sym/precedence',
+		framework: 'SwiftUI',
+		title: 'PrecedenceSymbol',
+		kind: 'struct',
+		summary: 'Imported from the caller-supplied mirror.',
+		path: '/documentation/swiftui/precedence',
+		embedding: vec,
+	});
+	mockDb.close();
+
+	const mockBuffer = readFileSync(mockVectorDbPath);
+	const server = createServer((req, res) => {
+		res.writeHead(200, {
+			'content-length': String(mockBuffer.length),
+			'content-type': 'application/x-sqlite3',
+		});
+		res.end(mockBuffer);
+	});
+	await new Promise((resolve) => server.listen(0, resolve));
+	const url = `http://127.0.0.1:${server.address().port}/mock.db`;
+
+	try {
+		const res = await downloadVectors({ url, dbPath: targetDbPath });
+		assert.strictEqual(res.importedCount, 1);
+		assert.strictEqual(res.sourceUrl, url);
+	} finally {
+		server.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('downloadVectors decompresses a gzipped artifact before import', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'dl-gzip-test-'));
+	const mockVectorDbPath = join(dir, 'valid-vectors.db');
+	const targetDbPath = join(dir, 'target.db');
+
+	const mockDb = new AppleDocsDB(mockVectorDbPath);
+	const vec = new Float32Array(768);
+	vec[0] = 0.9;
+	mockDb.insertSemanticItem({
+		id: 'sym/gzip',
+		framework: 'SwiftUI',
+		title: 'GzipSymbol',
+		kind: 'struct',
+		summary: 'A symbol imported through a compressed artifact.',
+		path: '/documentation/swiftui/gzip',
+		embedding: vec,
+	});
+	mockDb.close();
+
+	const gzipped = gzipSync(readFileSync(mockVectorDbPath));
+	const gzSha256 = createHash('sha256').update(gzipped).digest('hex');
+
+	const server = createServer((req, res) => {
+		res.writeHead(200, {
+			'content-length': String(gzipped.length),
+			'content-type': 'application/gzip',
+		});
+		res.end(gzipped);
+	});
+	await new Promise((resolve) => server.listen(0, resolve));
+	const url = `http://127.0.0.1:${server.address().port}/vectors.db.gz`;
+
+	try {
+		const res = await downloadVectors({
+			url,
+			dbPath: targetDbPath,
+			expectedSha256: gzSha256,
+		});
+
+		assert.strictEqual(res.importedCount, 1);
+		assert.strictEqual(res.totalVectors, 1);
+		assert.strictEqual(res.sha256, gzSha256);
+	} finally {
+		server.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test('downloadVectors throws comprehensive error when all mirrors fail', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'dl-all-fail-'));
 	const targetDbPath = join(dir, 'target.db');
@@ -151,7 +249,7 @@ test('downloadVectors throws comprehensive error when all mirrors fail', async (
 					timeoutMs: 1000,
 				});
 			},
-			{ message: /Failed to download vectors after trying 2 mirror\(s\)/ },
+			{ message: /Failed to import vectors from 2 source\(s\)/ },
 		);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });

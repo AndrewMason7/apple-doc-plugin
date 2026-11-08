@@ -15,7 +15,7 @@ Gives coding agents (Claude Code, Cursor, Windsurf, Antigravity, Hermes) deep un
 - 🧠 **Hybrid Semantic Search**: Combines dense vector embeddings with SQLite FTS5 BM25 via **Reciprocal Rank Fusion (RRF)**. Finds the right APIs even when your query shares zero words with the symbol name.
 - 🌉 **Cross-Framework Query Expansion**: Seamlessly bridges Web, React, and Android idioms (`useEffect`, `SharedPreferences`, `Flexbox`, `coroutine`, `AsyncStorage`) into native Apple symbols (`task`, `onAppear`, `AppStorage`, `HStack`, `VStack`, `Spacer`).
 - 🛠️ **One-Click IDE Configuration CLI**: Safely configure Cursor, Claude Desktop, Windsurf, Antigravity, and VS Code with `apple-doc-plugin install --target <ide>`.
-- ⚡ **65,787 Symbols Offline**: Ships with a pre-indexed database spanning SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Swift Standard Library, Observation, and CoreLocation.
+- ⚡ **65,787 Symbols Offline**: Ships with a pre-indexed database covering 14 fully indexed frameworks (SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Swift, Observation, CoreLocation, and more). 19,473 of those symbols carry the abstracts semantic search needs — see [Coverage](#coverage).
 - 🎯 **Dual Semantic Engines**: Run hosted embeddings with **Google Gemini** (`gemini-embedding-2`) or **100% offline** on Apple Silicon Metal with local GGUF (`embeddinggemma-2`).
 - 🔍 **Lexical Precision & Wildcards**: Full support for wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), exact-title boosting, and kind aliasing (`func` ↔ `method`).
 - 📖 **DocC AST to Agent Markdown**: Formats Apple DocC JSON into concise Markdown with method signatures, parameter tables, deprecation notices, and live CDN fallback.
@@ -27,15 +27,19 @@ Gives coding agents (Claude Code, Cursor, Windsurf, Antigravity, Hermes) deep un
 
 Traditional documentation tools require you to know the exact symbol name in advance. But when developers and AI agents build apps, they search for **behaviors, lifecycle events, and cross-platform idioms**:
 
-| What You Ask / What Agent Searches          | How Keyword Search Fails             | What `semantic_search` Returns                                  |
-| :------------------------------------------ | :----------------------------------- | :-------------------------------------------------------------- |
-| _"prevent sheet swipe dismiss"_             | 0 matches (words don't match)        | `interactiveDismissDisabled(_:)`                                |
-| _"code that runs when screen appears"_      | Matches random functions named `run` | `onAppear(perform:)`, `viewIsAppearing()`, `viewDidLoad()`      |
-| _"react useEffect equivalent"_              | 0 matches (React terminology)        | `.task(id:_:)`, `onAppear(perform:)`, `.onChange(of:_:)`        |
-| _"android shared preferences storage"_      | 0 matches (Android terminology)      | `@AppStorage`, `UserDefaults`                                   |
-| _"display: flex layout"_                    | 0 matches (CSS Flexbox terminology)  | `HStack`, `VStack`, `Spacer`, `Layout`                          |
-| _"three column navigation layout"_          | Matches generic `Navigation` terms   | `NavigationSplitView`, `NavigationSplitViewVisibility`          |
-| _"store sensitive credentials in keychain"_ | Misses non-keyword matches           | `SecItemAdd`, `kSecClassGenericPassword`, `LocalAuthentication` |
+> The right-hand column below was produced by the **hybrid** engine with `gemini-embedding-2`. In lexical-only mode (no vectors configured) the same queries fall back to keyword matching and return much weaker results — run `npm run download-vectors` or `npm run embed-index` to enable hybrid search. The local `embeddinggemma-2` model has a measurably lower ceiling on behavioral queries; see [Provider quality](#provider-quality).
+
+| What You Ask / What Agent Searches     | How Keyword Search Fails             | What `semantic_search` Returns (hybrid, Gemini)          |
+| :------------------------------------- | :----------------------------------- | :------------------------------------------------------- |
+| _"prevent sheet swipe dismiss"_        | 0 matches (words don't match)        | `interactiveDismissDisabled(_:)` ✅                      |
+| _"code that runs when screen appears"_ | Matches random functions named `run` | `viewIsAppearing()`, `viewDidAppear(_:)`                 |
+| _"react useEffect equivalent"_         | 0 matches (React terminology)        | `.task(id:_:)`, `onAppear(perform:)`, `.onChange(of:_:)` |
+| _"android shared preferences storage"_ | 0 matches (Android terminology)      | `@AppStorage`, `UserDefaults`                            |
+| _"display: flex layout"_               | 0 matches (CSS Flexbox terminology)  | `HStack`, `VStack`, `Spacer`, `Layout`                   |
+| _"three column navigation layout"_     | Matches generic `Navigation` terms   | `NavigationSplitView`, `case tripleColumn`               |
+| _"dismiss keyboard on tap outside"_    | 0 matches (the symbol is not named)  | `dismissKeyboard()`, `scrollDismissesKeyboardMode`       |
+
+> **Coverage honesty:** the index does **not** contain Keychain Services symbols. A query for _"store sensitive credentials in keychain"_ returns nothing relevant because `SecItemAdd` / `kSecClassGenericPassword` are not in the snapshot (the entire `Security` framework is one collection row). See [Coverage](#coverage) before promising a framework to an agent.
 
 ### How the Hybrid Engine Works
 
@@ -47,7 +51,7 @@ User / Agent Query ("react useEffect equivalent" or "prevent sheet swipe down")
   ├──► Lexical Branch: SQLite FTS5 (BM25 + Exact Name Boost + Mapped Symbol Bonus)
   │
   └──► Semantic Branch: Dense Vector Embedding (Gemini or Local GGUF)
-         └─ Enriched context prompt against 19,000+ Apple DocC vectors
+         └─ Enriched context prompt against 19,473 Apple DocC vectors
   │
   ▼
 Reciprocal Rank Fusion (RRF, k=60)
@@ -57,8 +61,9 @@ Ranked, Deduplicated Results with Runnable get_documentation Links
 ```
 
 - **Zero Demotion Risk**: Exact symbol matches receive an explicit boost so lexical precision is never sacrificed for semantic breadth.
-- **Enriched Member Abstracts**: Includes 13,800+ backfilled view modifiers, initializers, and methods so modifiers like `.interactiveDismissDisabled()` are indexed by behavior.
+- **Enriched Member Abstracts**: Includes backfilled view modifiers, initializers, and methods so modifiers like `.interactiveDismissDisabled()` are indexed by behavior.
 - **Calibrated Similarity Thresholds**: Uses empirically tuned cosine floors (`0.65` for Gemini, `0.68` for Gemma) to filter background noise while surfacing relevant API families.
+- **Real fusion, no duplicates**: Symbol vectors are stored under `sym-<symbolId>`; the fusion layer maps that back to the symbol id so a document found by both retrievers is emitted once with `source: "hybrid"` instead of appearing twice.
 
 ---
 
@@ -153,31 +158,45 @@ npm run doctor
 
 ```text
 ✔ Node.js                v24.x
-✔ Index file             data/apple-docs.db (30.3 MB)
+✔ Index file             data/apple-docs.db (32.5 MB)
 ✔ Symbols                65,787 rows
 ✔ FTS index              65,787 rows
 ✔ Symbol kinds           every row classified
 ✔ Framework attribution  consistent with paths
 ✔ Embedding provider     local-gguf (768-d) (or gemini)
 ⚠ Semantic layer         0/100 vectors — hybrid search cannot engage; queries stay lexical
-   → npm run embed-index
+   → npm run download-vectors   (fast, bundled artifact)
+   → npm run embed-index       (build locally)
 ✔ Vector dimensions      no vectors stored
-✔ Snapshot age           0 days old (from index timestamp)
+✔ Snapshot age           0 days old (from build metadata)
 
 All checks passed (1 warning).
 ```
 
-> **Note:** The shipped snapshot is immediately usable for fast offline lexical search (65,787 symbols). Once you configure a provider and run `npm run embed-index`, the semantic layer flips to `✔` with 19,473 vectors stored and hybrid search engages.
+> **Note:** The shipped snapshot is immediately usable for fast offline lexical search (65,787 symbols). Run `npm run download-vectors` to import the bundled 768-d vector artifact (19,473 vectors) in seconds, or `npm run embed-index` to build them yourself. Either way the semantic layer flips to `✔` and hybrid search engages.
 
 ---
 
 ## Setting Up Semantic Search
 
-The repository ships with lexical FTS5 ready out-of-the-box. Enabling the semantic layer gives you full hybrid vector search. You can choose hosted Gemini or 100% offline local GGUF:
+The repository ships with lexical FTS5 ready out-of-the-box. Enabling the semantic layer gives you full hybrid vector search.
 
-### Option A: Hosted Gemini (Recommended & Fastest)
+### Option A: Pre-computed Vector Artifact (Fastest — No API Key)
 
-Gemini embeddings (`gemini-embedding-2`) provide the highest conceptual ranking and fastest generation rate (~50 embeddings/second via batching).
+The 768-d vector layer is bundled in the repository as a gzip-compressed SQLite artifact (~54 MB) and pinned by SHA-256. Importing it takes seconds and needs no embedding provider:
+
+```bash
+npm run download-vectors
+npm run doctor
+```
+
+The command prefers the artifact already present under `assets/` (repo clone / plugin install), so this works fully offline. It falls back to the mirrored URL only when the bundled file is missing, and verifies the checksum on every path.
+
+> The full hybrid database is ~113 MB, over GitHub's 100 MB file limit, which is why the corpus and the vectors ship as two files instead of one.
+
+### Option B: Hosted Gemini (Best Ranking)
+
+Gemini embeddings (`gemini-embedding-2`) provide the highest conceptual ranking and fastest generation rate (~50 embeddings/second via batching). This is the provider the behavioral examples in this README were verified against.
 
 1. Get an API key from [Google AI Studio](https://aistudio.google.com/) (free tier available).
 2. Configure your environment:
@@ -196,7 +215,7 @@ Gemini embeddings (`gemini-embedding-2`) provide the highest conceptual ranking 
    ```
    The semantic layer will now display `✔` and hybrid search is immediately engaged.
 
-### Option B: Local GGUF (100% Offline & Private)
+### Option C: Local GGUF (100% Offline & Private)
 
 Run vector embeddings completely on-device using EmbeddingGemma via Apple Silicon Metal acceleration:
 
@@ -208,6 +227,21 @@ hf download unsloth/embeddinggemma-2-GGUF embeddinggemma-2-Q8_0.gguf --local-dir
 # 2. Embed the symbol layer
 npm run embed-index
 ```
+
+### Provider quality
+
+The two embedding backends are not equivalent on behavioral queries. Measured on the shipped corpus (top result for each query):
+
+| Query                                  | `gemini-embedding-2`                | `embeddinggemma-2` (Q8_0, local)          |
+| :------------------------------------- | :---------------------------------- | :---------------------------------------- |
+| _"prevent sheet swipe dismiss"_        | `interactiveDismissDisabled(_:)` ✅ | `swipeActionsContainer()` ❌              |
+| _"code that runs when screen appears"_ | `viewIsAppearing()` ✅              | `Protecting sensitive content…` ❌        |
+| _"three column navigation layout"_     | `NavigationSplitView` ✅            | `NavigationSplitView` ✅                  |
+| _"dismiss keyboard on tap outside"_    | `dismissKeyboard()` ✅              | `Handling key presses…` ❌                |
+| _"biometric authentication view"_      | `LocalAuthenticationView` ✅        | `Handling an authentication challenge` ❌ |
+| `_NavigationSplitView_` (exact)        | `NavigationSplitView` ✅            | `NavigationSplitView` ✅                  |
+
+The 270M local backbone has a real ceiling over terse one-line abstracts: it is fine for exact names and concept-level matches, and misses many intent-style paraphrases. Use Gemini when ranking quality matters, and the local model when privacy/offline matters more.
 
 ---
 
@@ -225,20 +259,51 @@ The server exposes dedicated tools designed specifically for AI agent pair progr
 
 ### Search Modes Compared
 
-| Capability            | Offline Lexical (Default)        | Hybrid Semantic (Embedded)                       |
-| :-------------------- | :------------------------------- | :----------------------------------------------- |
-| **Primary Tool**      | `search_symbols`                 | `semantic_search`                                |
-| **Ranking Algorithm** | SQLite FTS5 (BM25)               | Reciprocal Rank Fusion (BM25 + Cosine Vectors)   |
-| **Query Type**        | Exact names, wildcards (`Grid*`) | Natural language, concepts, behaviors            |
-| **Requirements**      | Node.js 22+ (shipped database)   | Gemini Key or local GGUF (`npm run embed-index`) |
-| **Network Access**    | 100% Offline                     | 100% Offline (with GGUF) or Gemini API           |
+| Capability            | Offline Lexical (Default)        | Hybrid Semantic (Embedded)                                                                      |
+| :-------------------- | :------------------------------- | :---------------------------------------------------------------------------------------------- |
+| **Primary Tool**      | `search_symbols`                 | `semantic_search`                                                                               |
+| **Ranking Algorithm** | SQLite FTS5 (BM25)               | Reciprocal Rank Fusion (BM25 + Cosine Vectors)                                                  |
+| **Query Type**        | Exact names, wildcards (`Grid*`) | Natural language, concepts, behaviors                                                           |
+| **Requirements**      | Node.js 22+ (shipped database)   | Vector artifact, Gemini Key, or local GGUF (`npm run download-vectors` / `npm run embed-index`) |
+| **Network Access**    | 100% Offline                     | 100% Offline (bundled artifact or GGUF) or Gemini API                                           |
+
+---
+
+## Coverage
+
+The snapshot holds **65,787 symbols**, but they are not evenly distributed. Frameworks with at least 25 symbols are considered indexed; the rest are cross-reference targets that appear only because an indexed page links to them.
+
+| Indexed framework | Symbols |     | Cross-reference target | Symbols |
+| :---------------- | ------: | :-- | :--------------------- | ------: |
+| Swift             |  18,442 |     | AVFoundation           |      16 |
+| Foundation        |  13,013 |     | Xcode                  |       7 |
+| AppKit            |  12,654 |     | PassKit                |       6 |
+| UIKit             |  11,449 |     | AVFAudio               |       5 |
+| SwiftUI           |   7,196 |     | visionOS               |       4 |
+| Combine           |   1,062 |     | WidgetKit              |       4 |
+| SwiftData         |     552 |     | WebKit                 |       3 |
+| CoreLocation      |     475 |     | MapKit                 |       2 |
+| RegexBuilder      |     462 |     | Security               |       1 |
+| Synchronization   |     196 |     | LocalAuthentication    |       1 |
+| Distributed       |      93 |     | CoreData               |       1 |
+| ObjectiveC        |      74 |     | AuthenticationServices |       1 |
+| Observation       |      37 |     | AVKit                  |       1 |
+| BundleResources   |      30 |     |                        |         |
+
+**What this means in practice:**
+
+- **Semantic search covers 19,473 symbols** — primary types plus every symbol Apple documented with an abstract. The other 46,904 rows (71%) are undocumented members (a bare `func task(...) -> some View` embeds to noise), so they are reachable by **name** through `search_symbols` but will not surface in behavioral `semantic_search` queries.
+- **Keychain Services is not in the index.** `Security` holds a single collection row, so `SecItemAdd` / `kSecClassGenericPassword` do not exist in this snapshot regardless of the embedding provider. Do not point an agent at them.
+- `LocalAuthentication` exposes `LocalAuthenticationView` but not `LAContext`; `CoreData` has only an article.
+
+---
 
 ### MCP Resources & Prompts
 
 In addition to tools, `apple-doc-plugin` implements native MCP Resources and Prompts:
 
 - **Resources**:
-  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for all 21 supported Apple frameworks.
+  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for the 21-framework crawl list (14 fully indexed — see [Coverage](#coverage)).
   - `apple-docs://symbols/{framework}`: Returns a clean catalog of primary types, protocols, and macros for any indexed framework (e.g. `apple-docs://symbols/SwiftUI`).
 - **Prompts**:
   - `modernize-navigation`: Automated migration template from legacy `NavigationView` to `NavigationStack` / `NavigationSplitView`.
@@ -251,14 +316,14 @@ In addition to tools, `apple-doc-plugin` implements native MCP Resources and Pro
 
 Settings can be specified in `.env` or passed via your MCP server environment config:
 
-| Variable                          | Default              | Description                                                                                                   |
-| :-------------------------------- | :------------------- | :------------------------------------------------------------------------------------------------------------ |
-| `GEMINI_API_KEY`                  | _none_               | Gemini API key for hosted semantic search and embeddings.                                                     |
-| `APPLE_DOCS_EMBEDDING_PROVIDER`   | `auto`               | Force provider: `gemini` or `local` (GGUF). Defaults to `local` if model file exists, else `gemini`.          |
-| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | `~/.cache/...`       | Path to local `embeddinggemma-2-Q8_0.gguf` file.                                                              |
-| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | `768`                | MRL vector dimensions (`128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`). Default `768` is optimal. |
-| `APPLE_DOCS_DB_PATH`              | `data/apple-docs.db` | Custom path to the SQLite documentation database.                                                             |
-| `APPLE_DOCS_VECTORS_URL`          | _GitHub Release URL_ | Override download URL for pre-computed vector artifact (`v1.0.0/apple-docs-vectors-768d.db`).                 |
+| Variable                          | Default                      | Description                                                                                                                        |
+| :-------------------------------- | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`                  | _none_                       | Gemini API key for hosted semantic search and embeddings.                                                                          |
+| `APPLE_DOCS_EMBEDDING_PROVIDER`   | `auto`                       | Force provider: `gemini` or `local` (GGUF). Defaults to `local` if model file exists, else `gemini`.                               |
+| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | `~/.cache/...`               | Path to local `embeddinggemma-2-Q8_0.gguf` file.                                                                                   |
+| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | `768`                        | MRL vector dimensions (`128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`). Default `768` is optimal.                      |
+| `APPLE_DOCS_DB_PATH`              | `data/apple-docs.db`         | Custom path to the SQLite documentation database.                                                                                  |
+| `APPLE_DOCS_VECTORS_URL`          | _bundled asset, then mirror_ | Override the vector artifact URL. The artifact already under `assets/` is preferred, so clones and plugin installs import offline. |
 
 ---
 
@@ -269,14 +334,14 @@ The executable CLI supports standalone commands and subcommands:
 | Command                                                             | Description                                                                                                |
 | :------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------- |
 | `npm run doctor` (or `apple-doc-plugin doctor`)                     | Run 10-point health check (`--json` and `--strict` supported for CI).                                      |
-| `npm run download-vectors` (or `apple-doc-plugin download-vectors`) | Resilient download of pre-computed 768-d vector database artifact with mirror failover and SHA-256 checks. |
+| `npm run download-vectors` (or `apple-doc-plugin download-vectors`) | Import the bundled (or mirrored) gzip 768-d vector artifact with SHA-256 verification and mirror failover. |
 | `npm run export-vectors` (or `apple-doc-plugin export-vectors`)     | Export semantic vector bundle into verifiable standalone SQLite package with companion manifest and hash.  |
 | `npm run index-xcode` (or `apple-doc-plugin index-xcode`)           | Directly ingest and index offline `.doccarchive` documentation from local Xcode SDKs and DerivedData.      |
 | `npm run download-model` (or `apple-doc-plugin download-model`)     | Automated download of local GGUF (`embeddinggemma-2-Q8_0.gguf`) into local cache without HuggingFace CLI.  |
 | `npm run embed-index`                                               | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).                |
 | `npm run repair-index`                                              | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit).             |
 | `npm run build:binary` (or `scripts/build-binary.sh`)               | Build standalone native runner and release distribution archive.                                           |
-| `npm test`                                                          | Run complete test suite (277 tests).                                                                       |
+| `npm test`                                                          | Run complete test suite (355 tests).                                                                       |
 | `npm run check`                                                     | Run TypeScript typechecking and Prettier verification.                                                     |
 
 ---

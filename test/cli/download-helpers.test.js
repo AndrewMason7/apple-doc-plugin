@@ -216,8 +216,16 @@ test('runDownloadVectorsCli --help prints usage and exits 0', async () => {
 
 test('runDownloadVectorsCli handles failure gracefully and exits 1', async () => {
 	let errOutput = '';
+	// Pin an isolated target: without --db this resolves to the real project
+	// index, and a database that already holds vectors short-circuits the
+	// download, so the CLI would exit 0 regardless of the failing URL.
 	const code = await runDownloadVectorsCli({
-		argv: ['--url', 'http://127.0.0.1:1/nonexistent.db'],
+		argv: [
+			'--url',
+			'http://127.0.0.1:1/nonexistent.db',
+			'--db',
+			join(tmpdir(), `dl-cli-fail-${Date.now()}.db`),
+		],
 		print: () => {},
 		eprint: (text) => {
 			errOutput += text;

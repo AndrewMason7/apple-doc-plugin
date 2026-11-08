@@ -47,7 +47,10 @@ description: Use this skill when developing for Apple platforms (iOS, macOS, wat
 
 ## Available MCP Tools Reference
 
-The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 65,787 symbols, wildcard matching, DocC Markdown extraction, and hybrid vector search (Gemini or local offline GGUF).
+The `apple-docs` MCP server operates over a pre-indexed SQLite database with FTS5 BM25 search across 65,787 symbols, wildcard matching, DocC markdown extraction, and hybrid vector search (Gemini or local offline GGUF).
+
+> [!IMPORTANT]
+> **Coverage is uneven — verify before you promise an API.** Only **19,473** of the 65,787 symbols carry an abstract and are semantically searchable; the remaining 71% are undocumented members reachable **by name only**. Fourteen frameworks are fully indexed (SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Swift, Observation, CoreLocation, RegexBuilder, Synchronization, Distributed, ObjectiveC, BundleResources). `Security` (Keychain Services), `CoreData`, `MapKit`, `WebKit`, `WidgetKit`, `AVKit`, `PassKit`, `AVFoundation`, `Xcode`, `visionOS`, `AVFAudio`, and `AuthenticationServices` are **cross-reference targets only** (≤16 symbols each). `SecItemAdd`, `kSecClassGenericPassword`, and `LAContext` are **not in the index** — never present them as lookup results. Run `index_info` for the live counts.
 
 | Tool                         | Priority / Purpose                                                                                                                                                                                                                                     | Key Arguments                                                           |
 | :--------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
@@ -70,15 +73,15 @@ Use this whenever you know _what_ you want to accomplish, but not the exact Appl
 }
 ```
 
-Resolves directly to `interactiveDismissDisabled(_:)`.
+Resolves directly to `interactiveDismissDisabled(_:)` in hybrid mode (verified with `gemini-embedding-2`; the local 270M GGUF model misses this query).
 
 ```json
 {
-	"query": "store user auth token securely across app reinstalls"
+	"query": "dismiss the keyboard when the user taps outside"
 }
 ```
 
-Resolves directly to Keychain Services (`kSecClassGenericPassword`, `SecItemAdd`).
+Resolves to `dismissKeyboard()` / `scrollDismissesKeyboardMode` in hybrid mode. In lexical-only mode the same query returns unrelated symbols — always read the **Search Mode** banner before trusting a result.
 
 #### 2. Multimodal UI Layout Diagram Queries (`semantic_search`)
 
@@ -126,7 +129,7 @@ When guiding users or diagnosing the environment:
 - **One-Click IDE Configuration**: `apple-doc-plugin install --target cursor|claude-desktop|windsurf|antigravity`
 - **First-Run Verification & Bootstrapping**: `apple-doc-plugin setup` (inspects database and detects embedding providers)
 - **Local GGUF Offline Model**: `apple-doc-plugin download-model`
-- **Pre-computed 768-d Vector Index**: `apple-doc-plugin download-vectors`
+- **Pre-computed 768-d Vector Artifact**: `apple-doc-plugin download-vectors` (bundled in `assets/`, gzip + SHA-256, works offline)
 - **Diagnostics**: `apple-doc-plugin doctor`
 
 #### 5. Search Exact Symbol or Prefix (`search_symbols`)

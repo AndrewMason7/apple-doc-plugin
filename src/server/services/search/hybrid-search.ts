@@ -1,4 +1,5 @@
 import { AppleDocsDB, DbSymbol } from '../../db/database.js';
+import { semanticSymbolId } from '../symbol-embeddings.js';
 import {
 	DEFAULT_EMBEDDING_DIMENSIONS,
 	GeminiSemanticSearch,
@@ -184,7 +185,8 @@ export class HybridSearchEngine {
 				const filtered = nativeMatches
 					.filter((m) => m.similarity >= minSimilarity)
 					.sort((a, b) => b.similarity - a.similarity)
-					.slice(0, limit);
+					.slice(0, limit)
+					.map((m) => ({ ...m, id: semanticSymbolId(m.id) }));
 				if (
 					filtered.length >= limit ||
 					(!framework && nativeMatches.length < fetchLimit) ||
@@ -215,7 +217,7 @@ export class HybridSearchEngine {
 			);
 			if (similarity >= minSimilarity) {
 				matches.push({
-					id: item.id,
+					id: semanticSymbolId(item.id),
 					framework: item.framework,
 					title: item.title,
 					kind: item.kind,
@@ -236,7 +238,12 @@ export class HybridSearchEngine {
 		options: SearchOptions = {},
 	): Promise<SearchResultItem[]> {
 		const limit = options.limit || 20;
-		const shouldExpand = options.expandQuery !== false;
+		// `search_symbols` is sold as precise lexical search: idiom expansion
+		// injects mapped symbols the caller never typed ("chat room layout" used
+		// to pull in SwiftData via the Room idiom), so it must stay out of that
+		// path. `semantic_search` keeps it — that is the whole point of a
+		// natural-language tool.
+		const shouldExpand = options.expandQuery !== false && !options.lexicalOnly;
 		const expansion: QueryExpansionResult = shouldExpand
 			? expandQuery(query)
 			: {

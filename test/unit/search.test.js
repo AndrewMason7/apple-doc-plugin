@@ -5,6 +5,92 @@ import { AppleDocsDB } from '../../dist/server/db/database.js';
 import { HybridSearchEngine } from '../../dist/server/services/search/hybrid-search.js';
 import { GeminiSemanticSearch } from '../../dist/server/services/search/semantic-search.js';
 
+test('HybridSearchEngine fuses a semantic hit with its lexical twin instead of duplicating it', async () => {
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: '/documentation/swiftui/navigationsplitview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView',
+		kind: 'struct',
+		abstract: 'A view that displays a split-view hierarchy.',
+		path: '/documentation/swiftui/navigationsplitview',
+		platforms: ['iOS 16.0+'],
+		isPrimaryType: true,
+	});
+
+	// The symbol layer stores vectors under `sym-<symbolId>`; fusion must map
+	// that back to the symbol id or RRF emits the document twice.
+	const embedding = new Float32Array(768);
+	embedding[0] = 1;
+	db.insertSemanticItem({
+		id: 'sym-/documentation/swiftui/navigationsplitview',
+		framework: 'SwiftUI',
+		title: 'NavigationSplitView',
+		kind: 'struct',
+		summary: 'A view that displays a split-view hierarchy.',
+		path: '/documentation/swiftui/navigationsplitview',
+		embedding,
+	});
+
+	const provider = {
+		id: 'stub',
+		dimensions: 768,
+		minSimilarity: 0.5,
+		isAvailable: () => true,
+		embedQuery: async () => embedding,
+		embedDocument: async () => embedding,
+	};
+
+	const engine = new HybridSearchEngine(db, { embeddingProvider: provider });
+	const results = await engine.search('NavigationSplitView', {
+		limit: 10,
+		minSemanticItems: 1,
+	});
+
+	const hits = results.filter(
+		(r) => r.path === '/documentation/swiftui/navigationsplitview',
+	);
+	assert.strictEqual(
+		hits.length,
+		1,
+		`the same document must not appear twice, got ${hits.length}`,
+	);
+	assert.strictEqual(hits[0].source, 'hybrid');
+	db.close();
+});
+
+test('HybridSearchEngine keeps idiom expansion out of the lexical-only path', async () => {
+	const db = new AppleDocsDB(':memory:');
+	db.insertSymbol({
+		id: 'documentation/swiftdata/modelcontainer',
+		framework: 'SwiftData',
+		title: 'ModelContainer',
+		kind: 'class',
+		abstract: 'A container that manages SwiftData models.',
+		path: '/documentation/swiftdata/modelcontainer',
+		platforms: ['iOS 17.0+'],
+		isPrimaryType: true,
+	});
+
+	const engine = new HybridSearchEngine(db, { apiKey: null });
+
+	// `search_symbols` is precise lexical search: expansion must not inject
+	// symbols the caller never typed.
+	const lexical = await engine.search('Room database', { lexicalOnly: true });
+	assert.ok(
+		!lexical.some((r) => r.title === 'ModelContainer'),
+		'lexical-only search must not inject idiom-mapped symbols',
+	);
+
+	// `semantic_search` is the natural-language tool, so expansion applies.
+	const expanded = await engine.search('Room database');
+	assert.ok(
+		expanded.some((r) => r.title === 'ModelContainer'),
+		'semantic search should inject idiom-mapped symbols',
+	);
+	db.close();
+});
+
 test('HybridSearchEngine returns scored results without Gemini key', async () => {
 	const db = new AppleDocsDB(':memory:');
 	db.insertSymbol({
