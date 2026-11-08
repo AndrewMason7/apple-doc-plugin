@@ -67,11 +67,13 @@ Ranked, Deduplicated Results with Runnable get_documentation Links
 
 ---
 
-## Quick Install & Setup
+## Quick Install & Setup (Zero Clone Required)
+
+Run directly via `npx` without cloning or building from source:
 
 ### 1. One-Click IDE / Agent Configuration (Recommended)
 
-Automatically detect and configure your coding assistant's MCP configuration without manual JSON editing:
+Automatically detect and configure your coding assistant's MCP configuration with portable `npx` execution:
 
 ```bash
 # Target Cursor
@@ -85,9 +87,12 @@ npx apple-doc-plugin install --target windsurf
 
 # Target Antigravity
 npx apple-doc-plugin install --target antigravity
+
+# Target VS Code
+npx apple-doc-plugin install --target vscode
 ```
 
-_(Pass `--dry-run` to preview changes without modifying disk, or `--env GEMINI_API_KEY=...` to attach API credentials)._
+_(Pass `--dry-run` to preview changes without modifying disk, `--local` to link a local repository clone, or `--env GEMINI_API_KEY=...` to attach API credentials)._
 
 ### 2. First-Run Setup & Vector Bootstrap
 
@@ -103,14 +108,14 @@ npx apple-doc-plugin setup --download-vectors --target cursor
 
 ### 3. Manual MCP Configuration (Optional)
 
-If preferred, manually add `apple-docs` to your MCP configuration (`claude_desktop_config.json`, `.cursor/mcp.json`, etc.):
+If preferred, drop this directly into your MCP configuration (`claude_desktop_config.json`, `.cursor/mcp.json`, etc.):
 
 ```json
 {
 	"mcpServers": {
 		"apple-docs": {
-			"command": "node",
-			"args": ["/absolute/path/to/apple-doc-plugin/dist/index.js"],
+			"command": "npx",
+			"args": ["-y", "apple-doc-plugin"],
 			"env": {
 				"GEMINI_API_KEY": "YOUR_GEMINI_API_KEY"
 			}
@@ -119,9 +124,16 @@ If preferred, manually add `apple-docs` to your MCP configuration (`claude_deskt
 }
 ```
 
-_(Tip: `GEMINI_API_KEY` enables hybrid semantic search. If omitted, the server operates in offline lexical mode, or uses local `embeddinggemma-2` if downloaded via `apple-doc-plugin download-model`)._
+_(Tip: `GEMINI_API_KEY` enables hybrid semantic search. If omitted, the server operates in offline lexical mode, or uses local `embeddinggemma-2` if downloaded via `npx apple-doc-plugin download-model`)._
 
-### 4. Antigravity Plugin
+### 4. Global CLI Installation
+
+```bash
+npm install -g apple-doc-plugin
+apple-doc-plugin --help
+```
+
+### 5. Antigravity Plugin
 
 ```bash
 # Direct install
@@ -130,7 +142,7 @@ agy plugin install AndrewMason7/apple-doc-plugin
 agy plugin install .
 ```
 
-### 5. Hermes Agent Plugin (Native)
+### 6. Hermes Agent Plugin (Native)
 
 ```bash
 hermes plugins install https://github.com/AndrewMason7/apple-doc-plugin.git
@@ -139,7 +151,9 @@ hermes plugins enable apple-doc-plugin
 
 ---
 
-## Getting Started (Clone & Build)
+## Building From Source (Contributors)
+
+If you are developing or contributing to `apple-doc-plugin`:
 
 **Prerequisites:** Node.js ≥ 22 (`node -v`).
 
