@@ -71,38 +71,38 @@ export function resolveEmbeddingProvider(
 	const requestedDimensions =
 		options.dimensions ?? resolveRequestedDimensions();
 
-	// 1. If Gemini is explicitly preferred, try Gemini first
-	if (preferred === 'gemini') {
-		const gemini = new GeminiSemanticSearch(
-			options.geminiApiKey,
-			undefined,
-			undefined,
-			undefined,
-			requestedDimensions,
-		);
-		if (gemini.isAvailable()) {
-			return gemini;
-		}
-	}
-
-	// 2. Default: check if local GGUF model is available
-	if (preferred !== 'gemini' && localPath && existsSync(localPath)) {
+	// 1. If local GGUF is explicitly preferred via option or APPLE_DOCS_EMBEDDING_PROVIDER=local
+	if (preferred === 'local' && localPath && existsSync(localPath)) {
 		const localProvider = new LocalGemmaEmbeddingProvider(localPath);
 		if (localProvider.isAvailable()) {
 			return localProvider;
 		}
 	}
 
-	// 3. Fallback to Gemini if auth is configured
-	const gemini = new GeminiSemanticSearch(
-		options.geminiApiKey === null ? null : options.geminiApiKey,
-		undefined,
-		undefined,
-		undefined,
-		requestedDimensions,
-	);
-	if (gemini.isAvailable() && !options.disableAdc) {
-		return gemini;
+	// 2. Default priority: check if Gemini credentials or ADC are configured.
+	// Gemini provides significantly higher semantic recall on nuanced behavioral queries.
+	if (preferred !== 'local') {
+		const gemini = new GeminiSemanticSearch(
+			options.geminiApiKey === null ? null : options.geminiApiKey,
+			undefined,
+			undefined,
+			undefined,
+			requestedDimensions,
+		);
+		if (
+			gemini.isAvailable() &&
+			(options.geminiApiKey !== null || !options.disableAdc)
+		) {
+			return gemini;
+		}
+	}
+
+	// 3. Fallback to local GGUF model if present (offline or air-gapped mode)
+	if (localPath && existsSync(localPath)) {
+		const localProvider = new LocalGemmaEmbeddingProvider(localPath);
+		if (localProvider.isAvailable()) {
+			return localProvider;
+		}
 	}
 
 	// 4. Fallback when neither is available

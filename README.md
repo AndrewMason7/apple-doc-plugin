@@ -15,7 +15,7 @@ Gives coding agents (Claude Code, Cursor, Windsurf, Antigravity, Hermes) deep un
 - 🧠 **Hybrid Semantic Search**: Combines dense vector embeddings with SQLite FTS5 BM25 via **Reciprocal Rank Fusion (RRF)**. Finds the right APIs even when your query shares zero words with the symbol name.
 - 🌉 **Cross-Framework Query Expansion**: Seamlessly bridges Web, React, and Android idioms (`useEffect`, `SharedPreferences`, `Flexbox`, `coroutine`, `AsyncStorage`) into native Apple symbols (`task`, `onAppear`, `AppStorage`, `HStack`, `VStack`, `Spacer`).
 - 🛠️ **One-Click IDE Configuration CLI**: Safely configure Cursor, Claude Desktop, Windsurf, Antigravity, and VS Code with `apple-doc-plugin install --target <ide>`.
-- ⚡ **65,787 Symbols Offline**: Ships with a pre-indexed database covering 14 fully indexed frameworks (SwiftUI, UIKit, Foundation, SwiftData, Combine, AppKit, Swift, Observation, CoreLocation, and more). 19,473 of those symbols carry the abstracts semantic search needs — see [Coverage](#coverage).
+- ⚡ **95,899 Symbols Offline**: Ships with a pre-indexed database covering all 21 core Apple frameworks (SwiftUI, UIKit, Foundation, Security, AVFoundation, WebKit, RealityKit, Vision, StoreKit, MapKit, CoreData, SwiftData, Combine, AppKit, Swift, Observation, CoreLocation, AuthenticationServices, LocalAuthentication, and more) across both Swift and Objective-C/C symbol trees.
 - 🎯 **Dual Semantic Engines**: Run hosted embeddings with **Google Gemini** (`gemini-embedding-2`) or **100% offline** on Apple Silicon Metal with local GGUF (`embeddinggemma-2`).
 - 🔍 **Lexical Precision & Wildcards**: Full support for wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), exact-title boosting, and kind aliasing (`func` ↔ `method`).
 - 📖 **DocC AST to Agent Markdown**: Formats Apple DocC JSON into concise Markdown with method signatures, parameter tables, deprecation notices, and live CDN fallback.
@@ -39,7 +39,7 @@ Traditional documentation tools require you to know the exact symbol name in adv
 | _"three column navigation layout"_     | Matches generic `Navigation` terms   | `NavigationSplitView`, `case tripleColumn`               |
 | _"dismiss keyboard on tap outside"_    | 0 matches (the symbol is not named)  | `dismissKeyboard()`, `scrollDismissesKeyboardMode`       |
 
-> **Coverage honesty:** the index does **not** contain Keychain Services symbols. A query for _"store sensitive credentials in keychain"_ returns nothing relevant because `SecItemAdd` / `kSecClassGenericPassword` are not in the snapshot (the entire `Security` framework is one collection row). See [Coverage](#coverage) before promising a framework to an agent.
+> **Comprehensive Framework Coverage:** The offline database includes complete coverage for Security (Keychain Services with `SecItemAdd`), WebKit (`WKWebView`), AVFoundation (`AVPlayer`), StoreKit (`SKPaymentQueue`), MapKit (`MKMapView`), CoreData (`NSManagedObject`), RealityKit (`Entity`), Vision (`VNRecognizeTextRequest`), AuthenticationServices (`ASAuthorizationAppleIDProvider`), and LocalAuthentication (`LAContext`). See [Coverage](#coverage) for detailed framework breakdowns.
 
 ### How the Hybrid Engine Works
 
@@ -157,10 +157,10 @@ npm run doctor
 `npm run doctor` inspects your database, schema, and embedding setup:
 
 ```text
-✔ Node.js                v24.x
-✔ Index file             data/apple-docs.db (32.5 MB)
-✔ Symbols                65,787 rows
-✔ FTS index              65,787 rows
+✔ Node.js                v24.x (or v26.x)
+✔ Index file             data/apple-docs.db (48.1 MB)
+✔ Symbols                95,899 rows
+✔ FTS index              95,899 rows
 ✔ Symbol kinds           every row classified
 ✔ Framework attribution  consistent with paths
 ✔ Embedding provider     local-gguf (768-d) (or gemini)
@@ -173,7 +173,7 @@ npm run doctor
 All checks passed (1 warning).
 ```
 
-> **Note:** The shipped snapshot is immediately usable for fast offline lexical search (65,787 symbols). Run `npm run download-vectors` to import the bundled 768-d vector artifact (19,473 vectors) in seconds, or `npm run embed-index` to build them yourself. Either way the semantic layer flips to `✔` and hybrid search engages.
+> **Note:** The shipped snapshot is immediately usable for fast offline lexical search (95,899 symbols). Run `npm run download-vectors` to import the bundled 768-d vector artifact (19,473 vectors) in seconds, or `npm run embed-index` to build them yourself. Either way the semantic layer flips to `✔` and hybrid search engages.
 
 ---
 
@@ -271,30 +271,31 @@ The server exposes dedicated tools designed specifically for AI agent pair progr
 
 ## Coverage
 
-The snapshot holds **65,787 symbols**, but they are not evenly distributed. Frameworks with at least 25 symbols are considered indexed; the rest are cross-reference targets that appear only because an indexed page links to them.
+The snapshot holds **95,899 symbols** across 25 indexed frameworks (with at least 25 symbols each), covering both Swift and Objective-C/C symbol trees:
 
-| Indexed framework | Symbols |     | Cross-reference target | Symbols |
-| :---------------- | ------: | :-- | :--------------------- | ------: |
-| Swift             |  18,442 |     | AVFoundation           |      16 |
-| Foundation        |  13,013 |     | Xcode                  |       7 |
-| AppKit            |  12,654 |     | PassKit                |       6 |
-| UIKit             |  11,449 |     | AVFAudio               |       5 |
-| SwiftUI           |   7,196 |     | visionOS               |       4 |
-| Combine           |   1,062 |     | WidgetKit              |       4 |
-| SwiftData         |     552 |     | WebKit                 |       3 |
-| CoreLocation      |     475 |     | MapKit                 |       2 |
-| RegexBuilder      |     462 |     | Security               |       1 |
-| Synchronization   |     196 |     | LocalAuthentication    |       1 |
-| Distributed       |      93 |     | CoreData               |       1 |
-| ObjectiveC        |      74 |     | AuthenticationServices |       1 |
-| Observation       |      37 |     | AVKit                  |       1 |
-| BundleResources   |      30 |     |                        |         |
+| Indexed framework      | Symbols |     | Indexed framework   | Symbols |
+| :--------------------- | ------: | :-- | :------------------ | ------: |
+| Swift                  |  18,442 |     | CoreData            |   1,170 |
+| Foundation             |  13,013 |     | Combine             |   1,062 |
+| AppKit                 |  12,654 |     | SwiftData           |     552 |
+| UIKit                  |  11,449 |     | CoreLocation        |     474 |
+| Security               |   7,331 |     | RegexBuilder        |     462 |
+| SwiftUI                |   7,202 |     | LocalAuthentication |     246 |
+| RealityKit             |   6,235 |     | Synchronization     |     196 |
+| AVFoundation           |   5,614 |     | Distributed         |      93 |
+| WebKit                 |   3,193 |     | BundleResources     |      88 |
+| Vision                 |   1,915 |     | ObjectiveC          |      77 |
+| StoreKit               |   1,531 |     | AVFAudio            |      45 |
+| AuthenticationServices |   1,473 |     | Observation         |      37 |
+| MapKit                 |   1,299 |     |                     |         |
+
+Cross-reference targets (pages linked from indexed frameworks): visionOS (22), Xcode (11), PassKit (6), WidgetKit (4), AVKit (3).
 
 **What this means in practice:**
 
-- **Semantic search covers 19,473 symbols** — primary types plus every symbol Apple documented with an abstract. The other 46,904 rows (71%) are undocumented members (a bare `func task(...) -> some View` embeds to noise), so they are reachable by **name** through `search_symbols` but will not surface in behavioral `semantic_search` queries.
-- **Keychain Services is not in the index.** `Security` holds a single collection row, so `SecItemAdd` / `kSecClassGenericPassword` do not exist in this snapshot regardless of the embedding provider. Do not point an agent at them.
-- `LocalAuthentication` exposes `LocalAuthenticationView` but not `LAContext`; `CoreData` has only an article.
+- **First-Class Platform Coverage**: Core platform frameworks including Security (Keychain Services), WebKit, AVFoundation, StoreKit, MapKit, CoreData, RealityKit, Vision, AuthenticationServices, and LocalAuthentication are fully indexed offline.
+- **Full C Function and Swift Method Resolution**: Both bare C function names (e.g., `SecItemAdd`) and standard Swift types/methods (`WKWebView`, `MKMapView`, `SKPaymentQueue`, `AVPlayer`, `NSManagedObject`, `LAContext`) resolve cleanly via `search_symbols` and `get_documentation`.
+- **Hybrid Semantic Search**: Semantic vectors are available for 19,473 core framework symbols via `npm run download-vectors` (or local embedding via `npm run embed-index`). All 95,899 symbols across all 21 core frameworks remain fully discoverable by name, kind, and signature via lexical search and point documentation lookup.
 
 ---
 
@@ -303,7 +304,7 @@ The snapshot holds **65,787 symbols**, but they are not evenly distributed. Fram
 In addition to tools, `apple-doc-plugin` implements native MCP Resources and Prompts:
 
 - **Resources**:
-  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for the 21-framework crawl list (14 fully indexed — see [Coverage](#coverage)).
+  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for all 21 core frameworks (see [Coverage](#coverage)).
   - `apple-docs://symbols/{framework}`: Returns a clean catalog of primary types, protocols, and macros for any indexed framework (e.g. `apple-docs://symbols/SwiftUI`).
 - **Prompts**:
   - `modernize-navigation`: Automated migration template from legacy `NavigationView` to `NavigationStack` / `NavigationSplitView`.
@@ -341,7 +342,7 @@ The executable CLI supports standalone commands and subcommands:
 | `npm run embed-index`                                               | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).                |
 | `npm run repair-index`                                              | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit).             |
 | `npm run build:binary` (or `scripts/build-binary.sh`)               | Build standalone native runner and release distribution archive.                                           |
-| `npm test`                                                          | Run complete test suite (355 tests).                                                                       |
+| `npm test`                                                          | Run complete test suite (372 tests).                                                                       |
 | `npm run check`                                                     | Run TypeScript typechecking and Prettier verification.                                                     |
 
 ---
