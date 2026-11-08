@@ -1,5 +1,8 @@
 import { AppleDocsDB } from '../db/database.js';
-import { CORE_FRAMEWORKS } from '../db/frameworks.js';
+import {
+	CORE_FRAMEWORKS,
+	FRAMEWORK_DEFAULT_PLATFORMS,
+} from '../db/frameworks.js';
 import {
 	canonicalFrameworkFromSlug,
 	frameworkSlugFromPath,
@@ -73,6 +76,10 @@ const SYMBOL_KIND_ALIASES: Record<string, string> = {
 	overview: 'overview',
 	'sample code': 'sampleCode',
 	samplecode: 'sampleCode',
+	union: 'union',
+	dictionary: 'dictionary',
+	'property list key': 'property',
+	object: 'dictionary',
 };
 
 /** Kinds that carry no classification and must never satisfy a kind filter. */
@@ -112,7 +119,14 @@ export function resolveSymbolKind(ref: any): string {
 	return 'unknown';
 }
 
-const PRIMARY_TYPE_KINDS = ['struct', 'class', 'protocol', 'enum', 'macro'];
+const PRIMARY_TYPE_KINDS = [
+	'struct',
+	'class',
+	'protocol',
+	'enum',
+	'macro',
+	'union',
+];
 
 export const isPrimaryTypeKind = (kind: string): boolean =>
 	PRIMARY_TYPE_KINDS.includes(kind.toLowerCase());
@@ -134,141 +148,6 @@ function extractAbstract(abstractObj: any): string {
 	}
 	return '';
 }
-
-const FRAMEWORK_DEFAULT_PLATFORMS: Record<string, string[]> = {
-	SwiftUI: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	UIKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'tvOS', 'visionOS'],
-	Foundation: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	SwiftData: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	Combine: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	AppKit: ['macOS'],
-	Observation: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	CoreLocation: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'watchOS',
-		'visionOS',
-	],
-	StoreKit: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	WidgetKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'watchOS', 'visionOS'],
-	AuthenticationServices: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	LocalAuthentication: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'visionOS',
-		'watchOS',
-	],
-	Security: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	AVFoundation: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	AVKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS'],
-	UserNotifications: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	MapKit: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	RealityKit: ['iOS', 'iPadOS', 'macOS', 'visionOS'],
-	Vision: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'tvOS', 'visionOS'],
-	CoreData: [
-		'iOS',
-		'iPadOS',
-		'Mac Catalyst',
-		'macOS',
-		'tvOS',
-		'visionOS',
-		'watchOS',
-	],
-	WebKit: ['iOS', 'iPadOS', 'Mac Catalyst', 'macOS', 'visionOS'],
-};
 
 export function indexFrameworkData(
 	db: AppleDocsDB,
@@ -422,31 +301,72 @@ export function indexFrameworkTree(
 	indexData: any,
 	defaultPlatforms?: string[],
 ): number {
-	const root = indexData?.interfaceLanguages?.swift?.[0];
-	if (!root) return 0;
+	const interfaceLanguages = indexData?.interfaceLanguages;
+	if (!interfaceLanguages || typeof interfaceLanguages !== 'object') return 0;
 
-	const nodePlatforms =
-		defaultPlatforms || FRAMEWORK_DEFAULT_PLATFORMS[framework] || [];
+	// Swift is walked first to give its titles priority on collision, followed by occ
+	// and any additional interface languages (e.g. c, objc, metal).
+	const orderedKeys: string[] = [];
+	if ('swift' in interfaceLanguages) orderedKeys.push('swift');
+	if ('occ' in interfaceLanguages) orderedKeys.push('occ');
+	for (const key of Object.keys(interfaceLanguages)) {
+		if (key !== 'swift' && key !== 'occ') {
+			orderedKeys.push(key);
+		}
+	}
+
+	const allRoots: DocCIndexNode[] = [];
+	for (const lang of orderedKeys) {
+		const raw = interfaceLanguages[lang];
+		if (Array.isArray(raw)) {
+			for (const item of raw) {
+				if (item && typeof item === 'object') {
+					allRoots.push(item);
+				}
+			}
+		} else if (raw && typeof raw === 'object') {
+			allRoots.push(raw);
+		}
+	}
+
+	if (allRoots.length === 0) return 0;
+
 	let count = 0;
+	const seenPaths = new Set<string>();
+	const visitedNodes = new Set<DocCIndexNode>();
 
 	function walk(node: DocCIndexNode) {
+		if (!node || typeof node !== 'object') return;
+		if (visitedNodes.has(node)) return;
+		visitedNodes.add(node);
+
 		if (node.path && node.title && node.type && node.type !== 'groupMarker') {
-			// The DocC navigation tree is the authoritative source for primary
-			// type kinds, so it is normalised through the same resolver.
-			const kind = resolveSymbolKind({ symbolKind: node.type });
-			const isPrimary = isPrimaryTypeKind(kind);
-			const targetFramework = resolveFrameworkFromPath(node.path, framework);
-			db.insertSymbol({
-				id: node.path,
-				framework: targetFramework,
-				title: node.title,
-				kind,
-				abstract: '', // Populated on-demand or during deep crawl
-				path: node.path,
-				platforms: nodePlatforms,
-				isPrimaryType: isPrimary,
-			});
-			count++;
+			const cleanPath = node.path.replace(/^doc:\/\/[^/]+/, '') || node.path;
+			const pathKey = cleanPath.toLowerCase();
+			if (!seenPaths.has(pathKey)) {
+				seenPaths.add(pathKey);
+				// The DocC navigation tree is the authoritative source for primary
+				// type kinds, so it is normalised through the same resolver.
+				const kind = resolveSymbolKind({ symbolKind: node.type });
+				const isPrimary = isPrimaryTypeKind(kind);
+				const targetFramework = resolveFrameworkFromPath(cleanPath, framework);
+				const platforms =
+					defaultPlatforms ||
+					FRAMEWORK_DEFAULT_PLATFORMS[targetFramework] ||
+					FRAMEWORK_DEFAULT_PLATFORMS[framework] ||
+					[];
+				db.insertSymbol({
+					id: cleanPath,
+					framework: targetFramework,
+					title: node.title,
+					kind,
+					abstract: '', // Populated on-demand or during deep crawl
+					path: cleanPath,
+					platforms,
+					isPrimaryType: isPrimary,
+				});
+				count++;
+			}
 		}
 
 		if (Array.isArray(node.children)) {
@@ -456,6 +376,9 @@ export function indexFrameworkTree(
 		}
 	}
 
-	walk(root);
+	for (const root of allRoots) {
+		walk(root);
+	}
+
 	return count;
 }

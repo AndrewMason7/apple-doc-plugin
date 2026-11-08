@@ -530,7 +530,7 @@ export class AppleDocsDB {
 				`SELECT id, title, kind, framework, COALESCE(abstract, '') AS abstract, path
          FROM symbols
          WHERE is_primary_type = 1
-            OR lower(kind) IN ('struct', 'class', 'protocol', 'enum', 'macro')
+            OR lower(kind) IN ('struct', 'class', 'protocol', 'enum', 'macro', 'union')
             OR (abstract IS NOT NULL AND abstract != '')
          ORDER BY is_primary_type DESC,
                   (CASE WHEN abstract IS NOT NULL AND abstract != '' THEN 0 ELSE 1 END) ASC,
@@ -1211,6 +1211,51 @@ export class AppleDocsDB {
 			}
 		} catch (err) {
 			logger.debug('resolveSymbol suffix match step failed:', err);
+		}
+
+		// 6. Function or method signature match (e.g. SecItemAdd matching /documentation/security/secitemadd(_:_:))
+		const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;
+		let funcSql = `
+			SELECT id, framework, title, kind, abstract, path, platforms, is_primary_type
+			FROM symbols
+			WHERE (
+				path LIKE '%/' || ? || '(%' COLLATE NOCASE
+				OR path LIKE '%/' || ? || '-%' COLLATE NOCASE
+				OR path LIKE ? || '(%' COLLATE NOCASE
+				OR path LIKE ? || '-%' COLLATE NOCASE
+				OR title LIKE 'func ' || ? || '(%' COLLATE NOCASE
+				OR title LIKE 'func ' || ? || '<%' COLLATE NOCASE
+				OR title LIKE 'var ' || ? || ':%' COLLATE NOCASE
+				OR title LIKE 'let ' || ? || ':%' COLLATE NOCASE
+				OR title LIKE ? || '(%' COLLATE NOCASE
+			)
+		`;
+		const funcParams: (string | number)[] = [
+			clean,
+			clean,
+			cleanPath,
+			cleanPath,
+			clean,
+			clean,
+			clean,
+			clean,
+			clean,
+		];
+		if (framework) {
+			funcSql += ` AND framework = ? COLLATE NOCASE`;
+			funcParams.push(framework);
+		}
+		funcSql += ` ORDER BY is_primary_type DESC, length(path) ASC LIMIT 10`;
+		try {
+			const funcRows = this.db.prepare(funcSql).all(...funcParams) as any[];
+			if (funcRows.length === 1) {
+				return { symbol: mapRow(funcRows[0]) };
+			}
+			if (funcRows.length > 1) {
+				return { candidates: funcRows.map(mapRow) };
+			}
+		} catch (err) {
+			logger.debug('resolveSymbol function/method signature step failed:', err);
 		}
 
 		return {};
