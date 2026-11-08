@@ -360,6 +360,13 @@ export async function downloadVectors(
 				status = db.getEmbeddingStatus();
 			} finally {
 				db.close();
+				for (const p of [attempt.tempPath, vectorDbPath]) {
+					if (p && existsSync(p)) {
+						try {
+							unlinkSync(p);
+						} catch {}
+					}
+				}
 			}
 
 			logger.info(

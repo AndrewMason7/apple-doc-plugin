@@ -14,8 +14,8 @@ test('getIndexMetadata returns real database counts and required keys for shippe
 	assert.ok(meta.serverName);
 	assert.ok(meta.dbPath.includes('apple-docs.db'));
 	assert.strictEqual(typeof meta.symbolCount, 'number');
-	// Shipped database has ~65,787 symbols; assert real count, not hardcoded "100000+"
-	assert.ok(meta.symbolCount > 60000 && meta.symbolCount < 80000);
+	// Shipped database has ~95,899 symbols; assert real count, not hardcoded "100000+"
+	assert.ok(meta.symbolCount > 60000 && meta.symbolCount < 120000);
 	assert.ok(Array.isArray(meta.indexedFrameworks));
 	assert.ok(meta.indexedFrameworks.includes('SwiftUI'));
 	assert.ok(meta.indexedFrameworks.includes('UIKit'));

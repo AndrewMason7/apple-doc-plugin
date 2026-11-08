@@ -40,6 +40,8 @@ const flagValue = (flag: string): number | undefined => {
 
 const ALL = hasFlag('--all');
 const ENRICH = hasFlag('--enrich');
+const ENRICH_ONLY =
+	hasFlag('--enrich-only') || hasFlag('--no-embed') || hasFlag('--skip-embed');
 const LIMIT = flagValue('--limit');
 /** Re-embed existing rows (needed after a document-text change). */
 const FORCE = hasFlag('--force');
@@ -162,6 +164,13 @@ async function enrichAbstracts(db: AppleDocsDB): Promise<void> {
 	});
 
 	console.error(`📝 Abstracts: filled ${filled} of ${missing.length}.`);
+	if (filled > 0) {
+		console.error(
+			'🔄 Rebuilding FTS index to reflect newly enriched abstracts...',
+		);
+		db.rebuildFTS();
+		console.error('✅ FTS index rebuilt.');
+	}
 }
 
 async function main(): Promise<void> {
@@ -181,6 +190,18 @@ async function main(): Promise<void> {
 	}
 
 	const db = new AppleDocsDB(dbPath);
+
+	if (ENRICH) {
+		await enrichAbstracts(db);
+		if (ENRICH_ONLY) {
+			console.error(
+				'✨ Abstract enrichment complete (--enrich-only). Exiting.',
+			);
+			db.close();
+			return;
+		}
+	}
+
 	const provider = resolveEmbeddingProvider();
 
 	console.error(
@@ -192,10 +213,6 @@ async function main(): Promise<void> {
 		);
 		db.close();
 		process.exit(1);
-	}
-
-	if (ENRICH) {
-		await enrichAbstracts(db);
 	}
 
 	const candidates = selectEmbeddingCandidates(db, { all: ALL });

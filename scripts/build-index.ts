@@ -29,6 +29,48 @@ if (typeof process.loadEnvFile === 'function') {
 
 import { CORE_FRAMEWORKS } from '../src/server/db/frameworks.js';
 
+const args = process.argv.slice(2);
+const hasFlag = (flag: string) => args.includes(flag);
+const EMBED = hasFlag('--embed');
+const SKIP_EMBED = hasFlag('--skip-embed') || hasFlag('--no-embed');
+
+function resolveFrameworkNames(requested: string[]): string[] {
+	return requested.map((req) => {
+		const match = CORE_FRAMEWORKS.find(
+			(cf) => cf.toLowerCase() === req.toLowerCase(),
+		);
+		return match || req;
+	});
+}
+
+function parseTargetFrameworks(): readonly string[] {
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+		if (arg.startsWith('--frameworks=') || arg.startsWith('--framework=')) {
+			const prefix = arg.startsWith('--frameworks=')
+				? '--frameworks='
+				: '--framework=';
+			const list = arg
+				.slice(prefix.length)
+				.split(',')
+				.map((s) => s.trim())
+				.filter(Boolean);
+			if (list.length > 0) return resolveFrameworkNames(list);
+		}
+		if (arg === '--frameworks' || arg === '--framework') {
+			const next = args[i + 1];
+			if (next && !next.startsWith('--')) {
+				const list = next
+					.split(',')
+					.map((s) => s.trim())
+					.filter(Boolean);
+				if (list.length > 0) return resolveFrameworkNames(list);
+			}
+		}
+	}
+	return CORE_FRAMEWORKS;
+}
+
 const headers = {
 	'User-Agent':
 		'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
@@ -69,9 +111,15 @@ async function buildIndex() {
 		);
 	}
 
+	const targetFrameworks = parseTargetFrameworks();
+	const isPartial = targetFrameworks.length !== CORE_FRAMEWORKS.length;
+	console.error(
+		`🎯 Target frameworks (${targetFrameworks.length}): ${targetFrameworks.join(', ')}`,
+	);
+
 	let totalIndexed = 0;
 
-	for (const framework of CORE_FRAMEWORKS) {
+	for (const framework of targetFrameworks) {
 		const slug = framework.toLowerCase();
 		console.error(`\n▶ Starting indexing: ${framework}...`);
 
@@ -179,7 +227,8 @@ async function buildIndex() {
 		}
 	}
 
-	if (canEmbed) {
+	const shouldEmbedSymbols = canEmbed && (EMBED || (!isPartial && !SKIP_EMBED));
+	if (shouldEmbedSymbols) {
 		// Framework overviews and media previews alone never fill the hybrid
 		// threshold; the symbol layer is what semantic_search actually needs.
 		console.error('\n🧠 Embedding symbol layer...');
@@ -203,7 +252,7 @@ async function buildIndex() {
 	db.setMeta('built_at', builtAt);
 	db.setMeta('frameworks', JSON.stringify(CORE_FRAMEWORKS));
 	db.setMeta('symbol_count', String(db.getSymbolCount()));
-	db.setMeta('has_embeddings', String(canEmbed && db.hasEmbeddings()));
+	db.setMeta('has_embeddings', String(db.hasEmbeddings()));
 	db.setMeta('semantic_item_count', String(db.getSemanticItemCount()));
 	console.error(`📝 Saved index metadata (built_at: ${builtAt})`);
 

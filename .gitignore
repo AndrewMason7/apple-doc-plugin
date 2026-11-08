@@ -110,10 +110,7 @@ test-*.js
 
 dist
 
-# Python and test caches
-.pytest_cache/
-__pycache__/
-*.pyc
-.cache-test-*
+# Handoff notes
+*-handoff-*.md
 
 

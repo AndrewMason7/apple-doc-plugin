@@ -51,8 +51,8 @@ test('End-to-End: shipped index ranks exact names, suffix wildcards, and platfor
 	assert.ok(view[0].platforms.includes('iOS'));
 	assert.ok(view[0].platforms.includes('macOS'));
 
-	const styles = db.queryFTS('*Style', undefined, 10);
-	assert.strictEqual(styles.length, 10);
+	const styles = db.queryFTS('*Style', undefined, 15);
+	assert.strictEqual(styles.length, 15);
 	assert.ok(styles.some((row) => row.title === 'ButtonStyle'));
 	assert.ok(styles.some((row) => row.title === 'ListStyle'));
 	assert.ok(styles.every((row) => /style$/i.test(row.title)));
