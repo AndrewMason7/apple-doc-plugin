@@ -209,9 +209,15 @@ export class AppleDocsDB {
 
 	/**
 	 * Cheap check that the database file has not been deleted or replaced on disk.
-	 * Compares the dbPath inode vs the opened fd's inode (and checks meta build id)
-	 * and hard-fails with "index was replaced — restart the MCP server" instead of
+	 * Hard-fails with "index was replaced — restart the MCP server" instead of
 	 * silently answering from a corpse.
+	 *
+	 * Two legs, deliberately unequal in importance:
+	 *  1. inode + device (primary) — the tracking fd pins the opened inode, so a
+	 *     mismatch can only mean the path now resolves to a different file. This
+	 *     is the leg that catches the incident this method exists for.
+	 *  2. meta build id (secondary) — catches an in-place rebuild that bumps
+	 *     `built_at`. See the note on that block for what it does NOT catch.
 	 */
 	assertNotReplaced(): void {
 		if (isVirtualDbPath(this.dbPath) || this.dbPath === '') {
@@ -229,19 +235,30 @@ export class AppleDocsDB {
 			throw new Error('index was replaced — restart the MCP server');
 		}
 
-		const openedIno =
-			this.fd !== null ? fstatSync(this.fd).ino : this.openedInode;
-		const openedDev =
-			this.fd !== null ? fstatSync(this.fd).dev : this.openedDev;
-
-		if (openedIno !== null && currentStat.ino !== openedIno) {
+		// The open tracking fd pins the original inode, so the kernel can never
+		// recycle that number while we hold it: an inode mismatch here always
+		// means the path now points at a different file, never at a stale number.
+		// A size/fingerprint check is pointless for the same reason and actively
+		// harmful — this class writes to its own database (index builds, vector
+		// imports, setMeta), so any size snapshot taken at open time goes stale
+		// on the first insert and would fail every later read.
+		if (this.openedInode !== null && currentStat.ino !== this.openedInode) {
 			throw new Error('index was replaced — restart the MCP server');
 		}
 
-		if (openedDev !== null && currentStat.dev !== openedDev) {
+		if (this.openedDev !== null && currentStat.dev !== this.openedDev) {
 			throw new Error('index was replaced — restart the MCP server');
 		}
 
+		// Secondary leg only. Do not mistake this for the primary defence, and do
+		// not delete the inode comparison above on the strength of it: a replaced
+		// index very often carries the *same* snapshot stamp. `download-vectors`
+		// appends vectors to the build it already has, so the stale database and
+		// the freshly downloaded one both reported built_at
+		// 2026-11-08T12:48:31.487Z while differing by 143 MB and 19,473 vectors.
+		// This leg earns its place only for an in-place rebuild that bumps the
+		// stamp (covered by "throws when DB meta build id changes externally");
+		// for replacement-by-rename it is silent, and the inode leg carries it.
 		if (this.openedBuildId) {
 			try {
 				const currentBuildId = this.getMeta('built_at');
@@ -382,6 +399,10 @@ export class AppleDocsDB {
 	 * as "hybrid search is enabled" — keep both facts.
 	 */
 	getEmbeddingStatus(): EmbeddingStatus {
+		// The status tools are what told the operator "lexical only, 0 semantic
+		// items" while the live index held 19,473 vectors, so this entry point
+		// refuses to describe a database it no longer owns.
+		this.assertNotReplaced();
 		const semanticItemCount = this.getSemanticItemCount();
 		const hybridEnabled = semanticItemCount >= MIN_SEMANTIC_ITEMS_FOR_HYBRID;
 
@@ -728,6 +749,11 @@ export class AppleDocsDB {
 	}
 
 	getSemanticItemCount(): number {
+		// Must sit *before* the try/catch below: that catch converts every
+		// failure into `0`, which is precisely the "0 semantic items" lie this
+		// guard exists to prevent. A swallowed replacement error here made a
+		// stale server report lexical-only search while holding 19k vectors.
+		this.assertNotReplaced();
 		try {
 			const row = this.db
 				.prepare(`SELECT count(*) as count FROM semantic_items`)
