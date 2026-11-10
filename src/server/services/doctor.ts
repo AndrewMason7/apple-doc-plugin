@@ -296,24 +296,29 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 
 	// 8. Semantic layer size vs the shared hybrid gate
 	checks.push(
-		safe('semantic_layer', 'Semantic layer', 'npm run embed-index', () => {
-			const embedding = db.getEmbeddingStatus();
-			const threshold = MIN_SEMANTIC_ITEMS_FOR_HYBRID;
-			return embedding.semanticItemCount >= threshold
-				? check(
-						'semantic_layer',
-						'Semantic layer',
-						'ok',
-						`${embedding.semanticItemCount} vectors (threshold ${threshold})`,
-					)
-				: check(
-						'semantic_layer',
-						'Semantic layer',
-						'warn',
-						`${embedding.semanticItemCount}/${threshold} vectors — hybrid search cannot engage; queries stay lexical`,
-						'npm run embed-index',
-					);
-		}),
+		safe(
+			'semantic_layer',
+			'Semantic layer',
+			'npm run download-vectors (or npm run embed-index)',
+			() => {
+				const embedding = db.getEmbeddingStatus();
+				const threshold = MIN_SEMANTIC_ITEMS_FOR_HYBRID;
+				return embedding.semanticItemCount >= threshold
+					? check(
+							'semantic_layer',
+							'Semantic layer',
+							'ok',
+							`${embedding.semanticItemCount} vectors (threshold ${threshold})`,
+						)
+					: check(
+							'semantic_layer',
+							'Semantic layer',
+							'warn',
+							`${embedding.semanticItemCount}/${threshold} vectors — hybrid search cannot engage; queries stay lexical`,
+							'npm run download-vectors (or npm run embed-index)',
+						);
+			},
+		),
 	);
 
 	// 9. Vector width consistency

@@ -349,7 +349,7 @@ The executable CLI supports standalone commands and subcommands:
 
 | Command                                                             | Description                                                                                                |
 | :------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------- |
-| `npm run doctor` (or `apple-doc-plugin doctor`)                     | Run 10-point health check (`--json` and `--strict` supported for CI).                                      |
+| `npm run doctor` (or `apple-doc-plugin doctor`)                     | Run 11-point health check (`--json` and `--strict` supported for CI).                                      |
 | `npm run download-vectors` (or `apple-doc-plugin download-vectors`) | Import the bundled (or mirrored) gzip 768-d vector artifact with SHA-256 verification and mirror failover. |
 | `npm run export-vectors` (or `apple-doc-plugin export-vectors`)     | Export semantic vector bundle into verifiable standalone SQLite package with companion manifest and hash.  |
 | `npm run index-xcode` (or `apple-doc-plugin index-xcode`)           | Directly ingest and index offline `.doccarchive` documentation from local Xcode SDKs and DerivedData.      |
