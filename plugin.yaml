@@ -1,6 +1,6 @@
 name: apple-doc-plugin
 label: Apple Developer Documentation
-version: 1.0.2
+version: 1.0.3
 manifest_version: 2
 api_version: 1
 entrypoint: __init__.py

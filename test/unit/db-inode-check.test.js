@@ -1,11 +1,21 @@
 import assert from 'node:assert';
 import test from 'node:test';
-import { mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync, appendFileSync } from 'node:fs';
+import {
+	mkdtempSync,
+	renameSync,
+	rmSync,
+	unlinkSync,
+	writeFileSync,
+	appendFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AppleDocsDB } from '../../dist/server/db/database.js';
 import { HybridSearchEngine } from '../../dist/server/services/search/hybrid-search.js';
-import { buildVersionHandler, buildIndexInfoHandler } from '../../dist/server/handlers/version.js';
+import {
+	buildVersionHandler,
+	buildIndexInfoHandler,
+} from '../../dist/server/handlers/version.js';
 import { buildSearchSymbolsHandler } from '../../dist/server/handlers/search-symbols.js';
 import { buildGetDocumentationHandler } from '../../dist/server/handlers/get-documentation.js';
 import { buildDiscoverHandler } from '../../dist/server/handlers/discover.js';

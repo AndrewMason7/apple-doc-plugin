@@ -146,7 +146,10 @@ export class AppleDocsDB {
 					this.openedDev = st.dev;
 				}
 			} catch (err) {
-				logger.debug('Failed to open tracking file descriptor for dbPath:', err);
+				logger.debug(
+					'Failed to open tracking file descriptor for dbPath:',
+					err,
+				);
 				try {
 					if (existsSync(this.dbPath)) {
 						const st = statSync(this.dbPath);
