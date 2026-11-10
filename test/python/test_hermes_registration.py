@@ -55,5 +55,22 @@ class TestHermesRegistration(unittest.TestCase):
         self.assertIn("get_documentation", decorated_tools)
         self.assertEqual(len(decorated_tools), 6)
 
+    def test_register_exposes_bundled_apple_docs_skill(self):
+        mock_ctx = MagicMock()
+        registered_skills = []
+
+        def mock_register_skill(name, path, description="", frontmatter=None):
+            registered_skills.append({"name": name, "path": Path(path), "description": description})
+
+        mock_ctx.register_skill.side_effect = mock_register_skill
+        mock_ctx.tool = None
+        hermes_plugin.register(mock_ctx)
+
+        self.assertEqual(len(registered_skills), 1)
+        self.assertEqual(registered_skills[0]["name"], "apple-docs")
+        self.assertTrue(registered_skills[0]["path"].exists())
+        self.assertTrue(str(registered_skills[0]["path"]).endswith("skills/apple-docs/SKILL.md"))
+        self.assertTrue(len(registered_skills[0]["description"]) > 10)
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,7 +21,9 @@ test('resolveMinSimilarity uses the provider thresholds, not hardcoded Gemini on
 	assert.strictEqual(resolveMinSimilarity(local, false), 0.68);
 	assert.strictEqual(resolveMinSimilarity(local, true), 0.62);
 	assert.strictEqual(resolveMinSimilarity(gemini, false), 0.65);
-	assert.strictEqual(resolveMinSimilarity(gemini, true), 0.55);
+	// Updated from 0.55 -> 0.62: 0.55 let sub-0.62 lexical-boosted distractors
+	// (e.g. swipeActionsContainer) fuse with BM25 rank #1 and beat true 0.745 hits.
+	assert.strictEqual(resolveMinSimilarity(gemini, true), 0.62);
 });
 
 test('resolveMinSimilarity falls back to the historical defaults for unknown providers', () => {

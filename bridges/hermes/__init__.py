@@ -5,6 +5,7 @@ Exposes native tools for offline Apple API documentation search, SQLite FTS5 mat
 and Apple DocC extraction.
 """
 
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 try:
@@ -204,3 +205,20 @@ def register(ctx: Any) -> None:
                     },
                     handler=handler,
                 )
+
+    skill_path = Path(__file__).resolve().parents[2] / "skills" / "apple-docs" / "SKILL.md"
+    if skill_path.exists() and hasattr(ctx, "register_skill") and callable(ctx.register_skill):
+        skill_desc = (
+            "Search Apple Developer Documentation, verify SwiftUI/SwiftData/UIKit/AppKit APIs, "
+            "and ground modern Swift 6+ platform implementations."
+        )
+        try:
+            for line in skill_path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("description:"):
+                    parsed = line.split(":", 1)[1].strip().strip("'\"")
+                    if parsed:
+                        skill_desc = parsed
+                    break
+        except OSError:
+            pass
+        ctx.register_skill("apple-docs", skill_path, description=skill_desc)

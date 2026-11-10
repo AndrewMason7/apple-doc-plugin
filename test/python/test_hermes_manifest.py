@@ -43,5 +43,12 @@ class TestHermesManifest(unittest.TestCase):
             self.assertIn(tool, provides_tools)
         self.assertIn("node", content)
 
+    def test_manifests_do_not_claim_unpopulated_multimodal_previews(self):
+        root = Path(__file__).resolve().parent.parent.parent
+        yaml_text = (root / "plugin.yaml").read_text()
+        json_text = (root / "plugin.json").read_text()
+        self.assertNotIn("multimodal UI layout previews", yaml_text)
+        self.assertNotIn("multimodal UI layout previews", json_text)
+
 if __name__ == "__main__":
     unittest.main()

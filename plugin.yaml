@@ -10,8 +10,8 @@ homepage: https://github.com/AndrewMason7/apple-doc-plugin
 repository: https://github.com/AndrewMason7/apple-doc-plugin.git
 description: >
   Instant offline access to 95,000+ Apple Developer Documentation symbols with
-  smart SQLite FTS5 search, wildcard matching, multimodal UI layout previews,
-  and DocC markdown extraction.
+  smart SQLite FTS5 search, wildcard matching, hybrid semantic and cross-framework
+  idiom search, and DocC markdown extraction.
 tags:
   - apple
   - ios

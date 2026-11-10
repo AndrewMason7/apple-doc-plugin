@@ -3,7 +3,7 @@
 	"name": "apple-doc-plugin",
 	"displayName": "Apple Developer Documentation",
 	"version": "1.0.3",
-	"description": "Instant offline access to Apple Developer Documentation with smart SQLite FTS5 search, wildcard matching, multimodal UI layout previews, and DocC markdown extraction.",
+	"description": "Instant offline access to Apple Developer Documentation with smart SQLite FTS5 search, wildcard matching, hybrid semantic and cross-framework idiom search, and DocC markdown extraction.",
 	"logo": "assets/logo.png",
 	"suggestedPrompts": [
 		"Search Apple documentation for NavigationSplitView and its toolbar modifiers",
