@@ -1,15 +1,15 @@
 name: apple-doc-plugin
 label: Apple Developer Documentation
-version: 1.0.0
+version: 1.0.1
 manifest_version: 2
 api_version: 1
-entrypoint: bridges/hermes/__init__.py
+entrypoint: __init__.py
 author: Andrew Mason <https://github.com/AndrewMason7>
 license: MIT
 homepage: https://github.com/AndrewMason7/apple-doc-plugin
 repository: https://github.com/AndrewMason7/apple-doc-plugin.git
 description: >
-  Instant offline access to 65,000+ Apple Developer Documentation symbols with
+  Instant offline access to 95,000+ Apple Developer Documentation symbols with
   smart SQLite FTS5 search, wildcard matching, multimodal UI layout previews,
   and DocC markdown extraction.
 tags:

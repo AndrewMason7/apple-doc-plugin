@@ -1,7 +1,8 @@
 {
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
 	"name": "apple-doc-plugin",
 	"displayName": "Apple Developer Documentation",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Instant offline access to Apple Developer Documentation with smart SQLite FTS5 search, wildcard matching, multimodal UI layout previews, and DocC markdown extraction.",
 	"logo": "assets/logo.png",
 	"suggestedPrompts": [

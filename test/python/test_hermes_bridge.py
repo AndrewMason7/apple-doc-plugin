@@ -21,7 +21,7 @@ class TestNodeMcpBridge(unittest.TestCase):
         try:
             raw_result = bridge.call_tool("get_version", {})
             self.assertTrue(
-                "version" in raw_result or "1.0.0" in raw_result,
+                "version" in raw_result.lower() or "1.0" in raw_result,
                 f"Expected version in result: {raw_result}"
             )
         finally:

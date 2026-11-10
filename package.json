@@ -13,6 +13,7 @@
 		"bin/",
 		"plugin.json",
 		"plugin.yaml",
+		"__init__.py",
 		"bridges/",
 		"mcp_config.json",
 		"skills/",
