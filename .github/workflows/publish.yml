@@ -38,13 +38,14 @@ jobs:
       - name: Run package dry-run
         run: ./scripts/publish-dryrun.sh
 
-      - name: Publish to NPM
+      - name: Stage or Publish to NPM
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           if npm view "apple-doc-plugin@${CURRENT_VERSION}" version > /dev/null 2>&1; then
             echo "Version ${CURRENT_VERSION} is already published on npm. Skipping publish step."
           else
-            npm publish --access public --provenance
+            echo "Staging apple-doc-plugin@${CURRENT_VERSION} for publishing (2FA proof-of-presence)..."
+            npm stage publish --access public --provenance
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.NPM_KEY }}
