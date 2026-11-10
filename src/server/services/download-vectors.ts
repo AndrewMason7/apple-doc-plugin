@@ -403,6 +403,15 @@ export async function downloadVectors(
 
 let activeAutoImportPromise: Promise<boolean> | null = null;
 
+export const isAutoImportInFlight = (): boolean =>
+	activeAutoImportPromise !== null;
+
+export const setAutoImportInFlightForTest = (
+	promise: Promise<boolean> | null,
+): void => {
+	activeAutoImportPromise = promise;
+};
+
 export interface AutoImportOptions {
 	dbPath?: string;
 	db?: AppleDocsDB;

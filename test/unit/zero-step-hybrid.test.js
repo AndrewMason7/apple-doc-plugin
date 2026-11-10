@@ -7,6 +7,8 @@ import { AppleDocsDB } from '../../dist/server/db/database.js';
 import {
 	findLocalVectorArtifact,
 	autoImportBundledVectors,
+	isAutoImportInFlight,
+	setAutoImportInFlightForTest,
 } from '../../dist/server/services/download-vectors.js';
 
 test('Zero-step hybrid: findLocalVectorArtifact discovers bundled gzip artifact', () => {
@@ -150,6 +152,78 @@ test('Zero-step hybrid: search_symbols handler lazily imports bundled vectors wh
 			'Should not show semantic index empty warning after auto-import',
 		);
 	} finally {
+		db.close();
+		fs.rmSync(tempDir, { recursive: true, force: true });
+	}
+});
+
+test('Zero-step hybrid: get_version, index_info, and doctor report hydrating state while background import is in flight', async () => {
+	const tempDir = fs.mkdtempSync(
+		path.join(os.tmpdir(), 'apple-docs-hydrating-status-'),
+	);
+	const dbPath = path.join(tempDir, 'hydrating.db');
+	const db = new AppleDocsDB(dbPath);
+	db.insertSymbol({
+		id: '/documentation/swiftui/view',
+		framework: 'SwiftUI',
+		title: 'View',
+		kind: 'protocol',
+		abstract: 'A type that represents part of the user interface.',
+		path: '/documentation/swiftui/view',
+		platforms: ['iOS 13.0+'],
+		isPrimaryType: true,
+	});
+	db.setMeta('built_at', new Date().toISOString());
+
+	const { buildVersionHandler, buildIndexInfoHandler } =
+		await import('../../dist/server/handlers/version.js');
+	const { runDoctor } = await import('../../dist/server/services/doctor.js');
+	const { GeminiSemanticSearch } =
+		await import('../../dist/server/services/search/semantic-search.js');
+	const { ServerState } = await import('../../dist/server/state.js');
+
+	let resolvePending;
+	const pending = new Promise((r) => {
+		resolvePending = r;
+	});
+
+	setAutoImportInFlightForTest(pending);
+	try {
+		assert.strictEqual(isAutoImportInFlight(), true);
+
+		const ctx = {
+			client: { extractText: () => '' },
+			state: new ServerState(),
+			db,
+			searchEngine: {
+				embeddingProvider: new GeminiSemanticSearch('test-key'),
+			},
+		};
+		const verRes = await buildVersionHandler(ctx)();
+		const verText = verRes.content[0].text;
+		assert.match(verText, /Hydrating bundled 768-d vectors in background/i);
+		assert.doesNotMatch(verText, /npm run download-vectors/i);
+
+		const infoRes = await buildIndexInfoHandler(ctx)();
+		const infoText = infoRes.content[0].text;
+		assert.match(infoText, /\*\*Mode:\*\*\s*hydrating/i);
+		assert.doesNotMatch(infoText, /npm run download-vectors/i);
+
+		const report = runDoctor({
+			db,
+			dbPath,
+			provider: new GeminiSemanticSearch('test-key'),
+			nodeVersion: 'v24.0.0',
+			hydrating: true,
+		});
+		assert.strictEqual(report.failures, 0);
+		assert.strictEqual(report.warnings, 0);
+		const semCheck = report.checks.find((c) => c.id === 'semantic_layer');
+		assert.strictEqual(semCheck?.status, 'ok');
+		assert.match(semCheck?.detail ?? '', /hydrating bundled 768-d vectors/i);
+	} finally {
+		resolvePending(true);
+		setAutoImportInFlightForTest(null);
 		db.close();
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	}

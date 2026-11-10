@@ -23,6 +23,8 @@ export interface DoctorContext {
 	nodeVersion: string;
 	/** Snapshot age in days beyond which freshness warns. */
 	staleAfterDays?: number;
+	/** True while zero-step background vector import is actively running. */
+	hydrating?: boolean;
 }
 
 export interface DoctorReport {
@@ -303,6 +305,14 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 			() => {
 				const embedding = db.getEmbeddingStatus();
 				const threshold = MIN_SEMANTIC_ITEMS_FOR_HYBRID;
+				if (!embedding.storageHasVectors && context.hydrating) {
+					return check(
+						'semantic_layer',
+						'Semantic layer',
+						'ok',
+						'hydrating bundled 768-d vectors in background',
+					);
+				}
 				return embedding.semanticItemCount >= threshold
 					? check(
 							'semantic_layer',

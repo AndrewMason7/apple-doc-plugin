@@ -31,6 +31,7 @@ import {
 	FRESHNESS_SOURCE_LABELS,
 	runDoctor,
 } from '../services/doctor.js';
+import { isAutoImportInFlight } from '../services/download-vectors.js';
 import { UnavailableEmbeddingProvider } from '../services/search/provider-factory.js';
 import type { EmbeddingProvider } from '../services/search/embedding-provider.js';
 
@@ -61,6 +62,8 @@ export interface IndexMetadata {
 	builtAt: string;
 	freshness: FreshnessInfo;
 	embeddingStatus: EmbeddingStatus;
+	/** True when background bundled vector hydration is actively running on an empty index. */
+	hydrating: boolean;
 	/** Width of the stored vectors, from one row; `null` when none exist. */
 	storedVectorWidth: number | null;
 	unknownKindCount: number;
@@ -97,6 +100,8 @@ export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
 	const embeddingStatus: EmbeddingStatus = db
 		? db.getEmbeddingStatus()
 		: FALLBACK_EMBEDDING_STATUS;
+	const hydrating =
+		!embeddingStatus.storageHasVectors && isAutoImportInFlight();
 	// One row is enough for the status line; the multi-width check is doctor's
 	// dimension_consistency, which scans DISTINCT widths (too slow for a tool
 	// that runs on every call).
@@ -113,6 +118,7 @@ export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
 		builtAt: freshness.builtAt,
 		freshness,
 		embeddingStatus,
+		hydrating,
 		storedVectorWidth,
 		unknownKindCount: db ? db.countUnknownKind() : 0,
 		frameworkMismatchCount: db ? db.countFrameworkPathMismatches() : 0,
@@ -149,7 +155,12 @@ const resolveDimensionMismatch = (
 const describeSearchMode = (
 	status: EmbeddingStatus,
 	mismatch: DimensionMismatch | null,
+	hydrating = false,
 ): string => {
+	if (hydrating && !status.storageHasVectors) {
+		return 'Hydrating bundled 768-d vectors in background — lexical FTS5 active now, hybrid ready in a few seconds';
+	}
+
 	if (mismatch) {
 		return `Hybrid (dimension mismatch) — ${mismatch.stored}-d vectors stored but queries embed at ${mismatch.expected}-d, so semantic scoring is skipped and results stay lexical; set APPLE_DOCS_EMBEDDING_DIMENSIONS=${mismatch.stored} to keep them, or "npm run embed-index -- --force" to re-embed`;
 	}
@@ -183,7 +194,7 @@ export const buildVersionHandler =
 📊 Indexed Symbols: ${meta.symbolCount}
 📦 Indexed Frameworks: ${meta.indexedFrameworks.length} (${meta.indexedFrameworks.join(', ')})${meta.crossReferenceFrameworks.length > 0 ? `\n🔗 Cross-reference targets: ${meta.crossReferenceFrameworks.join(', ')}` : ''}
 🕒 Snapshot Built At: ${describeFreshness(meta.freshness)}
-🔎 Search Capability: ${describeSearchMode(meta.embeddingStatus, mismatch)}
+🔎 Search Capability: ${describeSearchMode(meta.embeddingStatus, mismatch, meta.hydrating)}
 👤 Author: ${packageJson.author}
 🔗 Repository: ${packageJson.repository?.url ?? 'N/A'}`;
 
@@ -265,6 +276,7 @@ export const buildIndexInfoHandler =
 					provider:
 						context.searchEngine?.embeddingProvider ?? UNAVAILABLE_PROVIDER,
 					nodeVersion: process.version,
+					hydrating: meta.hydrating,
 				})
 			: undefined;
 
@@ -280,9 +292,11 @@ export const buildIndexInfoHandler =
 				: '';
 		// "hybrid" on row count alone is the claim the review rejected: the mode
 		// label must carry the mismatch, not just the dimension line.
-		const modeLabel = mismatch
-			? `${meta.embeddingStatus.mode} (dimension mismatch)`
-			: meta.embeddingStatus.mode;
+		const modeLabel = meta.hydrating
+			? 'hydrating'
+			: mismatch
+				? `${meta.embeddingStatus.mode} (dimension mismatch)`
+				: meta.embeddingStatus.mode;
 
 		// The actions section is derived from the report, not hand-written: the
 		// old list drifted (it said build:index enabled hybrid; embed-index does).
