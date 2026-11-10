@@ -3,6 +3,10 @@ import type { Technology } from '../../apple-client.js';
 import { header, bold } from '../markdown.js';
 import { resolveSymbol } from '../services/symbol-resolution.js';
 import { isUnknownKind } from '../services/indexer.js';
+import {
+	findLocalVectorArtifact,
+	autoImportBundledVectors,
+} from '../services/download-vectors.js';
 
 type QueryMode = 'exact-symbol' | 'wildcard' | 'keyword';
 
@@ -219,6 +223,19 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 
 		// 1. If high-performance searchEngine (SQLite FTS5 + Gemini) is available, use it!
 		if (searchEngine) {
+			// Zero-step hybrid search: on semantic search, ensure bundled vectors are imported
+			if (
+				preferSemantic &&
+				context.db &&
+				context.db.getSemanticItemCount() === 0 &&
+				findLocalVectorArtifact()
+			) {
+				await autoImportBundledVectors({
+					dbPath: context.db.dbPath,
+					db: context.db,
+				});
+			}
+
 			const results = await searchEngine.search(query, {
 				framework: targetFramework,
 				limit: clampedMaxResults * 2,

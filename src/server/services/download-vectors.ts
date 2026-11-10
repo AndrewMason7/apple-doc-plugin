@@ -400,3 +400,85 @@ export async function downloadVectors(
 		`Failed to import vectors from ${attempts.length} source(s):\n${errorSummary}`,
 	);
 }
+
+let activeAutoImportPromise: Promise<boolean> | null = null;
+
+export interface AutoImportOptions {
+	dbPath?: string;
+	db?: AppleDocsDB;
+}
+
+/**
+ * Zero-step hybrid search:
+ * If the database has 0 semantic items and a local bundled vector artifact
+ * (assets/apple-docs-vectors-768d.db.gz) exists on disk, automatically
+ * decompress, verify SHA-256, and import the 19,473 vectors so fresh clones
+ * and npm tarball installs run in full Hybrid mode without any setup steps.
+ */
+export async function autoImportBundledVectors(
+	options?: AutoImportOptions,
+): Promise<boolean> {
+	if (
+		process.env.APPLE_DOCS_SKIP_AUTO_IMPORT === 'true' ||
+		process.env.APPLE_DOCS_SKIP_AUTO_IMPORT === '1'
+	) {
+		return false;
+	}
+
+	if (activeAutoImportPromise) {
+		return activeAutoImportPromise;
+	}
+
+	const localArtifact = findLocalVectorArtifact();
+	if (!localArtifact) {
+		return false;
+	}
+
+	const targetPath = options?.dbPath || resolveDbPath();
+	if (!existsSync(targetPath)) {
+		return false;
+	}
+
+	const currentCount =
+		options?.db?.getSemanticItemCount() ??
+		(() => {
+			try {
+				const checkDb = new AppleDocsDB(targetPath, { readonly: true });
+				const count = checkDb.getSemanticItemCount();
+				checkDb.close();
+				return count;
+			} catch {
+				return 0;
+			}
+		})();
+
+	if (currentCount > 0) {
+		return false;
+	}
+
+	activeAutoImportPromise = (async () => {
+		try {
+			logger.info(
+				`Zero-step hybrid: auto-importing bundled vectors from ${localArtifact}...`,
+			);
+			await downloadVectors({ dbPath: targetPath });
+			if (options?.db) {
+				options.db.invalidateVectorCache();
+			}
+			logger.info(
+				'Zero-step hybrid: successfully imported bundled vectors. Full hybrid search is now active.',
+			);
+			return true;
+		} catch (err) {
+			logger.warn(
+				'Zero-step hybrid: failed to auto-import bundled vectors:',
+				err,
+			);
+			return false;
+		} finally {
+			activeAutoImportPromise = null;
+		}
+	})();
+
+	return activeAutoImportPromise;
+}

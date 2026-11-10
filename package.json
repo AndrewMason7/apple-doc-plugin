@@ -10,6 +10,7 @@
 	"files": [
 		"dist/",
 		"data/apple-docs.db",
+		"assets/",
 		"bin/",
 		"plugin.json",
 		"plugin.yaml",

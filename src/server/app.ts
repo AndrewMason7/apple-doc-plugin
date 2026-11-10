@@ -10,6 +10,10 @@ import { registerPrompts } from './prompts.js';
 import { AppleDocsDB } from './db/database.js';
 import { resolveDbPath } from './db/db-path.js';
 import { HybridSearchEngine } from './services/search/hybrid-search.js';
+import {
+	findLocalVectorArtifact,
+	autoImportBundledVectors,
+} from './services/download-vectors.js';
 import { loadEnvironment } from './env.js';
 import { logger } from './logger.js';
 
@@ -64,6 +68,14 @@ export const createServer = () => {
 		try {
 			db = new AppleDocsDB(dbPath, { readonly: true });
 			searchEngine = new HybridSearchEngine(db);
+
+			// Zero-step hybrid search: if fresh database has 0 semantic items,
+			// automatically import the bundled local vector artifact in the background.
+			if (db.getSemanticItemCount() === 0 && findLocalVectorArtifact()) {
+				autoImportBundledVectors({ dbPath, db }).catch((err) => {
+					log.debug('Background bundled vector import deferred:', err);
+				});
+			}
 		} catch (err) {
 			log.error(
 				'Failed to open pre-indexed SQLite database, falling back to dynamic search:',

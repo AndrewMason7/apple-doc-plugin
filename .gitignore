@@ -105,6 +105,7 @@ test-*.js
 
 *.db-wal
 *.db-shm
+*.tmp.db
 
 .superpowers/
 

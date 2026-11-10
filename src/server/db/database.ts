@@ -699,6 +699,10 @@ export class AppleDocsDB {
 		);
 	}
 
+	invalidateVectorCache(): void {
+		this.vectorCache = null;
+	}
+
 	insertSemanticItems(items: SemanticItem[]): void {
 		if (items.length === 0) return;
 		this.vectorCache = null; // Invalidate vector cache on new writes
@@ -1505,6 +1509,10 @@ export class AppleDocsDB {
 			const status = this.getEmbeddingStatus();
 			this.setMeta('embedded_at', new Date().toISOString());
 			this.setMeta('semantic_item_count', String(status.semanticItemCount));
+			this.setMeta(
+				'has_embeddings',
+				status.storageHasVectors ? 'true' : 'false',
+			);
 
 			return count;
 		} finally {

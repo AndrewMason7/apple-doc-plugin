@@ -13,8 +13,8 @@ test('npm pack: tarball bundle meets size ceiling and file allowlist', () => {
 
 	assert.strictEqual(packInfo.name, 'apple-doc-plugin');
 	assert.ok(
-		packInfo.size < 15 * 1024 * 1024,
-		`Tarball size ${packInfo.size} exceeds 15 MB limit`,
+		packInfo.size < 75 * 1024 * 1024,
+		`Tarball size ${packInfo.size} exceeds 75 MB limit`,
 	);
 
 	const filenames = packInfo.files.map((f) => f.path);
@@ -24,6 +24,11 @@ test('npm pack: tarball bundle meets size ceiling and file allowlist', () => {
 		filenames.includes('data/apple-docs.db'),
 		'Missing SQLite database',
 	);
+	assert.ok(
+		filenames.includes('assets/apple-docs-vectors-768d.db.gz'),
+		'Missing bundled vector artifact',
+	);
+	assert.ok(filenames.includes('assets/logo.png'), 'Missing asset logo');
 	assert.ok(filenames.includes('dist/index.js'), 'Missing entrypoint');
 	assert.ok(
 		filenames.includes('skills/apple-docs/SKILL.md'),
