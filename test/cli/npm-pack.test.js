@@ -7,7 +7,9 @@ test('npm pack: tarball bundle meets size ceiling and file allowlist', () => {
 	const parsed = JSON.parse(output);
 	const packInfo = Array.isArray(parsed)
 		? parsed[0]
-		: (parsed.name ? parsed : Object.values(parsed)[0]);
+		: parsed.name
+			? parsed
+			: Object.values(parsed)[0];
 
 	assert.strictEqual(packInfo.name, 'apple-doc-plugin');
 	assert.ok(
