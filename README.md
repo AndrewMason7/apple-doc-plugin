@@ -1,5 +1,6 @@
 # Apple Developer Documentation MCP Server & Plugin
 
+[![npm version](https://img.shields.io/npm/v/apple-doc-plugin.svg)](https://www.npmjs.com/package/apple-doc-plugin)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-1.27.1-purple.svg)](https://modelcontextprotocol.io)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org)
