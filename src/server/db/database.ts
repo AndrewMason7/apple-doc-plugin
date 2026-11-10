@@ -877,10 +877,12 @@ export class AppleDocsDB {
 		const tokens = sanitized.split(' ').filter(Boolean);
 		if (tokens.length === 1) {
 			const single = tokens[0].replace(/\*+$/, '');
-			const camelParts = single.split(/(?=[A-Z])/).filter(Boolean);
-			if (camelParts.length > 1) {
-				const tokenQuery = camelParts.map((p) => `"${p}"*`).join(' AND ');
-				ftsQuery = `("${single}"* OR (${tokenQuery}))`;
+			const words = single
+				.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)
+				.filter(Boolean);
+			if (words.length > 1 && words.every((w) => w.length >= 2)) {
+				const phrase = words.join(' ');
+				ftsQuery = `("${single}"* OR "${phrase}")`;
 			} else {
 				ftsQuery = `"${single}"*`;
 			}

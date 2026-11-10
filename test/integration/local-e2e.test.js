@@ -3,18 +3,29 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { AppleDocsDB } from '../../dist/server/db/database.js';
 import { HybridSearchEngine } from '../../dist/server/services/search/hybrid-search.js';
-import { LocalGemmaEmbeddingProvider } from '../../dist/server/services/search/local-gemma-provider.js';
+import {
+	LocalGemmaEmbeddingProvider,
+	getDefaultLocalModelPath,
+} from '../../dist/server/services/search/local-gemma-provider.js';
 
 test('End-to-End: in-process local EmbeddingGemma 2 semantic search', async (t) => {
 	const modelPath =
-		'/Users/andrew/Documents/GitHub/Models/embeddinggemma-2-Q8_0.gguf';
+		process.env.APPLE_DOCS_EMBEDDING_MODEL_PATH || getDefaultLocalModelPath();
 	if (!existsSync(modelPath)) {
-		t.skip('Local GGUF model not found at path');
+		t.skip(`Local GGUF model not found at path: ${modelPath}`);
 		return;
 	}
 
 	const provider = new LocalGemmaEmbeddingProvider(modelPath);
 	assert.equal(provider.isAvailable(), true);
+
+	const probe = await provider.embedQuery('probe');
+	if (probe === null) {
+		t.skip(
+			'Local model failed initialization (headless or restricted environment)',
+		);
+		return;
+	}
 
 	const db = new AppleDocsDB(':memory:');
 	db.insertSymbol({

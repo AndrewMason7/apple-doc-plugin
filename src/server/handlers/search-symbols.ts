@@ -274,6 +274,8 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 
 			if (topResults.length > 0) {
 				let searchModeDesc: string;
+				let fallbackBanner: string | undefined;
+
 				if (lexicalOnly) {
 					searchModeDesc = 'Lexical only (SQLite FTS5)';
 				} else if (preferSemantic) {
@@ -290,14 +292,24 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 								? 'Hybrid (SQLite FTS5 + Local EmbeddingGemma embeddings)'
 								: 'Hybrid (SQLite FTS5 + Gemini embeddings)';
 					} else if (semanticCount < 100) {
-						searchModeDesc = `Lexical fallback (semantic index has ${semanticCount} items; symbol embeddings require build:index)`;
+						searchModeDesc = `Lexical fallback (semantic index has ${semanticCount} items; run "npm run embed-index" or "npm run download-vectors" to enable hybrid)`;
+						fallbackBanner =
+							semanticCount === 0
+								? '> ⚠️ **Semantic index empty — results are lexical BM25, ranking may be noisy.**'
+								: `> ⚠️ **Semantic index below threshold (${semanticCount}/100) — results are lexical BM25, ranking may be noisy.**`;
 					} else if (!hasSemanticAuth) {
 						searchModeDesc =
 							'Lexical fallback (No local model or Gemini credentials configured; running offline FTS5)';
+						fallbackBanner =
+							'> ⚠️ **No embedding provider configured — results are lexical BM25, ranking may be noisy.**';
 					} else if (isCircuitOpen) {
 						searchModeDesc = `Lexical fallback (${providerId === 'local-gguf' ? 'Local model' : 'Gemini API'} circuit breaker is currently open)`;
+						fallbackBanner =
+							'> ⚠️ **Embedding provider circuit breaker open — results are lexical BM25, ranking may be noisy.**';
 					} else {
 						searchModeDesc = 'Lexical fallback (SQLite FTS5)';
+						fallbackBanner =
+							'> ⚠️ **Semantic search fell back to lexical BM25 — ranking may be noisy.**';
 					}
 				} else {
 					searchModeDesc = 'Hybrid / Lexical (SQLite FTS5)';
@@ -306,6 +318,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 				const lines: string[] = [
 					header(1, `🔍 Search Results for "${query}"`),
 					'',
+					...(fallbackBanner ? [fallbackBanner, ''] : []),
 					bold('Framework', targetFramework || 'All Apple Frameworks (Global)'),
 					bold('Search Mode', searchModeDesc),
 					bold('Query Mode', queryMode),
@@ -366,12 +379,15 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		}
 
 		// 2. Legacy fallback when searchEngine has no results or isn't initialized
+		const semanticCountFallback = context.db?.getSemanticItemCount() ?? 0;
 		const fallbackNotice =
 			preferSemantic && !searchEngine?.hasSemanticAuth()
-				? '*Note: Running in lexical fallback mode because no local model or Gemini credentials are configured.*'
+				? '> ⚠️ **No embedding provider configured — results are lexical BM25, ranking may be noisy.**'
 				: preferSemantic && searchEngine?.isCircuitOpen()
-					? '*Note: Running in lexical fallback mode because embedding provider circuit breaker is currently open.*'
-					: undefined;
+					? '> ⚠️ **Embedding provider circuit breaker open — results are lexical BM25, ranking may be noisy.**'
+					: preferSemantic && semanticCountFallback < 100
+						? '> ⚠️ **Semantic index empty — results are lexical BM25, ranking may be noisy.**'
+						: undefined;
 
 		if (!targetFramework) {
 			// If no technology is chosen and no searchEngine results, return clean suggestions

@@ -11,14 +11,20 @@ export function getDefaultLocalModelPath(): string {
 		return process.env.APPLE_DOCS_EMBEDDING_MODEL_PATH;
 	}
 	const home = homedir();
-	const candidates = [
-		join(home, 'Documents/GitHub/Models/embeddinggemma-2-Q8_0.gguf'),
-		join(home, '.cache/apple-docs/models/embeddinggemma-2-Q8_0.gguf'),
-	];
-	for (const p of candidates) {
-		if (existsSync(p)) return p;
-	}
-	return candidates[0];
+	const defaultCachePath = join(
+		home,
+		'.cache/apple-docs/models/embeddinggemma-2-Q8_0.gguf',
+	);
+	if (existsSync(defaultCachePath)) return defaultCachePath;
+
+	// Optional fallback for local dev environments
+	const devCandidate = join(
+		home,
+		'Documents/GitHub/Models/embeddinggemma-2-Q8_0.gguf',
+	);
+	if (existsSync(devCandidate)) return devCandidate;
+
+	return defaultCachePath;
 }
 
 function l2Normalize(values: ArrayLike<number>): Float32Array {

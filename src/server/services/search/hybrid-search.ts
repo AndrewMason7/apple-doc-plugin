@@ -23,6 +23,9 @@ export const resolveMinSimilarity = (
 };
 import { resolveEmbeddingProvider } from './provider-factory.js';
 import { expandQuery, type QueryExpansionResult } from './query-expansion.js';
+import { logger } from '../../logger.js';
+
+const log = logger.child({ module: 'hybrid-search' });
 
 export interface SearchOptions {
 	framework?: string;
@@ -133,11 +136,12 @@ export class HybridSearchEngine {
 		const key = `${storedWidth}->${queryWidth}`;
 		if (this.reportedWidthMismatches.has(key)) return;
 		this.reportedWidthMismatches.add(key);
-		console.warn(
+		const warningMsg =
 			`Warning: semantic vector dimension mismatch — ${mismatchedItems} stored vector(s) are ${storedWidth}-d but the query embedding is ${queryWidth}-d, so cosine scores are undefined. ` +
-				`set APPLE_DOCS_EMBEDDING_DIMENSIONS=${storedWidth} to keep your existing vectors, or run npm run embed-index -- --force to re-embed at ${queryWidth}. ` +
-				'Skipping the semantic pass; results stay lexical until one of those is done.',
-		);
+			`set APPLE_DOCS_EMBEDDING_DIMENSIONS=${storedWidth} to keep your existing vectors, or run npm run embed-index -- --force to re-embed at ${queryWidth}. ` +
+			'Skipping the semantic pass; results stay lexical until one of those is done.';
+		log.warn(warningMsg);
+		console.warn(warningMsg);
 	}
 
 	searchSemanticWithVector(

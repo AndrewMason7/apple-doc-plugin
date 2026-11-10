@@ -35,9 +35,27 @@ test('installStdioGuard: intercepts console.info and formats multiple arguments'
 	}
 });
 
+test('installStdioGuard: intercepts console.warn and formats warning message', () => {
+	const intercepted = [];
+	const testLogger = createLogger({
+		destination: (msg) => intercepted.push(msg),
+	});
+
+	const uninstall = installStdioGuard(testLogger);
+	try {
+		console.warn('Potential issue: %s', 'dimension mismatch');
+		assert.equal(intercepted.length, 1);
+		assert.match(intercepted[0], /Potential issue: dimension mismatch/);
+		assert.match(intercepted[0], /WARN/);
+	} finally {
+		uninstall();
+	}
+});
+
 test('installStdioGuard: restores original console methods upon uninstall', () => {
 	const originalLog = console.log;
 	const originalInfo = console.info;
+	const originalWarn = console.warn;
 	const originalDebug = console.debug;
 	const originalDir = console.dir;
 
@@ -46,6 +64,7 @@ test('installStdioGuard: restores original console methods upon uninstall', () =
 
 	assert.notEqual(console.log, originalLog);
 	assert.notEqual(console.info, originalInfo);
+	assert.notEqual(console.warn, originalWarn);
 	assert.notEqual(console.debug, originalDebug);
 	assert.notEqual(console.dir, originalDir);
 
@@ -53,6 +72,7 @@ test('installStdioGuard: restores original console methods upon uninstall', () =
 
 	assert.equal(console.log, originalLog);
 	assert.equal(console.info, originalInfo);
+	assert.equal(console.warn, originalWarn);
 	assert.equal(console.debug, originalDebug);
 	assert.equal(console.dir, originalDir);
 

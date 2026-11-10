@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { resolveEmbeddingProvider } from '../../dist/server/services/search/provider-factory.js';
+import { getDefaultLocalModelPath } from '../../dist/server/services/search/local-gemma-provider.js';
 
 const LOCAL_MODEL =
-	'/Users/andrew/Documents/GitHub/Models/embeddinggemma-2-Q8_0.gguf';
+	process.env.APPLE_DOCS_EMBEDDING_MODEL_PATH || getDefaultLocalModelPath();
 
 test('resolveEmbeddingProvider prefers Gemini when API key is present even if local model exists', () => {
 	const provider = resolveEmbeddingProvider({

@@ -1,8 +1,8 @@
 /**
  * Stdio Protection Guard
  *
- * Intercepts console.log, console.info, console.debug, and console.dir during
- * MCP stdio operation, redirecting them to stderr through logger so that stray
+ * Intercepts console.log, console.info, console.warn, console.debug, and console.dir
+ * during MCP stdio operation, redirecting them to stderr through logger so that stray
  * library or application logs never corrupt the JSON-RPC wire protocol on stdout.
  */
 
@@ -11,7 +11,7 @@ import type { Logger } from './logger.js';
 import { logger as rootLogger } from './index.js';
 
 /**
- * Installs stdout protection by redirecting console.log, console.info,
+ * Installs stdout protection by redirecting console.log, console.info, console.warn,
  * console.debug, and console.dir to stderr via the provided (or default) Logger.
  * Returns an idempotent teardown function restoring the original console methods.
  */
@@ -19,6 +19,7 @@ export function installStdioGuard(targetLogger?: Logger): () => void {
 	const target = targetLogger ?? rootLogger;
 	const originalLog = console.log;
 	const originalInfo = console.info;
+	const originalWarn = console.warn;
 	const originalDebug = console.debug;
 	const originalDir = console.dir;
 
@@ -43,6 +44,18 @@ export function installStdioGuard(targetLogger?: Logger): () => void {
 			}
 		} catch {
 			target.info(String(args[0]));
+		}
+	};
+
+	console.warn = (...args: unknown[]) => {
+		try {
+			if (args.length === 0) {
+				target.warn('');
+			} else {
+				target.warn(util.format(...args));
+			}
+		} catch {
+			target.warn(String(args[0]));
 		}
 	};
 
@@ -83,6 +96,7 @@ export function installStdioGuard(targetLogger?: Logger): () => void {
 		uninstalled = true;
 		console.log = originalLog;
 		console.info = originalInfo;
+		console.warn = originalWarn;
 		console.debug = originalDebug;
 		console.dir = originalDir;
 	};

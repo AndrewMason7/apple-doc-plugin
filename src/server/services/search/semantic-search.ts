@@ -313,9 +313,9 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 	): Float32Array | null {
 		if (!Array.isArray(values) || values.length !== requestedDims) {
 			const got = Array.isArray(values) ? String(values.length) : 'none';
-			console.warn(
-				`Warning: Gemini API returned ${got} dimensions, expected ${requestedDims}`,
-			);
+			const warningMsg = `Warning: Gemini API returned ${got} dimensions, expected ${requestedDims}`;
+			log.warn(warningMsg);
+			console.warn(warningMsg);
 			return null;
 		}
 		// gemini-embedding-2 renormalizes truncated vectors. gemini-embedding-001 does not:
@@ -534,9 +534,9 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 				let mime = mimeType.trim().toLowerCase();
 				if (mime === 'image/jpg') mime = 'image/jpeg';
 				if (!MULTIMODAL_MIME_TYPES.has(mime)) {
-					console.warn(
-						`Warning: Unsupported embedding MIME type "${mimeType}". Supported inputs are PNG, JPEG, MP4, MOV, MP3, WAV, and PDF.`,
-					);
+					const warningMsg = `Warning: Unsupported embedding MIME type "${mimeType}". Supported inputs are PNG, JPEG, MP4, MOV, MP3, WAV, and PDF.`;
+					log.warn(warningMsg);
+					console.warn(warningMsg);
 					return null;
 				}
 				parts.push({
