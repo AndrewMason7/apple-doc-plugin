@@ -173,7 +173,7 @@ npm run doctor
 
 ```text
 ✔ Node.js                v24.x (or v26.x)
-✔ Index file             data/apple-docs.db (48.1 MB)
+✔ Index file             data/apple-docs.runtime.db (48.1 MB)
 ✔ Symbols                95,899 rows
 ✔ FTS index              95,899 rows
 ✔ Symbol kinds           every row classified
@@ -188,7 +188,7 @@ npm run doctor
 All checks passed (1 warning).
 ```
 
-> **Note:** The shipped snapshot is immediately usable for fast offline lexical search (95,899 symbols). Run `npm run download-vectors` to import the bundled 768-d vector artifact (19,473 vectors) in seconds, or `npm run embed-index` to build them yourself. Either way the semantic layer flips to `✔` and hybrid search engages.
+> **Note:** The shipped lexical seed (`data/apple-docs.db`) is copied on first run to an untracked writable runtime store (`data/apple-docs.runtime.db`, or `$XDG_CACHE_HOME/apple-docs/apple-docs.runtime.db` when the install directory is read-only) and bundled 768-d vectors (`19,473` items) auto-import in the background on server start. You can also run `npm run download-vectors` explicitly or `npm run embed-index` to build vectors locally.
 
 ---
 
@@ -332,14 +332,14 @@ In addition to tools, `apple-doc-plugin` implements native MCP Resources and Pro
 
 Settings can be specified in `.env` or passed via your MCP server environment config:
 
-| Variable                          | Default                      | Description                                                                                                                        |
-| :-------------------------------- | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `GEMINI_API_KEY`                  | _none_                       | Gemini API key for hosted semantic search and embeddings.                                                                          |
-| `APPLE_DOCS_EMBEDDING_PROVIDER`   | `auto`                       | Force provider: `gemini` or `local` (GGUF). Defaults to `local` if model file exists, else `gemini`.                               |
-| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | `~/.cache/...`               | Path to local `embeddinggemma-2-Q8_0.gguf` file.                                                                                   |
-| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | `768`                        | MRL vector dimensions (`128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`). Default `768` is optimal.                      |
-| `APPLE_DOCS_DB_PATH`              | `data/apple-docs.db`         | Custom path to the SQLite documentation database.                                                                                  |
-| `APPLE_DOCS_VECTORS_URL`          | _bundled asset, then mirror_ | Override the vector artifact URL. The artifact already under `assets/` is preferred, so clones and plugin installs import offline. |
+| Variable                          | Default                      | Description                                                                                                                               |
+| :-------------------------------- | :--------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`                  | _none_                       | Gemini API key for hosted semantic search and embeddings.                                                                                 |
+| `APPLE_DOCS_EMBEDDING_PROVIDER`   | `auto`                       | Force provider: `gemini` or `local` (GGUF). Defaults to `local` if model file exists, else `gemini`.                                      |
+| `APPLE_DOCS_EMBEDDING_MODEL_PATH` | `~/.cache/...`               | Path to local `embeddinggemma-2-Q8_0.gguf` file.                                                                                          |
+| `APPLE_DOCS_EMBEDDING_DIMENSIONS` | `768`                        | MRL vector dimensions (`128`, `256`, `512`, `768`, `1024`, `1536`, `2048`, `3072`). Default `768` is optimal.                             |
+| `APPLE_DOCS_DB_PATH`              | `data/apple-docs.runtime.db` | Custom path to the active SQLite database (falls back to `$XDG_CACHE_HOME/apple-docs/apple-docs.runtime.db` if install dir is read-only). |
+| `APPLE_DOCS_VECTORS_URL`          | _bundled asset, then mirror_ | Override the vector artifact URL. The artifact already under `assets/` is preferred, so clones and plugin installs import offline.        |
 
 ---
 
@@ -357,7 +357,7 @@ The executable CLI supports standalone commands and subcommands:
 | `npm run embed-index`                                               | Generate or resume vector embeddings for hybrid search (`--enrich`, `--limit 25`, `--all`).                |
 | `npm run repair-index`                                              | Fix framework attribution and symbol kinds in place without re-crawling (`--apply` to commit).             |
 | `npm run build:binary` (or `scripts/build-binary.sh`)               | Build standalone native runner and release distribution archive.                                           |
-| `npm test`                                                          | Run complete test suite (372 tests).                                                                       |
+| `npm test`                                                          | Run complete test suite (400+ tests).                                                                      |
 | `npm run check`                                                     | Run TypeScript typechecking and Prettier verification.                                                     |
 
 ---

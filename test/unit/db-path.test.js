@@ -14,6 +14,7 @@ import {
 	isVirtualDbPath,
 	resolveDbPath,
 	resolveSeedDbPath,
+	safeEnsureRuntimeDbSeeded,
 } from '../../dist/server/db/db-path.js';
 
 // The repository root, derived from this test file rather than from cwd: the
@@ -217,8 +218,8 @@ test('no entry point or script hardcodes the default index path', () => {
 		);
 		assert.match(
 			source,
-			/resolveDbPath|ensureRuntimeDbSeeded/,
-			`${relative} must call resolveDbPath() or ensureRuntimeDbSeeded()`,
+			/resolveDbPath|ensureRuntimeDbSeeded/i,
+			`${relative} must call resolveDbPath() or (safe)EnsureRuntimeDbSeeded()`,
 		);
 	}
 
@@ -228,4 +229,36 @@ test('no entry point or script hardcodes the default index path', () => {
 	);
 	assert.doesNotMatch(buildSource, /data\/apple-docs\.db/);
 	assert.match(buildSource, /resolveSeedDbPath/);
+});
+
+test('safeEnsureRuntimeDbSeeded degrades gracefully to resolveDbPath when seed copy throws ENOSPC', () => {
+	const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-enospc-'));
+	try {
+		const dataDir = path.join(tmpRoot, 'data');
+		fs.mkdirSync(dataDir, { recursive: true });
+		const seedPath = path.join(dataDir, 'apple-docs.db');
+		const sdb = new Database(seedPath);
+		sdb.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);');
+		sdb.close();
+
+		const res = safeEnsureRuntimeDbSeeded({
+			env: {},
+			root: tmpRoot,
+			writableCheck: () => true,
+			copyFn: () => {
+				const err = new Error('ENOSPC: no space left on device');
+				err.code = 'ENOSPC';
+				throw err;
+			},
+		});
+		assert.strictEqual(res, path.join(dataDir, 'apple-docs.runtime.db'));
+	} finally {
+		fs.rmSync(tmpRoot, { recursive: true, force: true });
+	}
+});
+
+test('README documents data/apple-docs.runtime.db and XDG_CACHE_HOME fallback', () => {
+	const readme = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
+	assert.match(readme, /data\/apple-docs\.runtime\.db/);
+	assert.match(readme, /XDG_CACHE_HOME/);
 });

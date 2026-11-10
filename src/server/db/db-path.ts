@@ -38,6 +38,8 @@ export interface DbPathOverrides {
 	writableCheck?: (dir: string) => boolean;
 	/** Override user home directory for XDG fallback tests. */
 	homeDir?: string;
+	/** Injectable file copy function for testing disk-full/permission failures. */
+	copyFn?: (src: string, dest: string) => void;
 }
 
 /** SQLite in-memory forms have no path to resolve or create a directory for. */
@@ -147,8 +149,9 @@ export function ensureRuntimeDbSeeded(overrides: DbPathOverrides = {}): string {
 
 	mkdirSync(dirname(target), { recursive: true });
 	const tmpPath = `${target}.seed.${process.pid}.${Date.now()}.tmp`;
+	const copyImpl = overrides.copyFn ?? copyFileSync;
 	try {
-		copyFileSync(seedPath, tmpPath);
+		copyImpl(seedPath, tmpPath);
 		for (const sidecar of [`${target}-wal`, `${target}-shm`]) {
 			if (existsSync(sidecar)) {
 				try {
@@ -167,4 +170,25 @@ export function ensureRuntimeDbSeeded(overrides: DbPathOverrides = {}): string {
 	}
 
 	return target;
+}
+
+/**
+ * Non-throwing wrapper around {@link ensureRuntimeDbSeeded} for startup and
+ * diagnostic entry points (`doctor`, `createServer`, CLI commands): logs copy
+ * failures (`ENOSPC`, `EACCES`) to stderr and returns `resolveDbPath()` so
+ * diagnostics can still report the state instead of crashing at module load.
+ */
+export function safeEnsureRuntimeDbSeeded(
+	overrides: DbPathOverrides = {},
+): string {
+	try {
+		return ensureRuntimeDbSeeded(overrides);
+	} catch (err) {
+		const fallback = resolveDbPath(overrides);
+		const msg = err instanceof Error ? err.message : String(err);
+		process.stderr.write(
+			`[apple-doc-plugin] Warning: could not seed runtime DB (${msg}); falling back to ${fallback}\n`,
+		);
+		return fallback;
+	}
 }

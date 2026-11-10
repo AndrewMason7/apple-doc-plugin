@@ -8,7 +8,7 @@ import { registerTools } from './tools.js';
 import { registerResources } from './resources.js';
 import { registerPrompts } from './prompts.js';
 import { AppleDocsDB } from './db/database.js';
-import { ensureRuntimeDbSeeded, resolveDbPath } from './db/db-path.js';
+import { safeEnsureRuntimeDbSeeded } from './db/db-path.js';
 import { HybridSearchEngine } from './services/search/hybrid-search.js';
 import {
 	findLocalVectorArtifact,
@@ -63,7 +63,7 @@ export const createServer = () => {
 
 	// Same resolver as `npm run doctor` and the index scripts: a custom
 	// APPLE_DOCS_DB_PATH must point every surface at the same file.
-	const dbPath = ensureRuntimeDbSeeded() || resolveDbPath();
+	const dbPath = safeEnsureRuntimeDbSeeded();
 	if (existsSync(dbPath)) {
 		try {
 			db = new AppleDocsDB(dbPath, { readonly: true });

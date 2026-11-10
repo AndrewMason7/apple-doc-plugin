@@ -4,18 +4,21 @@ import {
 	createWriteStream,
 	existsSync,
 	mkdirSync,
+	mkdtempSync,
 	readFileSync,
+	rmSync,
 	statSync,
 	unlinkSync,
 } from 'node:fs';
 import { copyFile, open } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import axios from 'axios';
 import { AppleDocsDB } from '../db/database.js';
-import { ensureRuntimeDbSeeded, resolveDbPath } from '../db/db-path.js';
+import { safeEnsureRuntimeDbSeeded } from '../db/db-path.js';
 import { logger } from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -204,7 +207,7 @@ async function materializeVectorDb(sourcePath: string): Promise<string> {
 export async function downloadVectors(
 	options: DownloadVectorsOptions = {},
 ): Promise<DownloadVectorsResult> {
-	const dbPath = options.dbPath || ensureRuntimeDbSeeded() || resolveDbPath();
+	const dbPath = options.dbPath || safeEnsureRuntimeDbSeeded();
 	mkdirSync(dirname(dbPath), { recursive: true });
 
 	// If force is not requested, check whether vectors are already present
@@ -235,136 +238,162 @@ export async function downloadVectors(
 
 	const timeoutMs = options.timeoutMs || 600000;
 	const stamp = Date.now();
-
-	const localArtifact = findLocalVectorArtifact();
-	const callerUrls: string[] = [];
-	if (options.url) {
-		callerUrls.push(options.url);
-	}
-	if (options.mirrors && options.mirrors.length > 0) {
-		callerUrls.push(...options.mirrors);
-	}
-	if (process.env.APPLE_DOCS_VECTORS_URL) {
-		callerUrls.push(process.env.APPLE_DOCS_VECTORS_URL);
-	}
-	if (process.env.APPLE_DOCS_VECTORS_MIRRORS) {
-		const envMirrors = process.env.APPLE_DOCS_VECTORS_MIRRORS.split(',')
-			.map((m) => m.trim())
-			.filter(Boolean);
-		callerUrls.push(...envMirrors);
-	}
-
-	// Source order: the bundled artifact first (offline, exact width), then any
-	// caller-supplied mirror, then the default remote mirror. Only the shipped
-	// artifact carries a pinned checksum — a caller's own mirror is unverified
-	// unless they explicitly pass one.
-	const attempts: Array<{
-		label: string;
-		tempPath: string;
-		pinned: boolean;
-		obtain: () => Promise<number>;
-	}> = [];
-
-	// An explicitly named source always wins: never substitute the bundled
-	// artifact for a URL the caller asked for. Only when the caller names
-	// nothing do we prefer the bundled artifact, then the default mirror.
-	if (callerUrls.length === 0 && localArtifact) {
-		const tempPath = `${dbPath}.download-vectors.${stamp}.local.tmp`;
-		attempts.push({
-			label: `bundled artifact (${localArtifact})`,
-			tempPath,
-			pinned: true,
-			obtain: async () => {
-				await copyFile(localArtifact, tempPath);
-				return statSync(tempPath).size;
-			},
-		});
-	}
-
-	const remoteSources: Array<{ url: string; pinned: boolean }> = [];
-	for (const url of Array.from(new Set(callerUrls))) {
-		remoteSources.push({ url, pinned: false });
-	}
-	// Fall back to the default mirror only when the caller named no source.
-	if (callerUrls.length === 0) {
-		for (const url of DEFAULT_VECTORS_MIRRORS) {
-			remoteSources.push({ url, pinned: true });
-		}
-	}
-
-	for (let i = 0; i < remoteSources.length; i++) {
-		const { url, pinned } = remoteSources[i];
-		const tempPath = `${dbPath}.download-vectors.${stamp}.${i}.tmp`;
-		attempts.push({
-			label: url,
-			tempPath,
-			pinned,
-			obtain: () =>
-				streamToFile(url, tempPath, timeoutMs, options.onProgress).then(
-					({ bytesDownloaded }) => bytesDownloaded,
-				),
-		});
-	}
-
-	if (attempts.length === 0) {
-		throw new Error(
-			'No vector source available: no bundled artifact and no mirror configured. Run "npm run embed-index" to build vectors locally.',
-		);
-	}
-
-	const errors: Array<{ url: string; error: string }> = [];
-
-	logger.info(
-		`Starting vector import (${attempts.length} source${attempts.length === 1 ? '' : 's'})...`,
-	);
-	logger.info(`Target database: ${dbPath}`);
-
-	for (const attempt of attempts) {
-		logger.info(`Attempting source: ${attempt.label}`);
-		let vectorDbPath: string | undefined;
+	const stageDir = mkdtempSync(join(tmpdir(), 'apple-docs-vec-'));
+	const cleanupStageDir = () => {
 		try {
-			const bytesDownloaded = await attempt.obtain();
-			logger.info(`Obtained ${bytesDownloaded} bytes from ${attempt.label}`);
+			rmSync(stageDir, { recursive: true, force: true });
+		} catch {}
+	};
+	process.once('exit', cleanupStageDir);
 
-			// Verify the artifact before decompressing it: the sidecar SHA-256
-			// published next to the artifact covers the compressed bytes a
-			// caller actually receives.
-			// The pinned checksum covers the shipped artifact only; a caller's
-			// own mirror is verified only when they supply a checksum.
-			// `expectedSha256: null` opts out of even the pinned check.
-			const expectedSha256 =
-				options.expectedSha256 !== undefined
-					? options.expectedSha256
-					: attempt.pinned
-						? VECTOR_ARTIFACT_SHA256
-						: null;
-			const actualSha256 = createHash('sha256')
-				.update(readFileSync(attempt.tempPath))
-				.digest('hex');
-			if (expectedSha256) {
-				if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
-					throw new Error(
-						`SHA-256 checksum mismatch: expected ${expectedSha256}, got ${actualSha256}`,
-					);
-				}
-				logger.info(`SHA-256 checksum verified: ${actualSha256}`);
+	try {
+		const localArtifact = findLocalVectorArtifact();
+		const callerUrls: string[] = [];
+		if (options.url) {
+			callerUrls.push(options.url);
+		}
+		if (options.mirrors && options.mirrors.length > 0) {
+			callerUrls.push(...options.mirrors);
+		}
+		if (process.env.APPLE_DOCS_VECTORS_URL) {
+			callerUrls.push(process.env.APPLE_DOCS_VECTORS_URL);
+		}
+		if (process.env.APPLE_DOCS_VECTORS_MIRRORS) {
+			const envMirrors = process.env.APPLE_DOCS_VECTORS_MIRRORS.split(',')
+				.map((m) => m.trim())
+				.filter(Boolean);
+			callerUrls.push(...envMirrors);
+		}
+
+		// Source order: the bundled artifact first (offline, exact width), then any
+		// caller-supplied mirror, then the default remote mirror. Only the shipped
+		// artifact carries a pinned checksum — a caller's own mirror is unverified
+		// unless they explicitly pass one.
+		const attempts: Array<{
+			label: string;
+			tempPath: string;
+			pinned: boolean;
+			obtain: () => Promise<number>;
+		}> = [];
+
+		// An explicitly named source always wins: never substitute the bundled
+		// artifact for a URL the caller asked for. Only when the caller names
+		// nothing do we prefer the bundled artifact, then the default mirror.
+		if (callerUrls.length === 0 && localArtifact) {
+			const tempPath = join(stageDir, `vectors.${stamp}.local.tmp`);
+			attempts.push({
+				label: `bundled artifact (${localArtifact})`,
+				tempPath,
+				pinned: true,
+				obtain: async () => {
+					await copyFile(localArtifact, tempPath);
+					return statSync(tempPath).size;
+				},
+			});
+		}
+
+		const remoteSources: Array<{ url: string; pinned: boolean }> = [];
+		for (const url of Array.from(new Set(callerUrls))) {
+			remoteSources.push({ url, pinned: false });
+		}
+		// Fall back to the default mirror only when the caller named no source.
+		if (callerUrls.length === 0) {
+			for (const url of DEFAULT_VECTORS_MIRRORS) {
+				remoteSources.push({ url, pinned: true });
 			}
+		}
 
-			vectorDbPath = await materializeVectorDb(attempt.tempPath);
+		for (let i = 0; i < remoteSources.length; i++) {
+			const { url, pinned } = remoteSources[i];
+			const tempPath = join(stageDir, `vectors.${stamp}.${i}.tmp`);
+			attempts.push({
+				label: url,
+				tempPath,
+				pinned,
+				obtain: () =>
+					streamToFile(url, tempPath, timeoutMs, options.onProgress).then(
+						({ bytesDownloaded }) => bytesDownloaded,
+					),
+			});
+		}
 
-			const db = new AppleDocsDB(dbPath);
-			let importedCount = 0;
-			let status;
+		if (attempts.length === 0) {
+			throw new Error(
+				'No vector source available: no bundled artifact and no mirror configured. Run "npm run embed-index" to build vectors locally.',
+			);
+		}
+
+		const errors: Array<{ url: string; error: string }> = [];
+
+		logger.info(
+			`Starting vector import (${attempts.length} source${attempts.length === 1 ? '' : 's'})...`,
+		);
+		logger.info(`Target database: ${dbPath}`);
+
+		for (const attempt of attempts) {
+			logger.info(`Attempting source: ${attempt.label}`);
+			let vectorDbPath: string | undefined;
 			try {
-				importedCount = db.importVectorsFromDb(
-					vectorDbPath,
-					attempt.pinned
-						? { model: 'gemini-embedding-2', provider: 'gemini' }
-						: undefined,
+				const bytesDownloaded = await attempt.obtain();
+				logger.info(`Obtained ${bytesDownloaded} bytes from ${attempt.label}`);
+
+				const expectedSha256 =
+					options.expectedSha256 !== undefined
+						? options.expectedSha256
+						: attempt.pinned
+							? VECTOR_ARTIFACT_SHA256
+							: null;
+				const actualSha256 = createHash('sha256')
+					.update(readFileSync(attempt.tempPath))
+					.digest('hex');
+				if (expectedSha256) {
+					if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
+						throw new Error(
+							`SHA-256 checksum mismatch: expected ${expectedSha256}, got ${actualSha256}`,
+						);
+					}
+					logger.info(`SHA-256 checksum verified: ${actualSha256}`);
+				}
+
+				vectorDbPath = await materializeVectorDb(attempt.tempPath);
+				const verifiedOfficialBundle =
+					actualSha256.toLowerCase() === VECTOR_ARTIFACT_SHA256.toLowerCase();
+
+				const db = new AppleDocsDB(dbPath);
+				let importedCount = 0;
+				let status;
+				try {
+					importedCount = db.importVectorsFromDb(
+						vectorDbPath,
+						verifiedOfficialBundle
+							? { model: 'gemini-embedding-2', provider: 'gemini' }
+							: undefined,
+					);
+					status = db.getEmbeddingStatus();
+				} finally {
+					db.close();
+					for (const p of [attempt.tempPath, vectorDbPath]) {
+						if (p && existsSync(p)) {
+							try {
+								unlinkSync(p);
+							} catch {}
+						}
+					}
+				}
+
+				logger.info(
+					`Successfully imported ${importedCount} vectors from ${attempt.label}. Total: ${status.semanticItemCount} (${status.mode})`,
 				);
-				status = db.getEmbeddingStatus();
-			} finally {
-				db.close();
+
+				return {
+					dbPath,
+					sourceUrl: attempt.label,
+					importedCount,
+					totalVectors: status.semanticItemCount,
+					sha256: actualSha256,
+					mode: status.mode,
+				};
+			} catch (err: unknown) {
 				for (const p of [attempt.tempPath, vectorDbPath]) {
 					if (p && existsSync(p)) {
 						try {
@@ -372,38 +401,22 @@ export async function downloadVectors(
 						} catch {}
 					}
 				}
+				const errMsg = err instanceof Error ? err.message : String(err);
+				logger.warn(`Source failed (${attempt.label}): ${errMsg}`);
+				errors.push({ url: attempt.label, error: errMsg });
 			}
-
-			logger.info(
-				`Successfully imported ${importedCount} vectors from ${attempt.label}. Total: ${status.semanticItemCount} (${status.mode})`,
-			);
-
-			return {
-				dbPath,
-				sourceUrl: attempt.label,
-				importedCount,
-				totalVectors: status.semanticItemCount,
-				sha256: actualSha256,
-				mode: status.mode,
-			};
-		} catch (err: unknown) {
-			for (const p of [attempt.tempPath, vectorDbPath]) {
-				if (p && existsSync(p)) {
-					try {
-						unlinkSync(p);
-					} catch {}
-				}
-			}
-			const errMsg = err instanceof Error ? err.message : String(err);
-			logger.warn(`Source failed (${attempt.label}): ${errMsg}`);
-			errors.push({ url: attempt.label, error: errMsg });
 		}
-	}
 
-	const errorSummary = errors.map((e) => `  - ${e.url}: ${e.error}`).join('\n');
-	throw new Error(
-		`Failed to import vectors from ${attempts.length} source(s):\n${errorSummary}`,
-	);
+		const errorSummary = errors
+			.map((e) => `  - ${e.url}: ${e.error}`)
+			.join('\n');
+		throw new Error(
+			`Failed to import vectors from ${attempts.length} source(s):\n${errorSummary}`,
+		);
+	} finally {
+		process.removeListener('exit', cleanupStageDir);
+		cleanupStageDir();
+	}
 }
 
 let activeAutoImportPromise: Promise<boolean> | null = null;
@@ -448,8 +461,7 @@ export async function autoImportBundledVectors(
 		return false;
 	}
 
-	const targetPath =
-		options?.dbPath || ensureRuntimeDbSeeded() || resolveDbPath();
+	const targetPath = options?.dbPath || safeEnsureRuntimeDbSeeded();
 	if (!existsSync(targetPath)) {
 		return false;
 	}

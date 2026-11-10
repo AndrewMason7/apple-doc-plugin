@@ -6,6 +6,7 @@ and Apple DocC extraction.
 """
 
 from pathlib import Path
+import sys
 from typing import Any, Callable, Dict, Optional
 
 try:
@@ -221,4 +222,7 @@ def register(ctx: Any) -> None:
                     break
         except OSError:
             pass
-        ctx.register_skill("apple-docs", skill_path, description=skill_desc)
+        try:
+            ctx.register_skill("apple-docs", skill_path, description=skill_desc)
+        except Exception as exc:
+            sys.stderr.write(f"[apple-doc-plugin] Warning: could not register apple-docs skill: {exc}\n")

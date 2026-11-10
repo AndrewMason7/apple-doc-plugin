@@ -103,6 +103,54 @@ test('embedSymbols stamps embedding_model and refuses mixed-model writes without
 		assert.strictEqual(db.getStoredEmbeddingModel(), 'embeddinggemma-2');
 		assert.strictEqual(db.getMeta('embedding_provider'), 'local-gguf');
 		assert.strictEqual(db.getSemanticItemCount(), 1);
+
+		// Legacy unprovenanced DB (existing vectors, storedModel === null) must reject non-Gemini writes without force: true
+		const legacyDb = new AppleDocsDB(':memory:');
+		try {
+			legacyDb.insertSymbol({
+				id: '/documentation/swiftui/button',
+				framework: 'SwiftUI',
+				title: 'Button',
+				kind: 'struct',
+				abstract: 'A button control.',
+				path: '/documentation/swiftui/button',
+				platforms: ['iOS 13.0+'],
+				isPrimaryType: true,
+			});
+			legacyDb.insertSymbol({
+				id: '/documentation/swiftui/text',
+				framework: 'SwiftUI',
+				title: 'Text',
+				kind: 'struct',
+				abstract: 'A text view.',
+				path: '/documentation/swiftui/text',
+				platforms: ['iOS 13.0+'],
+				isPrimaryType: true,
+			});
+			legacyDb.insertSemanticItem({
+				id: 'sym-/documentation/swiftui/button',
+				framework: 'SwiftUI',
+				title: 'Button',
+				kind: 'struct',
+				summary: 'A button control.',
+				path: '/documentation/swiftui/button',
+				embedding: unitVec(768, 0),
+			});
+			assert.strictEqual(legacyDb.getStoredEmbeddingModel(), null);
+
+			await assert.rejects(
+				() => embedSymbols(legacyDb, gemmaMock),
+				/unprovenanced|model mismatch.*--force/i,
+			);
+			await embedSymbols(legacyDb, gemmaMock, { force: true });
+			assert.strictEqual(
+				legacyDb.getStoredEmbeddingModel(),
+				'embeddinggemma-2',
+			);
+			assert.strictEqual(legacyDb.getSemanticItemCount(), 2);
+		} finally {
+			legacyDb.close();
+		}
 	} finally {
 		db.close();
 	}
@@ -249,6 +297,81 @@ test('exportVectors writes embeddingModel into manifest/meta and downloadVectors
 			'gemini-embedding-2',
 		);
 		verifyPinned.close();
+
+		// I2: Importing a subset bundle of a DIFFERENT model clears stale rows from the prior model
+		const mixedDestPath = path.join(tmpDir, 'mixed-dest.db');
+		const mixedDest = new AppleDocsDB(mixedDestPath);
+		mixedDest.insertSemanticItem({
+			id: 'sym-/documentation/swiftui/view',
+			framework: 'SwiftUI',
+			title: 'View',
+			kind: 'protocol',
+			summary: 'A view.',
+			path: '/documentation/swiftui/view',
+			embedding: unitVec(768, 0),
+		});
+		mixedDest.insertSemanticItem({
+			id: 'sym-/documentation/swiftui/text',
+			framework: 'SwiftUI',
+			title: 'Text',
+			kind: 'struct',
+			summary: 'A text.',
+			path: '/documentation/swiftui/text',
+			embedding: unitVec(768, 1),
+		});
+		mixedDest.setMeta('embedding_model', 'gemini-embedding-2');
+
+		const gemmaBundlePath = path.join(tmpDir, 'gemma-subset.db');
+		const gemmaBundle = new AppleDocsDB(gemmaBundlePath);
+		gemmaBundle.insertSemanticItem({
+			id: 'sym-/documentation/swiftui/view',
+			framework: 'SwiftUI',
+			title: 'View',
+			kind: 'protocol',
+			summary: 'A view.',
+			path: '/documentation/swiftui/view',
+			embedding: unitVec(768, 3),
+		});
+		gemmaBundle.setMeta('embedding_model', 'embeddinggemma-2');
+		gemmaBundle.setMeta('embedding_provider', 'local-gguf');
+		gemmaBundle.close();
+
+		mixedDest.importVectorsFromDb(gemmaBundlePath);
+		assert.strictEqual(
+			mixedDest.getSemanticItemCount(),
+			1,
+			'Stale Gemini row must be purged before importing Gemma subset bundle',
+		);
+		assert.strictEqual(mixedDest.getStoredEmbeddingModel(), 'embeddinggemma-2');
+		mixedDest.close();
+
+		// M1: Fallback provenance stamps gemini-embedding-2 ONLY when SHA-256 matches VECTOR_ARTIFACT_SHA256
+		const http = await import('node:http');
+		const srv = http.createServer((_req, res) => {
+			fs.createReadStream(legacyV1Path).pipe(res);
+		});
+		await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+		const port = srv.address().port;
+		try {
+			const fakePinnedDestPath = path.join(tmpDir, 'fake-pinned-dest.db');
+			const fakeInit = new AppleDocsDB(fakePinnedDestPath);
+			fakeInit.close();
+			await downloadVectors({
+				dbPath: fakePinnedDestPath,
+				url: `http://127.0.0.1:${port}/legacy-v1.db`,
+				expectedSha256: null,
+				force: true,
+			});
+			const checkFake = new AppleDocsDB(fakePinnedDestPath, { readonly: true });
+			assert.strictEqual(
+				checkFake.getStoredEmbeddingModel(),
+				null,
+				'Unmatched SHA-256 must never receive the gemini-embedding-2 fallback stamp',
+			);
+			checkFake.close();
+		} finally {
+			srv.close();
+		}
 	} finally {
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 	}

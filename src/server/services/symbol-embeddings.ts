@@ -1,6 +1,7 @@
 import type { AppleDocsDB } from '../db/database.js';
 import {
 	areEmbeddingModelsCompatible,
+	normalizeEmbeddingModelId,
 	type EmbeddingProvider,
 } from './search/embedding-provider.js';
 import { logger } from '../logger.js';
@@ -124,14 +125,22 @@ export async function embedSymbols(
 
 	const existingCount = db.getSemanticItemCount();
 	const storedModel = db.getStoredEmbeddingModel();
-	const activeModel = provider.modelId ?? provider.id;
-	if (
+	const activeModel = provider.modelId;
+	const unprovenancedNonGemini =
 		existingCount > 0 &&
-		!areEmbeddingModelsCompatible(storedModel, activeModel)
+		!storedModel &&
+		Boolean(activeModel) &&
+		normalizeEmbeddingModelId(activeModel) !== 'gemini-embedding-2';
+	if (
+		(existingCount > 0 &&
+			!areEmbeddingModelsCompatible(storedModel, activeModel)) ||
+		unprovenancedNonGemini
 	) {
 		if (!options.force) {
 			throw new Error(
-				`Embedding model mismatch: database contains ${existingCount} vector(s) built with "${storedModel}", while active provider uses "${activeModel}". Re-run with --force (force: true) to replace existing vectors cleanly.`,
+				unprovenancedNonGemini
+					? `Embedding model mismatch: database contains ${existingCount} unprovenanced vector(s), while active provider uses "${activeModel}". Re-run with --force (force: true) to replace existing vectors cleanly.`
+					: `Embedding model mismatch: database contains ${existingCount} vector(s) built with "${storedModel}", while active provider uses "${activeModel ?? provider.id}". Re-run with --force (force: true) to replace existing vectors cleanly.`,
 			);
 		}
 		db.clearSemanticItems();
@@ -156,6 +165,7 @@ export async function embedSymbols(
 	let embedded = 0;
 	let failed = 0;
 
+	let stampedProvenance = false;
 	const persist = (
 		candidate: EmbeddingCandidate,
 		vector: Float32Array,
@@ -169,6 +179,13 @@ export async function embedSymbols(
 			path: candidate.path,
 			embedding: vector,
 		});
+		if (!stampedProvenance) {
+			if (provider.modelId && provider.modelId !== 'none') {
+				db.setMeta('embedding_model', provider.modelId);
+			}
+			db.setMeta('embedding_provider', provider.id);
+			stampedProvenance = true;
+		}
 	};
 
 	const report = (done: number): void => {

@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, extname, join, resolve } from 'node:path';
 import { AppleDocsDB } from '../db/database.js';
-import { ensureRuntimeDbSeeded, resolveDbPath } from '../db/db-path.js';
+import { safeEnsureRuntimeDbSeeded } from '../db/db-path.js';
 import { indexFrameworkData, indexFrameworkTree } from './indexer.js';
 import { logger } from '../logger.js';
 
@@ -220,7 +220,7 @@ export async function indexXcodeDocs(
 	options: XcodeIndexOptions = {},
 ): Promise<XcodeIndexResult> {
 	const startTime = Date.now();
-	const dbPath = options.dbPath || ensureRuntimeDbSeeded() || resolveDbPath();
+	const dbPath = options.dbPath || safeEnsureRuntimeDbSeeded();
 	const dryRun = Boolean(options.dryRun);
 
 	// Collect search paths

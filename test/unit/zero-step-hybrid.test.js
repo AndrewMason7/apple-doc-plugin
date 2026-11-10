@@ -45,9 +45,21 @@ test('Zero-step hybrid: autoImportBundledVectors decompresses and imports into e
 
 	assert.strictEqual(db.getSemanticItemCount(), 0);
 
+	const seenTempFiles = [];
+	const watcher = fs.watch(tempDir, (_event, filename) => {
+		if (filename && filename.includes('.download-vectors.')) {
+			seenTempFiles.push(filename);
+		}
+	});
+
 	try {
 		const imported = await autoImportBundledVectors({ dbPath, db });
 		assert.strictEqual(imported, true, 'First auto-import should succeed');
+		assert.deepStrictEqual(
+			seenTempFiles,
+			[],
+			'Vector import must stage temporary files in os.tmpdir(), never beside dbPath',
+		);
 
 		const newCount = db.getSemanticItemCount();
 		assert.strictEqual(newCount, 19473, 'Should import exactly 19,473 vectors');
@@ -65,6 +77,7 @@ test('Zero-step hybrid: autoImportBundledVectors decompresses and imports into e
 			'Second run should skip existing vectors',
 		);
 	} finally {
+		watcher.close();
 		db.close();
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	}

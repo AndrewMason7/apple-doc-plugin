@@ -1,10 +1,10 @@
 import assert from 'node:assert';
 import test from 'node:test';
 import { AppleDocsDB } from '../../dist/server/db/database.js';
-import { resolveDbPath } from '../../dist/server/db/db-path.js';
+import { safeEnsureRuntimeDbSeeded } from '../../dist/server/db/db-path.js';
 
 test('Expanded frameworks coverage: key symbols from target frameworks are present and resolvable', () => {
-	const dbPath = resolveDbPath();
+	const dbPath = safeEnsureRuntimeDbSeeded();
 	const db = new AppleDocsDB(dbPath, { readonly: true });
 
 	const keySymbols = [
@@ -169,7 +169,7 @@ test('Expanded frameworks coverage: key symbols from target frameworks are prese
 });
 
 test('Expanded frameworks coverage: search_symbols handler returns target framework symbols cleanly', async () => {
-	const dbPath = resolveDbPath();
+	const dbPath = safeEnsureRuntimeDbSeeded();
 	const db = new AppleDocsDB(dbPath, { readonly: true });
 	const { HybridSearchEngine } =
 		await import('../../dist/server/services/search/hybrid-search.js');
@@ -275,7 +275,7 @@ test('Expanded frameworks coverage: search_symbols handler returns target framew
 });
 
 test('Expanded frameworks coverage: database integrity has 0 attribution mismatches and 0 unknown kinds', () => {
-	const dbPath = resolveDbPath();
+	const dbPath = safeEnsureRuntimeDbSeeded();
 	const db = new AppleDocsDB(dbPath, { readonly: true });
 
 	assert.strictEqual(

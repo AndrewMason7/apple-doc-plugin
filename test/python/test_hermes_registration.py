@@ -72,5 +72,15 @@ class TestHermesRegistration(unittest.TestCase):
         self.assertTrue(str(registered_skills[0]["path"]).endswith("skills/apple-docs/SKILL.md"))
         self.assertTrue(len(registered_skills[0]["description"]) > 10)
 
+    def test_register_skill_failure_does_not_abort_tool_registration(self):
+        mock_ctx = MagicMock()
+        registered_tools = []
+        mock_ctx.tool = None
+        mock_ctx.register_tool.side_effect = lambda name, **kw: registered_tools.append(name)
+        mock_ctx.register_skill.side_effect = ValueError("Plugin skill already registered")
+
+        hermes_plugin.register(mock_ctx)
+        self.assertEqual(len(registered_tools), 6)
+
 if __name__ == "__main__":
     unittest.main()

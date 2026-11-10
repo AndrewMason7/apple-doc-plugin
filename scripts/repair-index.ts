@@ -16,10 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import axios from 'axios';
 import { AppleDocsDB } from '../src/server/db/database.js';
-import {
-	ensureRuntimeDbSeeded,
-	resolveDbPath,
-} from '../src/server/db/db-path.js';
+import { safeEnsureRuntimeDbSeeded } from '../src/server/db/db-path.js';
 import {
 	canonicalFrameworkFromSlug,
 	frameworkSlugFromPath,
@@ -129,7 +126,7 @@ const mapWithConcurrency = async <T, R>(
 };
 
 async function repairIndex() {
-	const dbPath = ensureRuntimeDbSeeded() || resolveDbPath();
+	const dbPath = safeEnsureRuntimeDbSeeded();
 	if (!existsSync(dbPath)) {
 		console.error(
 			`✖ No index found at ${dbPath}. Run "npm run build:index" first.`,

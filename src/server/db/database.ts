@@ -13,6 +13,10 @@ import {
 	frameworkSlugFromPath,
 } from './path-attribution.js';
 import { levenshteinDistance } from '../services/levenshtein.js';
+import {
+	areEmbeddingModelsCompatible,
+	normalizeEmbeddingModelId,
+} from '../services/search/embedding-provider.js';
 
 const nodeRequire = createRequire(import.meta.url);
 let BetterSqlite3: typeof DatabaseConstructor | null = null;
@@ -1633,6 +1637,21 @@ export class AppleDocsDB {
 				}
 			} catch {}
 
+			const effectiveModel = sourceModel ?? fallbackProvenance?.model ?? null;
+			const effectiveProvider =
+				sourceProvider ?? fallbackProvenance?.provider ?? null;
+			const existingModel = this.getStoredEmbeddingModel();
+			const existingCount = this.getSemanticItemCount();
+			if (
+				existingCount > 0 &&
+				effectiveModel &&
+				(!areEmbeddingModelsCompatible(existingModel, effectiveModel) ||
+					(!existingModel &&
+						normalizeEmbeddingModelId(effectiveModel) !== 'gemini-embedding-2'))
+			) {
+				this.clearSemanticItems();
+			}
+
 			const insertSql = `
 				INSERT OR REPLACE INTO main.semantic_items
 				(id, framework, title, kind, summary, path, embedding, media_url, media_type)
@@ -1666,9 +1685,6 @@ export class AppleDocsDB {
 				'has_embeddings',
 				status.storageHasVectors ? 'true' : 'false',
 			);
-			const effectiveModel = sourceModel ?? fallbackProvenance?.model ?? null;
-			const effectiveProvider =
-				sourceProvider ?? fallbackProvenance?.provider ?? null;
 			if (effectiveModel) {
 				this.setMeta('embedding_model', effectiveModel);
 			}
