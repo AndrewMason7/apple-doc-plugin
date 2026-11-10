@@ -19,7 +19,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import axios from 'axios';
 import { AppleDocsDB } from '../src/server/db/database.js';
-import { resolveDbPath } from '../src/server/db/db-path.js';
+import {
+	ensureRuntimeDbSeeded,
+	resolveDbPath,
+} from '../src/server/db/db-path.js';
 import { resolveEmbeddingProvider } from '../src/server/services/search/provider-factory.js';
 import {
 	embedSymbols,
@@ -183,7 +186,7 @@ async function main(): Promise<void> {
 		}
 	}
 
-	const dbPath = resolveDbPath();
+	const dbPath = ensureRuntimeDbSeeded() || resolveDbPath();
 	if (!existsSync(dbPath)) {
 		console.error(`✖ No index at ${dbPath}. Run "npm run build:index" first.`);
 		process.exit(1);

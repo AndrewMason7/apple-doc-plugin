@@ -6,7 +6,10 @@ import {
 	UnavailableEmbeddingProvider,
 	resolveEmbeddingProvider,
 } from '../src/server/services/search/provider-factory.js';
-import { resolveDbPath } from '../src/server/db/db-path.js';
+import {
+	ensureRuntimeDbSeeded,
+	resolveDbPath,
+} from '../src/server/db/db-path.js';
 import { runDoctorCli } from '../src/cli/commands/doctor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,7 +28,7 @@ if (existsSync(envFile) && typeof process.loadEnvFile === 'function') {
 	}
 }
 
-const dbPath = resolveDbPath();
+const dbPath = ensureRuntimeDbSeeded() || resolveDbPath();
 
 // A doctor that dies while constructing a provider is worse than one that
 // reports the provider unavailable: the whole point is to print a report.

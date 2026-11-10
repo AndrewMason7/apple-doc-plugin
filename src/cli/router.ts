@@ -1,4 +1,4 @@
-import { resolveDbPath } from '../server/db/db-path.js';
+import { ensureRuntimeDbSeeded, resolveDbPath } from '../server/db/db-path.js';
 import { logger } from '../server/logger.js';
 import {
 	UnavailableEmbeddingProvider,
@@ -66,7 +66,7 @@ export async function runCliRouter(
 	}
 
 	if (command === 'doctor') {
-		const dbPath = resolveDbPath();
+		const dbPath = ensureRuntimeDbSeeded() || resolveDbPath();
 		let provider;
 		try {
 			provider = resolveEmbeddingProvider();

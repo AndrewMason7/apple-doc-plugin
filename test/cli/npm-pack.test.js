@@ -1,8 +1,10 @@
 import assert from 'node:assert';
 import test from 'node:test';
 import { execSync } from 'node:child_process';
+import { ensureRuntimeDbSeeded } from '../../dist/server/db/db-path.js';
 
 test('npm pack: tarball bundle meets size ceiling and file allowlist', () => {
+	ensureRuntimeDbSeeded();
 	const output = execSync('npm pack --dry-run --json', { encoding: 'utf8' });
 	const parsed = JSON.parse(output);
 	const packInfo = Array.isArray(parsed)
@@ -38,7 +40,11 @@ test('npm pack: tarball bundle meets size ceiling and file allowlist', () => {
 	assert.ok(filenames.includes('LICENSE'), 'Missing LICENSE');
 	assert.ok(filenames.includes('README.md'), 'Missing README.md');
 
-	// Excluded development files
+	// Excluded development and runtime-hydrated files
+	assert.ok(
+		!filenames.some((f) => f.includes('runtime.db')),
+		'Included runtime-hydrated SQLite database in published tarball',
+	);
 	assert.ok(
 		!filenames.some((f) => f.startsWith('test/')),
 		'Included test files',

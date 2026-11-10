@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { AppleDocsDB } from '../db/database.js';
-import { resolveDbPath } from '../db/db-path.js';
+import { ensureRuntimeDbSeeded, resolveDbPath } from '../db/db-path.js';
 import { logger } from '../logger.js';
 
 export interface ExportVectorsOptions {
@@ -49,7 +49,8 @@ export interface ExportVectorsResult {
 export async function exportVectors(
 	options: ExportVectorsOptions = {},
 ): Promise<ExportVectorsResult> {
-	const sourceDbPath = options.sourceDbPath || resolveDbPath();
+	const sourceDbPath =
+		options.sourceDbPath || ensureRuntimeDbSeeded() || resolveDbPath();
 	const targetDimensions = options.dimensions ?? 768;
 	const writeManifest = options.writeManifest !== false;
 

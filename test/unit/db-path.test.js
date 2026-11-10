@@ -1,14 +1,19 @@
 import assert from 'node:assert';
 import test from 'node:test';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
 
 import {
 	DEFAULT_DB_RELATIVE_PATH,
 	PROJECT_ROOT,
+	SEED_DB_RELATIVE_PATH,
+	ensureRuntimeDbSeeded,
 	isVirtualDbPath,
 	resolveDbPath,
+	resolveSeedDbPath,
 } from '../../dist/server/db/db-path.js';
 
 // The repository root, derived from this test file rather than from cwd: the
@@ -18,26 +23,54 @@ const REPO_ROOT = path.resolve(
 	'../..',
 );
 
-test('the default resolves to the shipped index next to the project root', () => {
-	const resolved = resolveDbPath({ env: {} });
+test('resolveSeedDbPath points to data/apple-docs.db while resolveDbPath points to data/apple-docs.runtime.db when writable', () => {
+	const seed = resolveSeedDbPath({ env: {} });
+	const resolved = resolveDbPath({ env: {}, writableCheck: () => true });
 
 	assert.strictEqual(
-		resolved,
+		seed,
 		path.join(REPO_ROOT, 'data', 'apple-docs.db'),
-		'default must be data/apple-docs.db under the project root',
+		'seed must be data/apple-docs.db under the project root',
+	);
+	assert.strictEqual(
+		resolved,
+		path.join(REPO_ROOT, 'data', 'apple-docs.runtime.db'),
+		'default runtime must be data/apple-docs.runtime.db when project data dir is writable',
 	);
 	assert.strictEqual(
 		PROJECT_ROOT,
 		REPO_ROOT,
 		'the module must locate the project root itself',
 	);
+	assert.strictEqual(SEED_DB_RELATIVE_PATH, path.join('data', 'apple-docs.db'));
 	assert.strictEqual(
 		DEFAULT_DB_RELATIVE_PATH,
-		path.join('data', 'apple-docs.db'),
+		path.join('data', 'apple-docs.runtime.db'),
 	);
 	assert.ok(
-		fs.existsSync(resolved),
-		'the shipped index must be found from the resolver, not assumed',
+		fs.existsSync(seed),
+		'the shipped seed index must be found from resolveSeedDbPath()',
+	);
+});
+
+test('resolveDbPath falls back to XDG_CACHE_HOME when project data dir is read-only', () => {
+	const resolved = resolveDbPath({
+		env: { XDG_CACHE_HOME: '/tmp/xdg-cache' },
+		writableCheck: () => false,
+	});
+	assert.strictEqual(
+		resolved,
+		'/tmp/xdg-cache/apple-docs/apple-docs.runtime.db',
+	);
+
+	const fallbackHome = resolveDbPath({
+		env: {},
+		writableCheck: () => false,
+		homeDir: '/home/testuser',
+	});
+	assert.strictEqual(
+		fallbackHome,
+		'/home/testuser/.cache/apple-docs/apple-docs.runtime.db',
 	);
 });
 
@@ -81,11 +114,94 @@ test('an in-memory path is returned untouched', () => {
 	assert.strictEqual(isVirtualDbPath('/tmp/apple-docs.db'), false);
 });
 
+test('ensureRuntimeDbSeeded copies seed DB, strips stale WAL sidecars, refreshes when built_at changes, and never touches explicit APPLE_DOCS_DB_PATH', () => {
+	const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'apple-docs-seed-'));
+	try {
+		const dataDir = path.join(tmpRoot, 'data');
+		fs.mkdirSync(dataDir, { recursive: true });
+		const seedPath = path.join(dataDir, 'apple-docs.db');
+		const runtimePath = path.join(dataDir, 'apple-docs.runtime.db');
+
+		const createSeed = (builtAt, marker) => {
+			if (fs.existsSync(seedPath)) fs.unlinkSync(seedPath);
+			const sdb = new Database(seedPath);
+			sdb.exec(
+				'CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); CREATE TABLE symbols (id TEXT PRIMARY KEY);',
+			);
+			sdb
+				.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
+				.run('built_at', builtAt);
+			sdb.prepare('INSERT INTO symbols (id) VALUES (?)').run(marker);
+			sdb.close();
+		};
+
+		createSeed('2026-11-08T00:00:00.000Z', 'sym-v1');
+		fs.writeFileSync(`${runtimePath}-wal`, 'corrupt-stale-wal-bytes');
+		fs.writeFileSync(`${runtimePath}-shm`, 'corrupt-stale-shm-bytes');
+
+		const seeded = ensureRuntimeDbSeeded({
+			env: {},
+			root: tmpRoot,
+			writableCheck: () => true,
+		});
+		assert.strictEqual(seeded, runtimePath);
+		assert.ok(fs.existsSync(runtimePath), 'runtime DB must be created');
+		assert.strictEqual(
+			fs.existsSync(`${runtimePath}-wal`),
+			false,
+			'stale WAL sidecar must be stripped before seed rename',
+		);
+		assert.strictEqual(
+			fs.existsSync(`${runtimePath}-shm`),
+			false,
+			'stale SHM sidecar must be stripped before seed rename',
+		);
+
+		const rdb1 = new Database(runtimePath, { readonly: true });
+		assert.strictEqual(
+			rdb1.prepare("SELECT value FROM meta WHERE key = 'built_at'").get().value,
+			'2026-11-08T00:00:00.000Z',
+		);
+		rdb1.close();
+
+		createSeed('2026-11-10T12:00:00.000Z', 'sym-v2');
+		ensureRuntimeDbSeeded({
+			env: {},
+			root: tmpRoot,
+			writableCheck: () => true,
+		});
+
+		const rdb2 = new Database(runtimePath, { readonly: true });
+		assert.strictEqual(
+			rdb2.prepare("SELECT value FROM meta WHERE key = 'built_at'").get().value,
+			'2026-11-10T12:00:00.000Z',
+		);
+		assert.strictEqual(
+			rdb2.prepare('SELECT id FROM symbols').get().id,
+			'sym-v2',
+		);
+		rdb2.close();
+
+		const customPath = path.join(tmpRoot, 'custom-fixture.db');
+		const resCustom = ensureRuntimeDbSeeded({
+			env: { APPLE_DOCS_DB_PATH: customPath },
+			root: tmpRoot,
+		});
+		assert.strictEqual(resCustom, customPath);
+		assert.strictEqual(
+			fs.existsSync(customPath),
+			false,
+			'custom APPLE_DOCS_DB_PATH must not be overwritten with seed DB',
+		);
+	} finally {
+		fs.rmSync(tmpRoot, { recursive: true, force: true });
+	}
+});
+
 // I1: the app and every repair script must agree on which file they are
 // talking about, or doctor tells a custom-path user to fix a different index.
 test('no entry point or script hardcodes the default index path', () => {
 	const sources = [
-		'scripts/build-index.ts',
 		'scripts/embed-index.ts',
 		'scripts/repair-index.ts',
 		'scripts/doctor.ts',
@@ -96,13 +212,20 @@ test('no entry point or script hardcodes the default index path', () => {
 		const source = fs.readFileSync(path.join(REPO_ROOT, relative), 'utf8');
 		assert.doesNotMatch(
 			source,
-			/data\/apple-docs\.db/,
+			/data\/apple-docs(\.runtime)?\.db/,
 			`${relative} must resolve the db path through db-path.ts, not a literal`,
 		);
 		assert.match(
 			source,
-			/resolveDbPath/,
-			`${relative} must call resolveDbPath()`,
+			/resolveDbPath|ensureRuntimeDbSeeded/,
+			`${relative} must call resolveDbPath() or ensureRuntimeDbSeeded()`,
 		);
 	}
+
+	const buildSource = fs.readFileSync(
+		path.join(REPO_ROOT, 'scripts/build-index.ts'),
+		'utf8',
+	);
+	assert.doesNotMatch(buildSource, /data\/apple-docs\.db/);
+	assert.match(buildSource, /resolveSeedDbPath/);
 });

@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs';
 import { AppleDocsDB } from '../db/database.js';
-import { resolveDbPath } from '../db/db-path.js';
+import { ensureRuntimeDbSeeded, resolveDbPath } from '../db/db-path.js';
 import { getDefaultLocalModelPath } from './search/local-gemma-provider.js';
 import {
 	resolveEmbeddingProvider,
@@ -55,7 +55,7 @@ export interface SetupReport {
 export async function runSetup(
 	options: SetupOptions = {},
 ): Promise<SetupReport> {
-	const dbPath = options.dbPath || resolveDbPath();
+	const dbPath = options.dbPath || ensureRuntimeDbSeeded() || resolveDbPath();
 	const dbExists = existsSync(dbPath);
 	let dbSizeMb = 0;
 	if (dbExists) {

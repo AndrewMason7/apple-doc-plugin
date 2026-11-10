@@ -15,7 +15,7 @@ import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import axios from 'axios';
 import { AppleDocsDB } from '../db/database.js';
-import { resolveDbPath } from '../db/db-path.js';
+import { ensureRuntimeDbSeeded, resolveDbPath } from '../db/db-path.js';
 import { logger } from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -204,7 +204,7 @@ async function materializeVectorDb(sourcePath: string): Promise<string> {
 export async function downloadVectors(
 	options: DownloadVectorsOptions = {},
 ): Promise<DownloadVectorsResult> {
-	const dbPath = options.dbPath || resolveDbPath();
+	const dbPath = options.dbPath || ensureRuntimeDbSeeded() || resolveDbPath();
 	mkdirSync(dirname(dbPath), { recursive: true });
 
 	// If force is not requested, check whether vectors are already present
@@ -434,7 +434,8 @@ export async function autoImportBundledVectors(
 		return false;
 	}
 
-	const targetPath = options?.dbPath || resolveDbPath();
+	const targetPath =
+		options?.dbPath || ensureRuntimeDbSeeded() || resolveDbPath();
 	if (!existsSync(targetPath)) {
 		return false;
 	}
