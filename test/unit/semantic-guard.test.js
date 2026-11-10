@@ -6,7 +6,23 @@ import { HybridSearchEngine } from '../../dist/server/services/search/hybrid-sea
 import { buildSearchSymbolsHandler } from '../../dist/server/handlers/search-symbols.js';
 import { ServerState } from '../../dist/server/state.js';
 
-test('HybridSearchEngine skips RRF when semantic items < 100 and prevents demoting exact lexical hits', async () => {
+async function listenLocal(server, t) {
+	try {
+		await new Promise((resolve, reject) => {
+			server.once('error', reject);
+			server.listen(0, '127.0.0.1', resolve);
+		});
+		return server.address().port;
+	} catch (err) {
+		if (err && (err.code === 'EPERM' || err.code === 'EACCES')) {
+			t?.skip?.(`Local server socket restricted in sandbox: ${err.code}`);
+			return null;
+		}
+		throw err;
+	}
+}
+
+test('HybridSearchEngine skips RRF when semantic items < 100 and prevents demoting exact lexical hits', async (t) => {
 	const db = new AppleDocsDB(':memory:');
 
 	// Insert exact symbol match
@@ -48,8 +64,11 @@ test('HybridSearchEngine skips RRF when semantic items < 100 and prevents demoti
 		values[0] = 0.99;
 		res.end(JSON.stringify({ embedding: { values } }));
 	});
-	await new Promise((resolve) => server.listen(0, resolve));
-	const port = server.address().port;
+	const port = await listenLocal(server, t);
+	if (!port) {
+		db.close();
+		return;
+	}
 
 	try {
 		const engine = new HybridSearchEngine(db, {

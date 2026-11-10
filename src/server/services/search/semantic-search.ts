@@ -246,6 +246,10 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 	}
 
 	private handleApiError(err: unknown, action: string): void {
+		const rawCode = (err as { code?: string })?.code;
+		const isSandboxNetworkCode =
+			rawCode === 'EPERM' || rawCode === 'EACCES' || rawCode === 'ENETUNREACH';
+
 		if (axios.isAxiosError(err)) {
 			const status = err.response?.status;
 			const isTimeout =
@@ -254,7 +258,10 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 			const isNetworkError =
 				err.code === 'ECONNRESET' ||
 				err.code === 'ENOTFOUND' ||
-				err.code === 'ECONNREFUSED';
+				err.code === 'ECONNREFUSED' ||
+				err.code === 'EPERM' ||
+				err.code === 'EACCES' ||
+				err.code === 'ENETUNREACH';
 			const isAuthError = status === 401 || status === 403;
 			const isRateLimitOrServer =
 				status === 429 || (status !== undefined && status >= 500);
@@ -266,6 +273,12 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 				);
 				return;
 			}
+		} else if (isSandboxNetworkCode) {
+			this.tripCircuitBreaker(30_000);
+			log.warn(
+				`Gemini API error (${rawCode}) during ${action}. Circuit breaker tripped for 30s.`,
+			);
+			return;
 		}
 		log.error(
 			`Gemini API call failed during ${action}:`,
