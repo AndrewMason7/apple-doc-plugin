@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import test from 'node:test';
-import { mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AppleDocsDB } from '../../dist/server/db/database.js';
@@ -217,4 +217,55 @@ test('get_documentation and discover_technologies hard-fail when DB was replaced
 
 	db.close();
 	rmSync(dir, { recursive: true, force: true });
+});
+
+test('assertNotReplaced tolerates in-place writes to its own database', () => {
+	const { dir, dbPath, db } = setupTempDb();
+	try {
+		// The indexer writes to this very file (insertSymbol, setMeta, vector
+		// imports). A size or fingerprint snapshot taken at open time would go
+		// stale on the first insert, so the guard must key off the inode only.
+		appendFileSync(dbPath, Buffer.alloc(4096, 0));
+		assert.doesNotThrow(() => db.assertNotReplaced());
+
+		db.insertSymbol({
+			id: '/documentation/swiftui/text',
+			framework: 'SwiftUI',
+			title: 'Text',
+			kind: 'struct',
+			abstract: 'A view that displays text.',
+			path: '/documentation/swiftui/text',
+			platforms: ['iOS'],
+			isPrimaryType: true,
+		});
+		assert.doesNotThrow(() => db.assertNotReplaced());
+		assert.strictEqual(db.getSemanticItemCount(), 0);
+	} finally {
+		db.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('getSemanticItemCount and getEmbeddingStatus throw instead of reporting 0', () => {
+	const { dir, dbPath, db } = setupTempDb();
+	try {
+		assert.strictEqual(db.getSemanticItemCount(), 0);
+		assert.strictEqual(db.getEmbeddingStatus().hybridEnabled, false);
+
+		unlinkSync(dbPath);
+
+		// The whole point: no silent `0`. A swallowed error here is what made a
+		// stale server advertise "lexical only" over 19k stored vectors.
+		assert.throws(
+			() => db.getSemanticItemCount(),
+			/index was replaced — restart the MCP server/,
+		);
+		assert.throws(
+			() => db.getEmbeddingStatus(),
+			/index was replaced — restart the MCP server/,
+		);
+	} finally {
+		db.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
 });
