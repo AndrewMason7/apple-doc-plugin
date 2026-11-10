@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -24,7 +25,9 @@ process.on('unhandledRejection', (reason: unknown) => {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectEnv = join(__dirname, '../.env');
-loadEnvironment(projectEnv);
+if (existsSync(projectEnv)) {
+	loadEnvironment(projectEnv);
+}
 
 if (process.env.LOG_LEVEL) {
 	logger.setLevel(process.env.LOG_LEVEL);
