@@ -218,7 +218,16 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 				);
 
 			const title = data.metadata?.title || 'Symbol';
-			const kind = data.metadata?.symbolKind || 'Unknown';
+			const dbSym = db ? db.getSymbolByPath(resolvedPath) : null;
+			const rawMeta = data.metadata as Record<string, unknown> | undefined;
+			const kind =
+				data.metadata?.symbolKind ||
+				(typeof rawMeta?.roleHeading === 'string'
+					? rawMeta.roleHeading
+					: undefined) ||
+				(typeof rawMeta?.role === 'string' ? rawMeta.role : undefined) ||
+				dbSym?.kind ||
+				'Unknown';
 			const platforms = client.formatPlatforms(
 				data.metadata?.platforms ?? frameworkPlatforms,
 			);

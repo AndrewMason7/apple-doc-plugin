@@ -95,17 +95,22 @@ export const buildDiscoverHandler =
 			};
 		});
 
+		let activeFrameworks = frameworks;
 		if (db && dbCounts.length > 0) {
-			frameworks.sort(
+			if (dbCounts.length >= 20) {
+				// Production index: only retain frameworks that actually have indexed symbols
+				activeFrameworks = frameworks.filter((f) => f.symbolCount > 0);
+			}
+			activeFrameworks.sort(
 				(a, b) =>
 					b.symbolCount - a.symbolCount || a.title.localeCompare(b.title),
 			);
 		}
 
-		let filtered = frameworks;
+		let filtered = activeFrameworks;
 		if (query) {
 			const lowerQuery = query.toLowerCase();
-			filtered = frameworks.filter(
+			filtered = activeFrameworks.filter(
 				(tech) =>
 					tech.title.toLowerCase().includes(lowerQuery) ||
 					client.extractText(tech.abstract).toLowerCase().includes(lowerQuery),
@@ -119,13 +124,24 @@ export const buildDiscoverHandler =
 
 		state.setLastDiscovery({ query, results: pageItems as any });
 
+		const primaryCount = activeFrameworks.filter(
+			(f) => f.symbolCount >= 25,
+		).length;
+		const crossRefCount = activeFrameworks.filter(
+			(f) => f.symbolCount > 0 && f.symbolCount < 25,
+		).length;
+		const totalSummary =
+			crossRefCount > 0 && primaryCount > 0
+				? `${primaryCount} (+${crossRefCount} cross-reference targets)`
+				: activeFrameworks.length.toString();
+
 		const lines: string[] = [
 			header(
 				1,
 				`Discover Apple Technologies${query ? ` (filtered by "${query}")` : ''}`,
 			),
 			'\n',
-			bold('Total indexed frameworks', frameworks.length.toString()),
+			bold('Total indexed frameworks', totalSummary),
 			bold('Matches', filtered.length.toString()),
 			bold('Page', `${currentPage} / ${totalPages}`),
 			'\n',
@@ -134,7 +150,10 @@ export const buildDiscoverHandler =
 
 		for (const framework of pageItems) {
 			const description = client.extractText(framework.abstract);
-			lines.push(`### ${framework.title}`);
+			const isCrossref = framework.symbolCount < 25;
+			lines.push(
+				`### ${framework.title}${isCrossref ? ' *(Cross-reference target)*' : ''}`,
+			);
 			if (description) {
 				lines.push(`   ${trimWithEllipsis(description, 180)}`);
 			}

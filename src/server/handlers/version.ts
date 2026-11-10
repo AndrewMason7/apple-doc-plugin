@@ -161,7 +161,7 @@ const describeSearchMode = (
 		? `${status.semanticItemCount} of ${status.threshold} semantic items embedded`
 		: `no semantic items embedded (threshold ${status.threshold})`;
 
-	return `Lexical only (SQLite FTS5) — ${storage}; run "npm run build:index" with embedding credentials to enable hybrid`;
+	return `Lexical only (SQLite FTS5) — ${storage}; run "npm run embed-index" or "npm run download-vectors" to enable hybrid`;
 };
 
 export const buildVersionHandler =
@@ -205,9 +205,20 @@ export const buildIndexInfoHandler =
 	(context?: ServerContext) => async (): Promise<ToolResponse> => {
 		const meta = getIndexMetadata(context);
 		const topKinds = meta.kindDistribution.slice(0, 12);
+		const remainingKinds = meta.kindDistribution.slice(12);
+		const remainingCount = remainingKinds.reduce((sum, e) => sum + e.count, 0);
 		const kindLines =
 			topKinds.length > 0
-				? topKinds.map((entry) => `   • ${entry.kind}: ${entry.count}`)
+				? [
+						...topKinds.map(
+							(entry) => `   • ${entry.kind}: ${entry.count.toLocaleString()}`,
+						),
+						...(remainingKinds.length > 0
+							? [
+									`   • ...and ${remainingKinds.length} more kinds (${remainingCount.toLocaleString()} symbols: ${remainingKinds.map((e) => `${e.kind} (${e.count})`).join(', ')})`,
+								]
+							: []),
+					]
 				: ['   • (no symbols indexed)'];
 
 		const unknownShare =

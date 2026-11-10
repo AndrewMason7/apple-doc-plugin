@@ -16,7 +16,7 @@ Gives coding agents (Claude Code, Cursor, Windsurf, Antigravity, Hermes) deep un
 - 🧠 **Hybrid Semantic Search**: Combines dense vector embeddings with SQLite FTS5 BM25 via **Reciprocal Rank Fusion (RRF)**. Finds the right APIs even when your query shares zero words with the symbol name.
 - 🌉 **Cross-Framework Query Expansion**: Seamlessly bridges Web, React, and Android idioms (`useEffect`, `SharedPreferences`, `Flexbox`, `coroutine`, `AsyncStorage`) into native Apple symbols (`task`, `onAppear`, `AppStorage`, `HStack`, `VStack`, `Spacer`).
 - 🛠️ **One-Click IDE Configuration CLI**: Safely configure Cursor, Claude Desktop, Windsurf, Antigravity, and VS Code with `apple-doc-plugin install --target <ide>`.
-- ⚡ **95,899 Symbols Offline**: Ships with a pre-indexed database covering all 21 core Apple frameworks (SwiftUI, UIKit, Foundation, Security, AVFoundation, WebKit, RealityKit, Vision, StoreKit, MapKit, CoreData, SwiftData, Combine, AppKit, Swift, Observation, CoreLocation, AuthenticationServices, LocalAuthentication, and more) across both Swift and Objective-C/C symbol trees.
+- ⚡ **95,899 Symbols Offline**: Ships with a pre-indexed database covering 25 Apple frameworks (SwiftUI, UIKit, Foundation, Security, AVFoundation, WebKit, RealityKit, Vision, StoreKit, MapKit, CoreData, SwiftData, Combine, AppKit, Swift, Observation, CoreLocation, AuthenticationServices, LocalAuthentication, RegexBuilder, Synchronization, Distributed, and more) across both Swift and Objective-C/C symbol trees.
 - 🎯 **Dual Semantic Engines**: Run hosted embeddings with **Google Gemini** (`gemini-embedding-2`) or **100% offline** on Apple Silicon Metal with local GGUF (`embeddinggemma-2`).
 - 🔍 **Lexical Precision & Wildcards**: Full support for wildcard globbing (`Grid*`, `*Style`, `Navigation*View`), exact-title boosting, and kind aliasing (`func` ↔ `method`).
 - 📖 **DocC AST to Agent Markdown**: Formats Apple DocC JSON into concise Markdown with method signatures, parameter tables, deprecation notices, and live CDN fallback.
@@ -310,7 +310,7 @@ Cross-reference targets (pages linked from indexed frameworks): visionOS (22), X
 
 - **First-Class Platform Coverage**: Core platform frameworks including Security (Keychain Services), WebKit, AVFoundation, StoreKit, MapKit, CoreData, RealityKit, Vision, AuthenticationServices, and LocalAuthentication are fully indexed offline.
 - **Full C Function and Swift Method Resolution**: Both bare C function names (e.g., `SecItemAdd`) and standard Swift types/methods (`WKWebView`, `MKMapView`, `SKPaymentQueue`, `AVPlayer`, `NSManagedObject`, `LAContext`) resolve cleanly via `search_symbols` and `get_documentation`.
-- **Hybrid Semantic Search**: Semantic vectors are available for 19,473 core framework symbols via `npm run download-vectors` (or local embedding via `npm run embed-index`). All 95,899 symbols across all 21 core frameworks remain fully discoverable by name, kind, and signature via lexical search and point documentation lookup.
+- **Hybrid Semantic Search**: Semantic vectors are available for 19,473 core framework symbols via `npm run download-vectors` (or local embedding via `npm run embed-index`). All 95,899 symbols across all 25 indexed frameworks remain fully discoverable by name, kind, and signature via lexical search and point documentation lookup.
 
 ---
 
@@ -319,7 +319,7 @@ Cross-reference targets (pages linked from indexed frameworks): visionOS (22), X
 In addition to tools, `apple-doc-plugin` implements native MCP Resources and Prompts:
 
 - **Resources**:
-  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for all 21 core frameworks (see [Coverage](#coverage)).
+  - `apple-docs://frameworks`: Returns JSON metadata and exact primary symbol counts for all 25 indexed frameworks (see [Coverage](#coverage)).
   - `apple-docs://symbols/{framework}`: Returns a clean catalog of primary types, protocols, and macros for any indexed framework (e.g. `apple-docs://symbols/SwiftUI`).
 - **Prompts**:
   - `modernize-navigation`: Automated migration template from legacy `NavigationView` to `NavigationStack` / `NavigationSplitView`.

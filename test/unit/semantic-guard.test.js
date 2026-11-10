@@ -91,7 +91,7 @@ test('HybridSearchEngine skips RRF when semantic items < 100 and prevents demoti
 		const text = res.content[0].text;
 		assert.ok(
 			text.includes(
-				'Lexical fallback (semantic index has 1 items; symbol embeddings require build:index)',
+				'Lexical fallback (semantic index has 1 items; run "npm run embed-index" or "npm run download-vectors" to enable hybrid)',
 			),
 			`Search mode should explain lexical fallback when under 100 items. Got: ${text}`,
 		);
