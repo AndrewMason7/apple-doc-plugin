@@ -209,9 +209,15 @@ export class AppleDocsDB {
 
 	/**
 	 * Cheap check that the database file has not been deleted or replaced on disk.
-	 * Compares the dbPath inode vs the opened fd's inode (and checks meta build id)
-	 * and hard-fails with "index was replaced — restart the MCP server" instead of
+	 * Hard-fails with "index was replaced — restart the MCP server" instead of
 	 * silently answering from a corpse.
+	 *
+	 * Two legs, deliberately unequal in importance:
+	 *  1. inode + device (primary) — the tracking fd pins the opened inode, so a
+	 *     mismatch can only mean the path now resolves to a different file. This
+	 *     is the leg that catches the incident this method exists for.
+	 *  2. meta build id (secondary) — catches an in-place rebuild that bumps
+	 *     `built_at`. See the note on that block for what it does NOT catch.
 	 */
 	assertNotReplaced(): void {
 		if (isVirtualDbPath(this.dbPath) || this.dbPath === '') {
@@ -244,6 +250,15 @@ export class AppleDocsDB {
 			throw new Error('index was replaced — restart the MCP server');
 		}
 
+		// Secondary leg only. Do not mistake this for the primary defence, and do
+		// not delete the inode comparison above on the strength of it: a replaced
+		// index very often carries the *same* snapshot stamp. `download-vectors`
+		// appends vectors to the build it already has, so the stale database and
+		// the freshly downloaded one both reported built_at
+		// 2026-11-08T12:48:31.487Z while differing by 143 MB and 19,473 vectors.
+		// This leg earns its place only for an in-place rebuild that bumps the
+		// stamp (covered by "throws when DB meta build id changes externally");
+		// for replacement-by-rename it is silent, and the inode leg carries it.
 		if (this.openedBuildId) {
 			try {
 				const currentBuildId = this.getMeta('built_at');
