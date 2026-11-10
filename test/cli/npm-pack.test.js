@@ -5,7 +5,9 @@ import { execSync } from 'node:child_process';
 test('npm pack: tarball bundle meets size ceiling and file allowlist', () => {
 	const output = execSync('npm pack --dry-run --json', { encoding: 'utf8' });
 	const parsed = JSON.parse(output);
-	const packInfo = Array.isArray(parsed) ? parsed[0] : parsed;
+	const packInfo = Array.isArray(parsed)
+		? parsed[0]
+		: (parsed.name ? parsed : Object.values(parsed)[0]);
 
 	assert.strictEqual(packInfo.name, 'apple-doc-plugin');
 	assert.ok(
