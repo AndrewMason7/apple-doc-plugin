@@ -11,6 +11,7 @@ on:
 jobs:
   build-and-publish:
     runs-on: macos-latest
+    environment: NPM_TOKEN
     permissions:
       contents: read
       id-token: write
@@ -40,4 +41,4 @@ jobs:
       - name: Publish to NPM
         run: npm publish --access public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.NPM_KEY }}
