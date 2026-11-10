@@ -2,7 +2,10 @@ import { existsSync, statSync } from 'node:fs';
 import type { AppleDocsDB, FreshnessInfo } from '../db/database.js';
 import { MIN_SEMANTIC_ITEMS_FOR_HYBRID } from '../db/database.js';
 import { isVirtualDbPath } from '../db/db-path.js';
-import type { EmbeddingProvider } from './search/embedding-provider.js';
+import {
+	areEmbeddingModelsCompatible,
+	type EmbeddingProvider,
+} from './search/embedding-provider.js';
 import { logger, NAME_TO_LOG_LEVEL } from '../logger.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
@@ -343,20 +346,39 @@ export function runDoctor(context: DoctorContext): DoctorReport {
 				const consistent =
 					widths.length === 0 ||
 					(widths.length === 1 && (expected === 0 || widths[0] === expected));
-				return consistent
-					? check(
-							'dimension_consistency',
-							'Vector dimensions',
-							'ok',
-							widths.length === 0 ? 'no vectors stored' : `${widths[0]}-d`,
-						)
-					: check(
-							'dimension_consistency',
-							'Vector dimensions',
-							'fail',
-							`stored ${widths.join('/')}-d vs provider ${expected}-d — cosine scoring is invalid`,
-							'npm run embed-index -- --force',
-						);
+				if (!consistent) {
+					return check(
+						'dimension_consistency',
+						'Vector dimensions',
+						'fail',
+						`stored ${widths.join('/')}-d vs provider ${expected}-d — cosine scoring is invalid`,
+						'npm run embed-index -- --force',
+					);
+				}
+				const storedModel = db.getStoredEmbeddingModel();
+				const activeModel = context.provider.modelId;
+				if (
+					widths.length > 0 &&
+					!areEmbeddingModelsCompatible(storedModel, activeModel)
+				) {
+					return check(
+						'dimension_consistency',
+						'Vector dimensions',
+						'fail',
+						`${widths[0]}-d (model mismatch: stored "${storedModel}" vs provider "${activeModel}" — cross-model cosine scoring is invalid)`,
+						'npm run embed-index -- --force',
+					);
+				}
+				return check(
+					'dimension_consistency',
+					'Vector dimensions',
+					'ok',
+					widths.length === 0
+						? 'no vectors stored'
+						: storedModel
+							? `${widths[0]}-d (${storedModel})`
+							: `${widths[0]}-d`,
+				);
 			},
 		),
 	);

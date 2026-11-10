@@ -33,7 +33,10 @@ import {
 } from '../services/doctor.js';
 import { isAutoImportInFlight } from '../services/download-vectors.js';
 import { UnavailableEmbeddingProvider } from '../services/search/provider-factory.js';
-import type { EmbeddingProvider } from '../services/search/embedding-provider.js';
+import {
+	areEmbeddingModelsCompatible,
+	type EmbeddingProvider,
+} from '../services/search/embedding-provider.js';
 
 /**
  * `index_info` is read-only and runs on every call inside the MCP server, so it
@@ -66,6 +69,8 @@ export interface IndexMetadata {
 	hydrating: boolean;
 	/** Width of the stored vectors, from one row; `null` when none exist. */
 	storedVectorWidth: number | null;
+	/** Model identifier recorded in `meta.embedding_model`; `null` when unrecorded. */
+	storedEmbeddingModel: string | null;
 	unknownKindCount: number;
 	frameworkMismatchCount: number;
 	kindDistribution: KindCount[];
@@ -107,6 +112,10 @@ export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
 	// that runs on every call).
 	const storedVectorWidth =
 		db && embeddingStatus.storageHasVectors ? db.getStoredVectorWidth() : null;
+	const storedEmbeddingModel =
+		db && embeddingStatus.storageHasVectors
+			? db.getStoredEmbeddingModel()
+			: null;
 
 	return {
 		version: packageJson.version,
@@ -120,6 +129,7 @@ export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
 		embeddingStatus,
 		hydrating,
 		storedVectorWidth,
+		storedEmbeddingModel,
 		unknownKindCount: db ? db.countUnknownKind() : 0,
 		frameworkMismatchCount: db ? db.countFrameworkPathMismatches() : 0,
 		kindDistribution: db ? db.getKindDistribution() : [],
@@ -152,10 +162,24 @@ const resolveDimensionMismatch = (
 		? { stored, expected }
 		: null;
 
+export interface ModelMismatch {
+	stored: string;
+	expected: string;
+}
+
+const resolveModelMismatch = (
+	stored: string | null,
+	expected: string | null | undefined,
+): ModelMismatch | null =>
+	!areEmbeddingModelsCompatible(stored, expected) && stored && expected
+		? { stored, expected }
+		: null;
+
 const describeSearchMode = (
 	status: EmbeddingStatus,
 	mismatch: DimensionMismatch | null,
 	hydrating = false,
+	modelMismatch: ModelMismatch | null = null,
 ): string => {
 	if (hydrating && !status.storageHasVectors) {
 		return 'Hydrating bundled 768-d vectors in background — lexical FTS5 active now, hybrid ready in a few seconds';
@@ -163,6 +187,10 @@ const describeSearchMode = (
 
 	if (mismatch) {
 		return `Hybrid (dimension mismatch) — ${mismatch.stored}-d vectors stored but queries embed at ${mismatch.expected}-d, so semantic scoring is skipped and results stay lexical; set APPLE_DOCS_EMBEDDING_DIMENSIONS=${mismatch.stored} to keep them, or "npm run embed-index -- --force" to re-embed`;
+	}
+
+	if (modelMismatch) {
+		return `Hybrid (model mismatch) — vectors built with "${modelMismatch.stored}" cannot be scored against "${modelMismatch.expected}", so results stay lexical; match APPLE_DOCS_EMBEDDING_PROVIDER or run "npm run embed-index -- --force"`;
 	}
 
 	if (status.hybridEnabled) {
@@ -184,6 +212,10 @@ export const buildVersionHandler =
 			meta.storedVectorWidth,
 			context?.searchEngine?.embeddingProvider?.dimensions ?? 0,
 		);
+		const modelMismatch = resolveModelMismatch(
+			meta.storedEmbeddingModel,
+			context?.searchEngine?.embeddingProvider?.modelId,
+		);
 
 		const text = `Apple Doc MCP Server Version & Index Information:
 
@@ -194,7 +226,7 @@ export const buildVersionHandler =
 📊 Indexed Symbols: ${meta.symbolCount}
 📦 Indexed Frameworks: ${meta.indexedFrameworks.length} (${meta.indexedFrameworks.join(', ')})${meta.crossReferenceFrameworks.length > 0 ? `\n🔗 Cross-reference targets: ${meta.crossReferenceFrameworks.join(', ')}` : ''}
 🕒 Snapshot Built At: ${describeFreshness(meta.freshness)}
-🔎 Search Capability: ${describeSearchMode(meta.embeddingStatus, mismatch, meta.hydrating)}
+🔎 Search Capability: ${describeSearchMode(meta.embeddingStatus, mismatch, meta.hydrating, modelMismatch)}
 👤 Author: ${packageJson.author}
 🔗 Repository: ${packageJson.repository?.url ?? 'N/A'}`;
 
@@ -269,6 +301,10 @@ export const buildIndexInfoHandler =
 			meta.storedVectorWidth,
 			expectedDimensions,
 		);
+		const modelMismatch = resolveModelMismatch(
+			meta.storedEmbeddingModel,
+			context?.searchEngine?.embeddingProvider?.modelId,
+		);
 		const doctor = db
 			? runDoctor({
 					db,
@@ -290,13 +326,18 @@ export const buildIndexInfoHandler =
 			meta.storedVectorWidth !== null
 				? `\n• **Vector dimensions:** ${meta.storedVectorWidth}-d stored vs ${expectedDimensions > 0 ? `${expectedDimensions}-d` : 'unknown'} expected${mismatch ? ' — MISMATCH: semantic scoring is skipped, results stay lexical. Set APPLE_DOCS_EMBEDDING_DIMENSIONS to the stored width, or run `npm run embed-index -- --force` to re-embed' : ''}`
 				: '';
+		const modelLine = meta.storedEmbeddingModel
+			? `\n• **Embedding model:** ${meta.storedEmbeddingModel}${modelMismatch ? ` vs ${modelMismatch.expected} active — MISMATCH: cross-model cosine scoring is skipped, results stay lexical` : ''}`
+			: '';
 		// "hybrid" on row count alone is the claim the review rejected: the mode
 		// label must carry the mismatch, not just the dimension line.
 		const modeLabel = meta.hydrating
 			? 'hydrating'
 			: mismatch
 				? `${meta.embeddingStatus.mode} (dimension mismatch)`
-				: meta.embeddingStatus.mode;
+				: modelMismatch
+					? `${meta.embeddingStatus.mode} (model mismatch)`
+					: meta.embeddingStatus.mode;
 
 		// The actions section is derived from the report, not hand-written: the
 		// old list drifted (it said build:index enabled hybrid; embed-index does).
@@ -331,7 +372,7 @@ export const buildIndexInfoHandler =
 ## Search Capability
 • **Mode:** ${modeLabel}
 • **Hybrid enabled:** ${meta.embeddingStatus.hybridEnabled ? 'yes' : 'no'}
-• **Semantic items:** ${meta.embeddingStatus.semanticItemCount} / threshold ${meta.embeddingStatus.threshold}${dimensionLine}
+• **Semantic items:** ${meta.embeddingStatus.semanticItemCount} / threshold ${meta.embeddingStatus.threshold}${dimensionLine}${modelLine}
 • **Note:** vector storage ${meta.embeddingStatus.storageHasVectors ? 'holds vectors' : 'is empty'}; hybrid fusion only engages at or above the threshold, and only when the stored width matches the query width.
 
 ## Kind Distribution

@@ -120,6 +120,12 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 		return this.expectedDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS;
 	}
 
+	get modelId(): string {
+		return (
+			this.modelName.replace(/^models\//i, '').trim() || 'gemini-embedding-2'
+		);
+	}
+
 	isAvailable(): boolean {
 		return this.hasAuth();
 	}

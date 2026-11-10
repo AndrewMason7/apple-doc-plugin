@@ -42,6 +42,7 @@ export function resolveRequestedDimensions(
 
 export class UnavailableEmbeddingProvider implements EmbeddingProvider {
 	public readonly id = 'unavailable' as const;
+	public readonly modelId = 'none' as const;
 	public readonly dimensions = 0;
 
 	isAvailable(): boolean {

@@ -5,6 +5,8 @@
 	"byteSize": 56979923,
 	"totalVectors": 19473,
 	"dimensions": 768,
+	"embeddingModel": "gemini-embedding-2",
+	"embeddingProvider": "gemini",
 	"exportedAt": "2026-11-07T19:53:46.894843Z",
 	"frameworks": [
 		"AVKit",

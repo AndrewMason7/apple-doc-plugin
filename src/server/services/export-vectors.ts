@@ -32,6 +32,8 @@ export interface VectorPackageManifest {
 	byteSize: number;
 	totalVectors: number;
 	dimensions: number;
+	embeddingModel?: string;
+	embeddingProvider?: string;
 	exportedAt: string;
 	frameworks: string[];
 }
@@ -82,8 +84,12 @@ export async function exportVectors(
 
 	const sourceDb = new AppleDocsDB(sourceDbPath, { readonly: true });
 	let allItems;
+	let sourceModel: string | null = null;
+	let sourceProvider: string | undefined;
 	try {
 		allItems = sourceDb.getSemanticItems(options.framework);
+		sourceModel = sourceDb.getStoredEmbeddingModel();
+		sourceProvider = sourceDb.getMeta('embedding_provider');
 	} finally {
 		sourceDb.close();
 	}
@@ -134,7 +140,13 @@ export async function exportVectors(
 		exportDb.setMeta('exported_at', exportedAt);
 		exportDb.setMeta('vector_count', String(exportedCount));
 		exportDb.setMeta('vector_dimensions', String(targetDimensions));
-		exportDb.setMeta('format_version', '1');
+		exportDb.setMeta('format_version', '2');
+		if (sourceModel) {
+			exportDb.setMeta('embedding_model', sourceModel);
+		}
+		if (sourceProvider) {
+			exportDb.setMeta('embedding_provider', sourceProvider);
+		}
 		exportDb.setMeta(
 			'frameworks',
 			JSON.stringify(Array.from(frameworksSet).sort()),
@@ -160,12 +172,14 @@ export async function exportVectors(
 	const filename = basename(outputPath);
 
 	const manifest: VectorPackageManifest = {
-		formatVersion: 1,
+		formatVersion: 2,
 		filename,
 		sha256,
 		byteSize,
 		totalVectors: matchingItems.length,
 		dimensions: targetDimensions,
+		...(sourceModel ? { embeddingModel: sourceModel } : {}),
+		...(sourceProvider ? { embeddingProvider: sourceProvider } : {}),
 		exportedAt,
 		frameworks: Array.from(frameworksSet).sort(),
 	};

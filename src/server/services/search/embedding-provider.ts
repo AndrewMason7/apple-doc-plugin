@@ -1,5 +1,6 @@
 export interface EmbeddingProvider {
 	readonly id: 'local-gguf' | 'gemini' | 'unavailable';
+	readonly modelId?: string;
 	readonly dimensions: number;
 	/**
 	 * Cosine-similarity floor for a semantic hit. Models do not share a score
@@ -33,4 +34,25 @@ export function isEmbeddingProvider(obj: unknown): obj is EmbeddingProvider {
 		typeof p.embedQuery === 'function' &&
 		typeof p.embedDocument === 'function'
 	);
+}
+
+export function normalizeEmbeddingModelId(
+	raw: string | null | undefined,
+): string {
+	if (!raw || typeof raw !== 'string') return '';
+	return raw
+		.trim()
+		.replace(/^models\//i, '')
+		.toLowerCase();
+}
+
+export function areEmbeddingModelsCompatible(
+	storedModel: string | null | undefined,
+	queryModel: string | null | undefined,
+): boolean {
+	const s = normalizeEmbeddingModelId(storedModel);
+	const q = normalizeEmbeddingModelId(queryModel);
+	if (!s || s === 'unknown' || s === 'none') return true;
+	if (!q || q === 'unknown' || q === 'none') return true;
+	return s === q;
 }

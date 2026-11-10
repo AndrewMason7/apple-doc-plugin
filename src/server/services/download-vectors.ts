@@ -356,7 +356,12 @@ export async function downloadVectors(
 			let importedCount = 0;
 			let status;
 			try {
-				importedCount = db.importVectorsFromDb(vectorDbPath);
+				importedCount = db.importVectorsFromDb(
+					vectorDbPath,
+					attempt.pinned
+						? { model: 'gemini-embedding-2', provider: 'gemini' }
+						: undefined,
+				);
 				status = db.getEmbeddingStatus();
 			} finally {
 				db.close();

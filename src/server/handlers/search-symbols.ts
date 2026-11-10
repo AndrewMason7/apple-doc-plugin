@@ -7,6 +7,7 @@ import {
 	findLocalVectorArtifact,
 	autoImportBundledVectors,
 } from '../services/download-vectors.js';
+import { areEmbeddingModelsCompatible } from '../services/search/embedding-provider.js';
 
 type QueryMode = 'exact-symbol' | 'wildcard' | 'keyword';
 
@@ -300,6 +301,12 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 					const hasSemanticAuth = Boolean(searchEngine?.hasSemanticAuth());
 					const isCircuitOpen = Boolean(searchEngine?.isCircuitOpen());
 					const providerId = searchEngine?.embeddingProvider?.id;
+					const storedModel = context.db?.getStoredEmbeddingModel() ?? null;
+					const queryModel = searchEngine?.embeddingProvider?.modelId ?? null;
+					const modelMismatch = !areEmbeddingModelsCompatible(
+						storedModel,
+						queryModel,
+					);
 					const usedSemantic = results.some(
 						(r) => r.source === 'hybrid' || r.source === 'semantic',
 					);
@@ -309,6 +316,9 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 							providerId === 'local-gguf'
 								? 'Hybrid (SQLite FTS5 + Local EmbeddingGemma embeddings)'
 								: 'Hybrid (SQLite FTS5 + Gemini embeddings)';
+					} else if (modelMismatch) {
+						searchModeDesc = `Lexical fallback (embedding model mismatch: index uses ${storedModel}, active provider uses ${queryModel}; run "npm run embed-index -- --force" or match provider)`;
+						fallbackBanner = `> ⚠️ **Embedding model mismatch (${storedModel} vs ${queryModel}) — results are lexical BM25, ranking may be noisy.**`;
 					} else if (semanticCount < 100) {
 						searchModeDesc = `Lexical fallback (semantic index has ${semanticCount} items; run "npm run embed-index" or "npm run download-vectors" to enable hybrid)`;
 						fallbackBanner =

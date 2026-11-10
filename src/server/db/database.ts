@@ -511,6 +511,23 @@ export class AppleDocsDB {
 		}
 	}
 
+	getStoredEmbeddingModel(): string | null {
+		const raw = this.getMeta('embedding_model')?.trim();
+		return raw && raw.length > 0 ? raw : null;
+	}
+
+	clearSemanticItems(): void {
+		this.db.exec('DELETE FROM semantic_items');
+		if (this.hasVec) {
+			try {
+				this.db.exec('DELETE FROM vec_items');
+			} catch {}
+		}
+		this.vectorCache = null;
+		this.setMeta('semantic_item_count', '0');
+		this.setMeta('has_embeddings', 'false');
+	}
+
 	/** Rows stored with a generic `symbol`/`unknown` kind, i.e. unclassified. */
 	countUnknownKind(): number {
 		try {
@@ -1592,9 +1609,30 @@ export class AppleDocsDB {
 		}
 	}
 
-	importVectorsFromDb(sourceDbPath: string): number {
+	importVectorsFromDb(
+		sourceDbPath: string,
+		fallbackProvenance?: { model: string; provider: string },
+	): number {
 		this.db.prepare('ATTACH DATABASE ? AS src').run(sourceDbPath);
 		try {
+			let sourceModel: string | null = null;
+			let sourceProvider: string | null = null;
+			try {
+				const rows = this.db
+					.prepare(
+						"SELECT key, value FROM src.meta WHERE key IN ('embedding_model', 'embedding_provider')",
+					)
+					.all() as Array<{ key: string; value: string }>;
+				for (const r of rows) {
+					if (r.key === 'embedding_model' && r.value?.trim()) {
+						sourceModel = r.value.trim();
+					}
+					if (r.key === 'embedding_provider' && r.value?.trim()) {
+						sourceProvider = r.value.trim();
+					}
+				}
+			} catch {}
+
 			const insertSql = `
 				INSERT OR REPLACE INTO main.semantic_items
 				(id, framework, title, kind, summary, path, embedding, media_url, media_type)
@@ -1628,6 +1666,15 @@ export class AppleDocsDB {
 				'has_embeddings',
 				status.storageHasVectors ? 'true' : 'false',
 			);
+			const effectiveModel = sourceModel ?? fallbackProvenance?.model ?? null;
+			const effectiveProvider =
+				sourceProvider ?? fallbackProvenance?.provider ?? null;
+			if (effectiveModel) {
+				this.setMeta('embedding_model', effectiveModel);
+			}
+			if (effectiveProvider) {
+				this.setMeta('embedding_provider', effectiveProvider);
+			}
 
 			return count;
 		} finally {

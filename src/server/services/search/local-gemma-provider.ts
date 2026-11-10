@@ -40,6 +40,7 @@ function l2Normalize(values: ArrayLike<number>): Float32Array {
 
 export class LocalGemmaEmbeddingProvider implements EmbeddingProvider {
 	public readonly id = 'local-gguf' as const;
+	public readonly modelId = 'embeddinggemma-2';
 	public readonly dimensions = 768;
 	/**
 	 * Measured with embeddinggemma-2 Q8_0 on Apple symbol text: on-topic pairs

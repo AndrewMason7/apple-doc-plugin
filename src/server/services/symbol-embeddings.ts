@@ -1,5 +1,8 @@
 import type { AppleDocsDB } from '../db/database.js';
-import type { EmbeddingProvider } from './search/embedding-provider.js';
+import {
+	areEmbeddingModelsCompatible,
+	type EmbeddingProvider,
+} from './search/embedding-provider.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'embeddings' });
@@ -117,6 +120,21 @@ export async function embedSymbols(
 		throw new Error(
 			`Embedding provider "${provider.id}" reports ${provider.dimensions} dimensions; refusing to write unusable vectors.`,
 		);
+	}
+
+	const existingCount = db.getSemanticItemCount();
+	const storedModel = db.getStoredEmbeddingModel();
+	const activeModel = provider.modelId ?? provider.id;
+	if (
+		existingCount > 0 &&
+		!areEmbeddingModelsCompatible(storedModel, activeModel)
+	) {
+		if (!options.force) {
+			throw new Error(
+				`Embedding model mismatch: database contains ${existingCount} vector(s) built with "${storedModel}", while active provider uses "${activeModel}". Re-run with --force (force: true) to replace existing vectors cleanly.`,
+			);
+		}
+		db.clearSemanticItems();
 	}
 
 	const batchSize =
@@ -240,6 +258,13 @@ export async function embedSymbols(
 			embedded++;
 			report(index + 1);
 		}
+	}
+
+	if (embedded > 0 || options.force) {
+		if (provider.modelId && provider.modelId !== 'none') {
+			db.setMeta('embedding_model', provider.modelId);
+		}
+		db.setMeta('embedding_provider', provider.id);
 	}
 
 	return { total: candidates.length, embedded, skipped, failed };

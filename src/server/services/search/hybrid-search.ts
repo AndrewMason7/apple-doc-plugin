@@ -5,7 +5,10 @@ import {
 	GeminiSemanticSearch,
 	SemanticMatch,
 } from './semantic-search.js';
-import type { EmbeddingProvider } from './embedding-provider.js';
+import {
+	areEmbeddingModelsCompatible,
+	type EmbeddingProvider,
+} from './embedding-provider.js';
 
 /**
  * Pick the cosine floor for a provider. Each embedding model has its own score
@@ -63,6 +66,7 @@ export class HybridSearchEngine {
 	 * stored row (19,473 rows used to mean 19,473 stderr lines per query).
 	 */
 	private readonly reportedWidthMismatches = new Set<string>();
+	private readonly reportedModelMismatches = new Set<string>();
 
 	hasSemanticAuth(): boolean {
 		return this.embeddingProvider.isAvailable();
@@ -142,6 +146,16 @@ export class HybridSearchEngine {
 			'Skipping the semantic pass; results stay lexical until one of those is done.';
 		log.warn(warningMsg);
 		console.warn(warningMsg);
+	}
+
+	private reportModelMismatch(storedModel: string, queryModel: string): void {
+		const key = `${storedModel}->${queryModel}`;
+		if (this.reportedModelMismatches.has(key)) return;
+		this.reportedModelMismatches.add(key);
+		const warningMsg =
+			`Warning: semantic embedding model mismatch — stored vectors were built with "${storedModel}" while the active query provider uses "${queryModel}", so cross-space cosine scores are invalid. ` +
+			'Switch APPLE_DOCS_EMBEDDING_PROVIDER to match the stored corpus, or run npm run embed-index -- --force to re-embed. Skipping the semantic pass; results stay lexical.';
+		log.warn(warningMsg);
 	}
 
 	searchSemanticWithVector(
@@ -323,6 +337,16 @@ export class HybridSearchEngine {
 
 		// Check if semantic search is available
 		if (this.embeddingProvider.isAvailable()) {
+			const storedModel = this.db.getStoredEmbeddingModel();
+			const queryModel = this.embeddingProvider.modelId;
+			if (!areEmbeddingModelsCompatible(storedModel, queryModel)) {
+				this.reportModelMismatch(
+					storedModel ?? 'unknown',
+					queryModel ?? this.embeddingProvider.id,
+				);
+				return scoredFTS.sort((a, b) => b.score - a.score).slice(0, limit);
+			}
+
 			const semanticQuery = expansion.hasExpansion
 				? expansion.semanticSearchQuery
 				: query;
