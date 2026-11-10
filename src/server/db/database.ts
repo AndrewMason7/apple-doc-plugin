@@ -4,8 +4,9 @@ import type {
 	Options as SqliteOptions,
 } from 'better-sqlite3';
 import { createRequire } from 'node:module';
-import { statSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, openSync, statSync } from 'node:fs';
 import { SCHEMA_SQL } from './schema.js';
+import { isVirtualDbPath } from './db-path.js';
 import { logger } from '../logger.js';
 import {
 	canonicalFrameworkFromSlug,
@@ -122,6 +123,10 @@ export class AppleDocsDB {
 	private vectorCache: SemanticItem[] | null = null;
 	private hasVec = false;
 	private vecDimensions = 768;
+	private fd: number | null = null;
+	private openedInode: number | null = null;
+	private openedDev: number | null = null;
+	private openedBuildId: string | null = null;
 
 	constructor(dbPath: string, options: SqliteOptions = {}) {
 		if (!BetterSqlite3) {
@@ -131,6 +136,26 @@ export class AppleDocsDB {
 		}
 		this.dbPath = dbPath;
 		this.db = new BetterSqlite3(dbPath, options);
+
+		if (!isVirtualDbPath(this.dbPath)) {
+			try {
+				if (existsSync(this.dbPath)) {
+					this.fd = openSync(this.dbPath, 'r');
+					const st = fstatSync(this.fd);
+					this.openedInode = st.ino;
+					this.openedDev = st.dev;
+				}
+			} catch (err) {
+				logger.debug('Failed to open tracking file descriptor for dbPath:', err);
+				try {
+					if (existsSync(this.dbPath)) {
+						const st = statSync(this.dbPath);
+						this.openedInode = st.ino;
+						this.openedDev = st.dev;
+					}
+				} catch {}
+			}
+		}
 
 		if (sqliteVec && this.db) {
 			try {
@@ -176,6 +201,62 @@ export class AppleDocsDB {
 				}
 			}
 		}
+
+		try {
+			this.openedBuildId = this.getMeta('built_at') ?? null;
+		} catch {}
+	}
+
+	/**
+	 * Cheap check that the database file has not been deleted or replaced on disk.
+	 * Compares the dbPath inode vs the opened fd's inode (and checks meta build id)
+	 * and hard-fails with "index was replaced — restart the MCP server" instead of
+	 * silently answering from a corpse.
+	 */
+	assertNotReplaced(): void {
+		if (isVirtualDbPath(this.dbPath) || this.dbPath === '') {
+			return;
+		}
+		if (this.openedInode === null && this.fd === null) {
+			return;
+		}
+
+		let currentStat: ReturnType<typeof statSync>;
+		try {
+			currentStat = statSync(this.dbPath);
+		} catch {
+			// File was deleted or unlinked on disk (e.g. ENOENT)
+			throw new Error('index was replaced — restart the MCP server');
+		}
+
+		const openedIno =
+			this.fd !== null ? fstatSync(this.fd).ino : this.openedInode;
+		const openedDev =
+			this.fd !== null ? fstatSync(this.fd).dev : this.openedDev;
+
+		if (openedIno !== null && currentStat.ino !== openedIno) {
+			throw new Error('index was replaced — restart the MCP server');
+		}
+
+		if (openedDev !== null && currentStat.dev !== openedDev) {
+			throw new Error('index was replaced — restart the MCP server');
+		}
+
+		if (this.openedBuildId) {
+			try {
+				const currentBuildId = this.getMeta('built_at');
+				if (currentBuildId && currentBuildId !== this.openedBuildId) {
+					throw new Error('index was replaced — restart the MCP server');
+				}
+			} catch (err) {
+				if (
+					err instanceof Error &&
+					err.message === 'index was replaced — restart the MCP server'
+				) {
+					throw err;
+				}
+			}
+		}
 	}
 
 	/**
@@ -203,6 +284,9 @@ export class AppleDocsDB {
 				`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 			)
 			.run(key, value);
+		if (key === 'built_at') {
+			this.openedBuildId = value;
+		}
 	}
 
 	getMeta(key: string): string | undefined {
@@ -765,6 +849,7 @@ export class AppleDocsDB {
 	}
 
 	getSemanticItems(framework?: string): SemanticItem[] {
+		this.assertNotReplaced();
 		if (!this.vectorCache) {
 			const rows = this.db
 				.prepare(
@@ -849,6 +934,7 @@ export class AppleDocsDB {
 	}
 
 	queryFTS(query: string, framework?: string, limit = 20): FTSResult[] {
+		this.assertNotReplaced();
 		const trimmed = query.trim();
 		if (!trimmed) return [];
 
@@ -1541,6 +1627,7 @@ export class AppleDocsDB {
 		mediaType?: string;
 		similarity: number;
 	}> {
+		this.assertNotReplaced();
 		if (!this.hasVec || queryVec.length !== this.vecDimensions) {
 			return [];
 		}
@@ -1603,6 +1690,12 @@ export class AppleDocsDB {
 	}
 
 	close(): void {
+		if (this.fd !== null) {
+			try {
+				closeSync(this.fd);
+			} catch {}
+			this.fd = null;
+		}
 		this.db.close();
 	}
 }

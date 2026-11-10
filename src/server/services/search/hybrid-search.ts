@@ -150,6 +150,7 @@ export class HybridSearchEngine {
 		limit = 10,
 		minSimilarity = 0.65,
 	): SemanticMatch[] {
+		this.db.assertNotReplaced();
 		const items = this.db.getSemanticItems(framework);
 		const matches: SemanticMatch[] = [];
 
@@ -241,6 +242,7 @@ export class HybridSearchEngine {
 		query: string,
 		options: SearchOptions = {},
 	): Promise<SearchResultItem[]> {
+		this.db.assertNotReplaced();
 		const limit = options.limit || 20;
 		// `search_symbols` is sold as precise lexical search: idiom expansion
 		// injects mapped symbols the caller never typed ("chat room layout" used

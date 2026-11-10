@@ -87,6 +87,7 @@ export const buildGetDocumentationHandler = (context: ServerContext) => {
 		framework?: string;
 		concise?: boolean | string;
 	}): Promise<ToolResponse> => {
+		context.db?.assertNotReplaced();
 		const { path, framework: frameworkArg, concise = false } = args;
 		const isConcise =
 			concise === true || String(concise).toLowerCase() === 'true';

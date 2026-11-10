@@ -78,6 +78,7 @@ const FALLBACK_EMBEDDING_STATUS: EmbeddingStatus = {
 
 export const getIndexMetadata = (context?: ServerContext): IndexMetadata => {
 	const db = context?.db;
+	db?.assertNotReplaced();
 	const symbolCount = db ? db.getSymbolCount() : 0;
 	const frameworkCounts = db ? db.getFrameworkSymbolCounts() : [];
 	const indexedFrameworks =
@@ -166,6 +167,7 @@ const describeSearchMode = (
 
 export const buildVersionHandler =
 	(context?: ServerContext) => async (): Promise<ToolResponse> => {
+		context?.db?.assertNotReplaced();
 		const meta = getIndexMetadata(context);
 		const mismatch = resolveDimensionMismatch(
 			meta.storedVectorWidth,
@@ -203,6 +205,7 @@ export const buildVersionHandler =
  */
 export const buildIndexInfoHandler =
 	(context?: ServerContext) => async (): Promise<ToolResponse> => {
+		context?.db?.assertNotReplaced();
 		const meta = getIndexMetadata(context);
 		const topKinds = meta.kindDistribution.slice(0, 12);
 		const remainingKinds = meta.kindDistribution.slice(12);

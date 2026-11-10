@@ -37,6 +37,7 @@ export const buildDiscoverHandler =
 		page?: number;
 		pageSize?: number;
 	}): Promise<ToolResponse> => {
+		db?.assertNotReplaced();
 		const { query, page = 1, pageSize = 25 } = args;
 
 		const rawPage =

@@ -186,6 +186,7 @@ export const buildSearchSymbolsHandler = (context: ServerContext) => {
 		preferSemantic?: boolean;
 		lexicalOnly?: boolean;
 	}): Promise<ToolResponse> => {
+		context.db?.assertNotReplaced();
 		const {
 			query,
 			maxResults = 20,
