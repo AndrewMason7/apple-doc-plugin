@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090D16"/>
+      <stop offset="50%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#131C33"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#C084FC"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.95"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="600" fill="url(#bg)"/>
+  <circle cx="1020" cy="120" r="260" fill="#38BDF8" opacity="0.08"/>
+  <circle cx="180" cy="520" r="240" fill="#818CF8" opacity="0.08"/>
+
+  <rect x="64" y="58" width="248" height="32" rx="16" fill="#1E293B" stroke="#334155"/>
+  <text x="84" y="79" fill="#38BDF8" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" letter-spacing="0.8">HERMES NATIVE PLUGIN SUITE</text>
+
+  <text x="64" y="152" fill="#F8FAFC" font-family="system-ui, -apple-system, sans-serif" font-size="52" font-weight="800">Apple Developer</text>
+  <text x="64" y="212" fill="url(#accent)" font-family="system-ui, -apple-system, sans-serif" font-size="52" font-weight="800">Documentation Studio</text>
+
+  <text x="64" y="264" fill="#94A3B8" font-family="system-ui, -apple-system, sans-serif" font-size="20">95,899 offline symbols across 30 Apple frameworks. Zero API keys.</text>
+  <text x="64" y="294" fill="#94A3B8" font-family="system-ui, -apple-system, sans-serif" font-size="20">React/Android-to-SwiftUI Idiom RRF, Xcode Error Hook &amp; Desktop UI.</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="600">
+    <rect x="64" y="334" width="210" height="40" rx="10" fill="#1E293B" stroke="#38BDF8" stroke-opacity="0.45"/>
+    <text x="84" y="359" fill="#E2E8F0">@apple:NavigationSplit</text>
+
+    <rect x="288" y="334" width="186" height="40" rx="10" fill="#1E293B" stroke="#818CF8" stroke-opacity="0.45"/>
+    <text x="308" y="359" fill="#E2E8F0">/apple-docs demo</text>
+
+    <rect x="64" y="388" width="224" height="40" rx="10" fill="#1E293B" stroke="#C084FC" stroke-opacity="0.45"/>
+    <text x="84" y="413" fill="#E2E8F0">::apple-doc{...} Cards</text>
+
+    <rect x="302" y="388" width="198" height="40" rx="10" fill="#1E293B" stroke="#34D399" stroke-opacity="0.45"/>
+    <text x="322" y="413" fill="#E2E8F0">swift build Hook</text>
+  </g>
+
+  <g font-family="system-ui, -apple-system, sans-serif">
+    <text x="64" y="498" fill="#F8FAFC" font-size="30" font-weight="800">95,899</text>
+    <text x="64" y="522" fill="#64748B" font-size="13" font-weight="600">OFFLINE SYMBOLS</text>
+
+    <text x="224" y="498" fill="#38BDF8" font-size="30" font-weight="800">30</text>
+    <text x="224" y="522" fill="#64748B" font-size="13" font-weight="600">FRAMEWORKS</text>
+
+    <text x="348" y="498" fill="#34D399" font-size="30" font-weight="800">&lt; 4 ms</text>
+    <text x="348" y="522" fill="#64748B" font-size="13" font-weight="600">SQLITE FTS5</text>
+  </g>
+
+  <rect x="590" y="64" width="546" height="472" rx="20" fill="url(#card)" stroke="#334155" stroke-width="1.5"/>
+  <circle cx="620" cy="92" r="6" fill="#EF4444"/>
+  <circle cx="640" cy="92" r="6" fill="#F59E0B"/>
+  <circle cx="660" cy="92" r="6" fill="#10B981"/>
+  <text x="684" y="97" fill="#94A3B8" font-family="ui-monospace, monospace" font-size="13">hermes://desktop/apple-docs</text>
+  <line x1="590" y1="116" x2="1136" y2="116" stroke="#334155"/>
+
+  <rect x="616" y="136" width="494" height="86" rx="12" fill="#0F172A" stroke="#38BDF8" stroke-opacity="0.4"/>
+  <text x="636" y="162" fill="#38BDF8" font-family="system-ui, sans-serif" font-size="12" font-weight="700">IDIOM ROSETTA STONE  ·  REACT → SWIFTUI</text>
+  <text x="636" y="188" fill="#F8FAFC" font-family="ui-monospace, monospace" font-size="15">useEffect(fn, [id])  →  .task(id: value) { ... }</text>
+  <text x="636" y="208" fill="#94A3B8" font-family="system-ui, sans-serif" font-size="12">Structured async lifecycle cancelled automatically on view disappear</text>
+
+  <rect x="616" y="238" width="494" height="132" rx="12" fill="#0F172A" stroke="#334155"/>
+  <text x="636" y="264" fill="#C084FC" font-family="system-ui, sans-serif" font-size="12" font-weight="700">DOCC DECLARATION  ·  iOS 15.0+ · macOS 12.0+ · visionOS 1.0+</text>
+  <text x="636" y="294" fill="#E2E8F0" font-family="ui-monospace, monospace" font-size="14">nonisolated func interactiveDismissDisabled(</text>
+  <text x="636" y="316" fill="#38BDF8" font-family="ui-monospace, monospace" font-size="14">    _ isDisabled: Bool = true</text>
+  <text x="636" y="338" fill="#E2E8F0" font-family="ui-monospace, monospace" font-size="14">) -&gt; some View</text>
+
+  <rect x="616" y="386" width="494" height="124" rx="12" fill="#0F172A" stroke="#34D399" stroke-opacity="0.45"/>
+  <text x="636" y="412" fill="#34D399" font-family="system-ui, sans-serif" font-size="12" font-weight="700">COMPILER HOOK  ·  transform_terminal_output (3.5 ms)</text>
+  <text x="636" y="438" fill="#94A3B8" font-family="ui-monospace, monospace" font-size="13">warning: 'NavigationView' was deprecated in iOS 16.0</text>
+  <text x="636" y="464" fill="#F8FAFC" font-family="ui-monospace, monospace" font-size="13">✓ Grounded → NavigationStack / NavigationSplitView</text>
+  <text x="636" y="490" fill="#F8FAFC" font-family="ui-monospace, monospace" font-size="13">✓ Grounded → .toolbar { ToolbarItem(...) }</text>
+</svg>

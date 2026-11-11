@@ -1,10 +1,13 @@
 """
 Hermes Agent to Node.js MCP Bridge for Apple Developer Documentation.
 
-Maintains a persistent, warm Node.js child process running bin/launcher.cjs,
-communicating over stdio using JSON-RPC 2.0 (Model Context Protocol).
-Thread-safe, deadlock-free with asynchronous stderr draining and fail-fast crash detection.
+Maintains an optional warm Node.js child process running bin/launcher.cjs,
+communicating over stdio using JSON-RPC 2.0 (Model Context Protocol) when
+768-dimensional vector embeddings and Node.js >= 22 are available.
+Honours Hermes profile credential isolation via agent.secret_scope.get_secret.
 """
+
+from __future__ import annotations
 
 import atexit
 import collections
@@ -12,12 +15,47 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
-import sys
 import threading
 from pathlib import Path
 from typing import Any, Deque, Dict, Optional
+
+_PASSTHROUGH_ENV_KEYS = (
+    "PATH",
+    "HOME",
+    "USER",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "LANG",
+    "LC_ALL",
+    "XDG_CACHE_HOME",
+    "NODE_EXTRA_CA_CERTS",
+    "APPLE_DOCS_DB_PATH",
+    "APPLE_DOCS_EMBEDDING_PROVIDER",
+    "APPLE_DOCS_SKIP_AUTO_IMPORT",
+)
+
+
+def _build_isolated_child_env() -> Dict[str, str]:
+    """Construct a minimal child environment without copying cross-profile secrets."""
+    env: Dict[str, str] = {}
+    for key in _PASSTHROUGH_ENV_KEYS:
+        val = os.environ.get(key)
+        if val:
+            env[key] = val
+
+    # Catalog Rule 11: resolve optional API credentials strictly through Hermes secret_scope
+    try:
+        from agent.secret_scope import get_secret
+
+        gemini_key = get_secret("GEMINI_API_KEY")
+        if gemini_key:
+            env["GEMINI_API_KEY"] = gemini_key
+    except Exception:
+        pass
+
+    return env
 
 
 class NodeMcpBridge:
@@ -37,25 +75,18 @@ class NodeMcpBridge:
         self._is_closing = False
         self._initialized = False
 
-        # Clean termination hooks
         atexit.register(self.close)
-        self._install_signal_handlers()
-
-    def _install_signal_handlers(self) -> None:
-        try:
-            prev_term = signal.getsignal(signal.SIGTERM)
-            def handle_sigterm(signum, frame):
-                self.close()
-                if callable(prev_term) and prev_term not in (signal.SIG_IGN, signal.SIG_DFL):
-                    prev_term(signum, frame)
-                sys.exit(143)
-            signal.signal(signal.SIGTERM, handle_sigterm)
-        except (ValueError, AttributeError):
-            pass
 
     def _check_node_version(self, node_bin: str) -> None:
         try:
-            res = subprocess.run([node_bin, "-v"], capture_output=True, text=True, check=True)
+            res = subprocess.run(
+                [node_bin, "-v"],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+                check=True,
+            )
             match = re.search(r"v(\d+)", res.stdout.strip())
             if match:
                 major = int(match.group(1))
@@ -78,8 +109,8 @@ class NodeMcpBridge:
             node_bin = shutil.which("node")
             if not node_bin:
                 raise RuntimeError(
-                    "Node.js >= 22 is required to run the Apple Developer Documentation engine. "
-                    "Please install Node.js via your package manager (e.g. `brew install node`)."
+                    "Node.js >= 22 is required to run the Node vector bridge. "
+                    "The built-in Python SQLite FTS5 engine handles offline lookups automatically."
                 )
 
             self._check_node_version(node_bin)
@@ -87,7 +118,7 @@ class NodeMcpBridge:
             if not self.launcher_path.exists():
                 raise FileNotFoundError(f"Launcher script not found at {self.launcher_path}")
 
-            env = os.environ.copy()
+            env = _build_isolated_child_env()
             with self._lock:
                 self._stderr_buffer.clear()
                 self._pending_requests.clear()
@@ -98,25 +129,19 @@ class NodeMcpBridge:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 cwd=str(self.root_dir),
                 env=env,
             )
 
-            # Continuous non-blocking stdout reader
-            self._stdout_thread = threading.Thread(
-                target=self._stdout_reader_loop, daemon=True
-            )
+            self._stdout_thread = threading.Thread(target=self._stdout_reader_loop, daemon=True)
             self._stdout_thread.start()
 
-            # Continuous non-blocking stderr reader to prevent OS pipe buffer deadlocks
-            self._stderr_thread = threading.Thread(
-                target=self._stderr_reader_loop, daemon=True
-            )
+            self._stderr_thread = threading.Thread(target=self._stderr_reader_loop, daemon=True)
             self._stderr_thread.start()
 
-            # Initialize MCP handshake
             self._initialize_handshake()
             self._initialized = True
 
@@ -143,11 +168,10 @@ class NodeMcpBridge:
                             self._responses[msg_id] = msg
                             event.set()
         finally:
-            # Subprocess terminated or stdout closed: notify all pending waiters immediately
             exit_code = proc.poll() if proc else None
             err_msg = f"Node MCP process terminated unexpectedly (exit code: {exit_code})"
             if self._stderr_buffer:
-                err_msg += f". Recent stderr:\n" + "\n".join(list(self._stderr_buffer)[-5:])
+                err_msg += ". Recent stderr:\n" + "\n".join(list(self._stderr_buffer)[-5:])
 
             err_resp = {"error": {"code": -32000, "message": err_msg}}
             with self._lock:
@@ -178,7 +202,7 @@ class NodeMcpBridge:
             "params": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "hermes-agent", "version": "1.0.0"},
+                "clientInfo": {"name": "hermes-agent", "version": "1.1.0"},
             },
         }
 
@@ -199,7 +223,6 @@ class NodeMcpBridge:
         with self._lock:
             self._responses.pop(req_id, None)
 
-        # Send notifications/initialized
         self._send_raw(
             {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
         )
@@ -220,7 +243,9 @@ class NodeMcpBridge:
             except (BrokenPipeError, OSError) as err:
                 raise RuntimeError(f"Failed to communicate with Node MCP process: {err}")
 
-    def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None, timeout: float = 30.0) -> str:
+    def call_tool(
+        self, name: str, arguments: Optional[Dict[str, Any]] = None, timeout: float = 30.0
+    ) -> str:
         self._ensure_process()
         req_id = self._next_id()
         payload = {
@@ -275,19 +300,25 @@ class NodeMcpBridge:
             self._is_closing = True
             self._initialized = False
 
-            # Wake up all pending callers
             for req_id, event in list(self._pending_requests.items()):
                 self._responses[req_id] = {"error": {"code": -32000, "message": "Bridge closed"}}
                 event.set()
             self._pending_requests.clear()
 
             if self.process:
+                for pipe in (self.process.stdin, self.process.stdout, self.process.stderr):
+                    if pipe:
+                        try:
+                            pipe.close()
+                        except Exception:
+                            pass
                 try:
                     self.process.terminate()
                     self.process.wait(timeout=2.0)
                 except Exception:
                     try:
                         self.process.kill()
+                        self.process.wait(timeout=1.0)
                     except Exception:
                         pass
                 self.process = None

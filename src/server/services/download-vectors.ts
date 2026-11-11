@@ -42,9 +42,9 @@ export const VECTOR_ARTIFACT_GZIP_NAME = `${VECTOR_ARTIFACT_NAME}.gz`;
 export const VECTOR_ARTIFACT_SHA256 =
 	'a149456a10616291676282a17aba250c49ac6c929a88c75c80481a31135ecb86';
 
-export const DEFAULT_VECTORS_URL = `https://raw.githubusercontent.com/AndrewMason7/apple-doc-plugin/main/assets/${VECTOR_ARTIFACT_GZIP_NAME}`;
+export const DEFAULT_VECTORS_URL = '';
 
-export const DEFAULT_VECTORS_MIRRORS = [DEFAULT_VECTORS_URL];
+export const DEFAULT_VECTORS_MIRRORS: string[] = [];
 
 /** Package root: `<root>/dist/server/services` -> `<root>`. */
 const PACKAGE_ROOT = resolve(__dirname, '../../..');
