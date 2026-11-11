@@ -1,4 +1,3 @@
-import asyncio
 import importlib.util
 import sys
 import unittest
@@ -117,6 +116,34 @@ class TestHermesUltraSurfaces(unittest.TestCase):
         })
         self.assertTrue(diag["matched"])
         self.assertEqual(diag["findings"][0]["symbol"], "foregroundColor")
+
+        # /doc endpoint verification
+        doc = mod.get_doc(path="NavigationSplitView", framework="SwiftUI", live=False)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["title"], "NavigationSplitView")
+
+        # /doc error handling on missing/empty path
+        with self.assertRaises(mod.HTTPException) as ctx_err:
+            mod.get_doc(path="")
+        self.assertEqual(ctx_err.exception.status_code, 400)
+
+        # /demo endpoint verification
+        demo = mod.run_demo()
+        self.assertIn("stats", demo)
+        self.assertIn("markdown", demo)
+
+        # Direct parameter parsing with defaults and fallbacks
+        default_sr = mod.search_docs()
+        self.assertIn("results", default_sr)
+
+        lexical_sr = mod.search_docs(q="Navigation*View", mode="lexical", limit=10)
+        self.assertGreater(len(lexical_sr["results"]), 0)
+
+        default_diag = mod.diagnose_build_output()
+        self.assertIn("matched", default_diag)
+
+        all_idioms = mod.get_idioms()
+        self.assertGreater(all_idioms["count"], 10)
 
     def test_desktop_plugin_manifest_and_sdk_imports(self):
         desktop_js = (ROOT_DIR / "desktop" / "plugin.js").read_text(encoding="utf-8")

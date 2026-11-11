@@ -12,6 +12,7 @@ Zero third-party Python dependencies required (100% Python stdlib).
 from __future__ import annotations
 
 import collections
+import concurrent.futures
 import contextlib
 import difflib
 import json
@@ -28,6 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 PLUGIN_VERSION = "1.1.0"
 DOCC_CDN_BASE = "https://developer.apple.com/tutorials/data"
 DOCC_WEB_BASE = "https://developer.apple.com"
+_DOCC_HTTP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="apple_docc_http")
 
 KIND_ALIASES: Dict[str, List[str]] = {
     "func": ["func", "function", "method", "instancemethod", "typemethod", "init", "initializer"],
@@ -1005,14 +1007,23 @@ class AppleDocsNativeEngine:
                 "User-Agent": f"Hermes-AppleDocsPlugin/{PLUGIN_VERSION}",
             },
         )
+
+        def _do_network_fetch() -> Optional[Dict[str, Any]]:
+            try:
+                with urllib.request.urlopen(req, timeout=2.5) as resp:
+                    if resp.status != 200:
+                        return None
+                    raw_bytes = resp.read(2 * 1024 * 1024)
+                    payload = json.loads(raw_bytes.decode("utf-8", errors="replace"))
+                    return payload if isinstance(payload, dict) else None
+            except Exception:
+                return None
+
         try:
-            with urllib.request.urlopen(req, timeout=5.0) as resp:
-                if resp.status != 200:
-                    return None
-                raw_bytes = resp.read(2 * 1024 * 1024)
-                payload = json.loads(raw_bytes.decode("utf-8", errors="replace"))
+            future = _DOCC_HTTP_POOL.submit(_do_network_fetch)
+            payload = future.result(timeout=3.0)
         except Exception:
-            return None
+            payload = None
 
         if isinstance(payload, dict):
             with self._cache_lock:

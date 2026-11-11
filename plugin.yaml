@@ -25,6 +25,8 @@ platforms:
   - macos
   - linux
   - windows
+desktop_entry: desktop/plugin.js
+dashboard_entry: dashboard/manifest.json
 optional_env:
   - GEMINI_API_KEY
 external_dependencies:
