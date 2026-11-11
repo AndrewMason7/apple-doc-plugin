@@ -54,6 +54,8 @@ export interface HybridSearchEngineOptions {
 	expectedDimensions?: number;
 	minSemanticItems?: number;
 	embeddingProvider?: EmbeddingProvider;
+	/** Block ambient Google ADC; only an explicit/env key may authenticate. */
+	disableAdc?: boolean;
 }
 
 export class HybridSearchEngine {
@@ -113,7 +115,9 @@ export class HybridSearchEngine {
 			);
 			this.embeddingProvider = this.semanticSearch;
 		} else {
-			this.embeddingProvider = resolveEmbeddingProvider();
+			this.embeddingProvider = resolveEmbeddingProvider({
+				disableAdc: options.disableAdc,
+			});
 			this.semanticSearch =
 				this.embeddingProvider instanceof GeminiSemanticSearch
 					? this.embeddingProvider

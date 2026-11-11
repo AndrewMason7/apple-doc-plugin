@@ -61,6 +61,17 @@ export class UnavailableEmbeddingProvider implements EmbeddingProvider {
 export function resolveEmbeddingProvider(
 	options: ProviderOptions = {},
 ): EmbeddingProvider {
+	// Hermes bridge credential isolation: the bridge child env sets
+	// APPLE_DOCS_DISABLE_ADC=1 so ambient Google Application Default
+	// Credentials (GOOGLE_APPLICATION_CREDENTIALS, the gcloud credential
+	// file, or the cloud metadata server) never authenticate this plugin —
+	// only a GEMINI_API_KEY explicitly injected by the bridge from
+	// agent.secret_scope is accepted. The env flag cannot be weakened by an
+	// explicit `disableAdc: false`; GeminiSemanticSearch enforces the same
+	// flag at the credential site (hasAdc/getAuthHeaders), so this gate is
+	// defense in depth rather than the only line.
+	const disableAdc =
+		options.disableAdc === true || process.env.APPLE_DOCS_DISABLE_ADC === '1';
 	const envProvider =
 		process.env.APPLE_DOCS_EMBEDDING_PROVIDER?.toLowerCase().trim();
 	const preferred =
@@ -80,7 +91,8 @@ export function resolveEmbeddingProvider(
 		}
 	}
 
-	// 2. Default priority: check if Gemini credentials or ADC are configured.
+	// 2. Default priority: Gemini key auth (env-injected by the Hermes bridge
+	// via agent.secret_scope) or — only when ADC is not disabled — ambient ADC.
 	// Gemini provides significantly higher semantic recall on nuanced behavioral queries.
 	if (preferred !== 'local') {
 		const gemini = new GeminiSemanticSearch(
@@ -90,10 +102,7 @@ export function resolveEmbeddingProvider(
 			undefined,
 			requestedDimensions,
 		);
-		if (
-			gemini.isAvailable() &&
-			(options.geminiApiKey !== null || !options.disableAdc)
-		) {
+		if (gemini.isAvailable() && (gemini.hasApiKey() || !disableAdc)) {
 			return gemini;
 		}
 	}

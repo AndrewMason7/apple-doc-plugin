@@ -152,6 +152,57 @@ class TestHermesUltraSurfaces(unittest.TestCase):
         self.assertIn("from '@hermes/plugin-sdk'", desktop_js)
         self.assertNotIn("window.hermesDesktop", desktop_js)
 
+    def test_dashboard_manifest_entry_resolves_and_registers(self):
+        """The web dashboard resolves `entry` inside dashboard/ and injects it as a
+        <script> for every discovered manifest (defaults: entry=dist/index.js, and a
+        live default tab). A missing entry file means a 404 script fetch and a dead
+        tab, so the bundle must exist and must call register()."""
+        import json
+
+        manifest = json.loads(
+            (ROOT_DIR / "dashboard" / "manifest.json").read_text(encoding="utf-8")
+        )
+        entry = manifest.get("entry", "dist/index.js")
+        entry_path = ROOT_DIR / "dashboard" / entry
+        self.assertTrue(
+            entry_path.is_file(),
+            f"dashboard manifest entry must resolve to a real file: dashboard/{entry}",
+        )
+        bundle = entry_path.read_text(encoding="utf-8")
+        self.assertIn("window.__HERMES_PLUGIN_SDK__", bundle)
+        self.assertIn("window.__HERMES_PLUGINS__.register('apple-doc-plugin'", bundle)
+        # Same-origin only: the SDK fetchers reject absolute cross-origin URLs by
+        # design, and the bundle must not bypass them with a raw fetch.
+        self.assertNotIn("fetch(", bundle)
+        tab = manifest.get("tab") or {}
+        self.assertEqual(tab.get("path"), "/apple-docs")
+
+        # Contract: the bundle's endpoints must match the plugin's own FastAPI
+        # router and the engine's real response fields — pinning the exact 404 /
+        # missing-field class of bug this tab shipped to fix.
+        self.assertIn("'/api/plugins/apple-doc-plugin'", bundle)
+        for endpoint in ("/status", "/search?q="):
+            self.assertIn(endpoint, bundle)
+        rows = self.engine.search_symbols_data("NavigationSplitView", max_results=3)["results"]
+        self.assertTrue(rows, "engine search must return rows for the contract check")
+        for field in ("id", "title", "framework", "kind", "abstract", "webUrl"):
+            self.assertIn(field, rows[0])
+        stats = self.engine.get_index_stats()
+        for field in ("symbolCount", "frameworkCount"):
+            self.assertIn(field, stats)
+
+    def test_bridge_child_env_isolates_credentials(self):
+        """The bridge child env must pin APPLE_DOCS_DISABLE_ADC=1 and must not
+        pass through ambient Google credential variables."""
+        from bridges.hermes import hermes_bridge
+
+        env = hermes_bridge._build_isolated_child_env()
+        self.assertEqual(env.get("APPLE_DOCS_DISABLE_ADC"), "1")
+        self.assertNotIn("GOOGLE_APPLICATION_CREDENTIALS", env)
+        self.assertNotIn("GOOGLE_API_KEY", env)
+        self.assertNotIn("GOOGLE_CLOUD_PROJECT", env)
+        self.assertIn("PATH", env)
+
 
 if __name__ == "__main__":
     unittest.main()

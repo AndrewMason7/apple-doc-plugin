@@ -2,6 +2,10 @@
 # report `.env.example` as unformatted and fail `--check`.
 .env.example
 
+# Shipped dashboard bundle: a hand-formatted browser payload, not build output
+# that prettier should rewrap.
+dashboard/dist/
+
 # Test and runtime caches
 .pytest_cache/
 __pycache__/

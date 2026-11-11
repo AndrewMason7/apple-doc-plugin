@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Any, Deque, Dict, Optional
@@ -46,14 +47,30 @@ def _build_isolated_child_env() -> Dict[str, str]:
             env[key] = val
 
     # Catalog Rule 11: resolve optional API credentials strictly through Hermes secret_scope
+    # Known limitation: NodeMcpBridge is a process-global singleton, so the key is
+    # sampled once per child spawn, not per calling profile. Under a multiplexed
+    # gateway the first profile to spawn the child wins until it is closed.
     try:
         from agent.secret_scope import get_secret
 
         gemini_key = get_secret("GEMINI_API_KEY")
         if gemini_key:
             env["GEMINI_API_KEY"] = gemini_key
-    except Exception:
-        pass
+    except Exception as exc:
+        # secret_scope is context-local and deliberately fails closed when no
+        # profile scope is active (e.g. an unscoped gateway thread). The child
+        # then runs keylessly — offline engines are unaffected — but surface it
+        # instead of swallowing, so a misconfigured profile is visible.
+        sys.stderr.write(
+            f"[apple-doc-plugin] GEMINI_API_KEY not resolved via secret_scope: {exc}\n"
+        )
+
+    # Review fix: never inherit ambient Google Application Default Credentials
+    # (GOOGLE_APPLICATION_CREDENTIALS / gcloud credential file / metadata
+    # server) — those belong to whatever other tool the user logged in with,
+    # not to this plugin. Under the bridge, the only accepted embedding
+    # credential is the secret_scope GEMINI_API_KEY above.
+    env["APPLE_DOCS_DISABLE_ADC"] = "1"
 
     return env
 

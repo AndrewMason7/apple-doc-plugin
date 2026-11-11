@@ -139,6 +139,12 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 		if (this.authDisabled) return false;
 		if (this.hasInjectedAuth) return true;
 
+		// Hermes bridge credential isolation (enforced at the credential site,
+		// not just provider selection): when the bridge child env carries
+		// APPLE_DOCS_DISABLE_ADC=1, ambient Google Application Default
+		// Credentials are never considered available.
+		if (process.env.APPLE_DOCS_DISABLE_ADC === '1') return false;
+
 		if (
 			process.env.GOOGLE_APPLICATION_CREDENTIALS &&
 			process.env.GOOGLE_APPLICATION_CREDENTIALS.trim().length > 0
@@ -178,6 +184,11 @@ export class GeminiSemanticSearch implements EmbeddingProvider {
 		if (this.hasApiKey()) {
 			return { 'x-goog-api-key': this.apiKey! };
 		}
+
+		// Hermes bridge credential isolation: no key + APPLE_DOCS_DISABLE_ADC=1
+		// means no ADC fallback either — never mint OAuth headers from ambient
+		// credentials under the bridge.
+		if (process.env.APPLE_DOCS_DISABLE_ADC === '1') return null;
 
 		// 2. Application Default Credentials (ADC)
 		try {

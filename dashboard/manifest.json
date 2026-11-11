@@ -2,10 +2,10 @@
   "name": "apple-doc-plugin",
   "label": "Apple Docs",
   "description": "95,899 offline Apple SDK symbols, React/Web/Android-to-SwiftUI idiom bridge, and Swift compiler error grounding.",
-  "icon": "BookOpen",
+  "icon": "FileText",
   "version": "1.1.0",
   "api": "plugin_api.py",
-  "entry": "desktop/plugin.js",
+  "entry": "dist/index.js",
   "tab": {
     "path": "/apple-docs",
     "label": "Apple Docs",
