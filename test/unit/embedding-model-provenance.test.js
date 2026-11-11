@@ -17,7 +17,10 @@ import {
 } from '../../dist/server/handlers/version.js';
 import { runDoctor } from '../../dist/server/services/doctor.js';
 import { ServerState } from '../../dist/server/state.js';
-import { downloadVectors } from '../../dist/server/services/download-vectors.js';
+import {
+	downloadVectors,
+	findLocalVectorArtifact,
+} from '../../dist/server/services/download-vectors.js';
 import { exportVectors } from '../../dist/server/services/export-vectors.js';
 
 const unitVec = (dims = 768, index = 0) => {
@@ -286,17 +289,19 @@ test('exportVectors writes embeddingModel into manifest/meta and downloadVectors
 		assert.strictEqual(destUnpinnedDb.getStoredEmbeddingModel(), null);
 		destUnpinnedDb.close();
 
-		// Pinned shipped bundle -> stamps gemini-embedding-2
-		const destPinnedPath = path.join(tmpDir, 'dest-pinned.db');
-		const initPinned = new AppleDocsDB(destPinnedPath);
-		initPinned.close();
-		await downloadVectors({ dbPath: destPinnedPath, force: true });
-		const verifyPinned = new AppleDocsDB(destPinnedPath, { readonly: true });
-		assert.strictEqual(
-			verifyPinned.getStoredEmbeddingModel(),
-			'gemini-embedding-2',
-		);
-		verifyPinned.close();
+		// Pinned shipped bundle -> stamps gemini-embedding-2 (if bundled artifact present)
+		if (findLocalVectorArtifact()) {
+			const destPinnedPath = path.join(tmpDir, 'dest-pinned.db');
+			const initPinned = new AppleDocsDB(destPinnedPath);
+			initPinned.close();
+			await downloadVectors({ dbPath: destPinnedPath, force: true });
+			const verifyPinned = new AppleDocsDB(destPinnedPath, { readonly: true });
+			assert.strictEqual(
+				verifyPinned.getStoredEmbeddingModel(),
+				'gemini-embedding-2',
+			);
+			verifyPinned.close();
+		}
 
 		// I2: Importing a subset bundle of a DIFFERENT model clears stale rows from the prior model
 		const mixedDestPath = path.join(tmpDir, 'mixed-dest.db');
