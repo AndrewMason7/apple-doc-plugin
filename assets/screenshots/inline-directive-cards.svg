@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="1280" height="760">
+  <rect width="1280" height="760" fill="#0B1120"/>
+  <text x="56" y="56" fill="#F8FAFC" font-family="system-ui, sans-serif" font-size="24" font-weight="800">Inline Transcript Cards (`::apple-doc`) &amp; `@apple:` Context References</text>
+  <text x="56" y="84" fill="#94A3B8" font-family="system-ui, sans-serif" font-size="14">Cite verified Apple symbols right inside Hermes Desktop chat with live autocomplete and rich API cards.</text>
+
+  <rect x="56" y="116" width="1168" height="68" rx="14" fill="#1E293B"/>
+  <text x="84" y="156" fill="#F8FAFC" font-family="system-ui, sans-serif" font-size="15">User:  How should I build a 3-column macOS + iPadOS layout using  </text>
+  <rect x="562" y="134" width="256" height="30" rx="8" fill="#0F172A" stroke="#38BDF8"/>
+  <text x="576" y="154" fill="#38BDF8" font-family="ui-monospace, monospace" font-size="14">@apple:NavigationSplitView</text>
+  <text x="828" y="156" fill="#F8FAFC" font-family="system-ui, sans-serif" font-size="15">?</text>
+
+  <rect x="56" y="208" width="1168" height="496" rx="18" fill="#0F172A" stroke="#1E293B"/>
+  <text x="88" y="250" fill="#E2E8F0" font-family="system-ui, sans-serif" font-size="15">Hermes:  Use `NavigationSplitView(sidebar:content:detail:)` with column visibility state:</text>
+
+  <rect x="88" y="276" width="1104" height="174" rx="14" fill="#111827" stroke="#38BDF8" stroke-opacity="0.5"/>
+  <text x="116" y="312" fill="#F8FAFC" font-family="ui-monospace, monospace" font-size="17" font-weight="700">  NavigationSplitView</text>
+  <rect x="364" y="294" width="70" height="24" rx="6" fill="#1E293B"/><text x="378" y="310" fill="#38BDF8" font-family="system-ui, sans-serif" font-size="12">SwiftUI</text>
+  <text x="448" y="310" fill="#64748B" font-family="system-ui, sans-serif" font-size="12">STRUCT</text>
+
+  <rect x="826" y="290" width="108" height="28" rx="7" fill="#1E293B"/><text x="842" y="308" fill="#E2E8F0" font-family="system-ui, sans-serif" font-size="12">Cite @apple:</text>
+  <rect x="944" y="290" width="108" height="28" rx="7" fill="#1E293B"/><text x="960" y="308" fill="#E2E8F0" font-family="system-ui, sans-serif" font-size="12">Open Studio</text>
+  <rect x="1062" y="290" width="106" height="28" rx="7" fill="#1E293B"/><text x="1076" y="308" fill="#38BDF8" font-family="system-ui, sans-serif" font-size="12">Apple Docs ↗</text>
+
+  <text x="116" y="352" fill="#CBD5E1" font-family="system-ui, sans-serif" font-size="14">A view that presents views in two or three columns, where selections in leading columns control presentations in subsequent columns.</text>
+
+  <g font-family="system-ui, sans-serif" font-size="11" fill="#94A3B8">
+    <rect x="116" y="378" width="76" height="24" rx="6" fill="#1E293B"/><text x="128" y="394">iOS 16.0+</text>
+    <rect x="200" y="378" width="92" height="24" rx="6" fill="#1E293B"/><text x="212" y="394">iPadOS 16.0+</text>
+    <rect x="300" y="378" width="92" height="24" rx="6" fill="#1E293B"/><text x="312" y="394">macOS 13.0+</text>
+    <rect x="400" y="378" width="96" height="24" rx="6" fill="#1E293B"/><text x="412" y="394">visionOS 1.0+</text>
+  </g>
+
+  <rect x="88" y="472" width="1104" height="198" rx="12" fill="#090D16" stroke="#1E293B"/>
+  <text x="116" y="508" fill="#C084FC" font-family="ui-monospace, monospace" font-size="14">@State private var visibility: NavigationSplitViewVisibility = .all</text>
+  <text x="116" y="540" fill="#38BDF8" font-family="ui-monospace, monospace" font-size="14">NavigationSplitView(columnVisibility: $visibility) {</text>
+  <text x="116" y="568" fill="#E2E8F0" font-family="ui-monospace, monospace" font-size="14">    SidebarList(selection: $selectedFolder)</text>
+  <text x="116" y="596" fill="#38BDF8" font-family="ui-monospace, monospace" font-size="14">} content: {</text>
+  <text x="116" y="624" fill="#E2E8F0" font-family="ui-monospace, monospace" font-size="14">    DocumentList(folder: selectedFolder, selection: $selectedDoc)</text>
+  <text x="116" y="652" fill="#38BDF8" font-family="ui-monospace, monospace" font-size="14">} detail: { DocumentEditor(doc: selectedDoc) }</text>
+</svg>
