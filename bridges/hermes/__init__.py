@@ -184,8 +184,11 @@ def _execute_tool(tool_name: str, call_args: Dict[str, Any], prefer_node: bool =
         except Exception:
             pass
 
-    if tool_name in ("get_version", "index_info"):
+    if tool_name == "get_version":
         return engine.format_version_markdown()
+
+    if tool_name == "index_info":
+        return engine.format_index_info_markdown()
 
     if tool_name == "discover_technologies":
         return engine.format_discover_markdown(
@@ -289,6 +292,9 @@ def _handle_slash_command(raw_args: str = "", **kwargs: Any) -> str:
 
     if sub in ("status", "info", "version"):
         return engine.format_version_markdown()
+
+    if sub in ("index", "index_info", "indexinfo"):
+        return engine.format_index_info_markdown()
 
     if sub in ("frameworks", "tech", "discover"):
         return engine.format_discover_markdown(query=rest)

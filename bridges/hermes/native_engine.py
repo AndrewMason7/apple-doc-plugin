@@ -27,6 +27,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 PLUGIN_VERSION = "1.1.0"
+# Frameworks with fewer symbols than this are cross-reference targets (a SwiftUI
+# page linking to WidgetKit), not frameworks whose documentation is indexed.
+# Mirrors `INDEXED_FRAMEWORK_MIN_SYMBOLS` in src/server/handlers/version.ts so
+# `get_version`/`index_info` never overstate coverage.
+INDEXED_FRAMEWORK_MIN_SYMBOLS = 25
 DOCC_CDN_BASE = "https://developer.apple.com/tutorials/data"
 DOCC_WEB_BASE = "https://developer.apple.com"
 _DOCC_HTTP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="apple_docc_http")
@@ -537,10 +542,16 @@ class AppleDocsNativeEngine:
             return {
                 "ok": False,
                 "version": PLUGIN_VERSION,
+                "engine": "hermes-native-sqlite-fts5",
                 "symbolCount": 0,
+                "semanticItemCount": 0,
                 "frameworkCount": 0,
                 "frameworks": [],
+                "builtAt": "",
                 "mode": "unavailable",
+                "idiomCount": len(CROSS_FRAMEWORK_IDIOMS),
+                "compilerRuleCount": len(SWIFT_COMPILER_MIGRATIONS),
+                "latencyMs": 0.0,
                 "dbPath": str(target),
             }
 
@@ -575,17 +586,182 @@ class AppleDocsNativeEngine:
         return stats
 
     def format_version_markdown(self) -> str:
+        """Concise engine identity: version, runtime mode, surfaces, latency.
+
+        Deliberately does NOT duplicate `index_info`'s per-framework SQLite
+        breakdown — `get_version` is the cheap "what am I talking to" probe.
+        """
         st = self.get_index_stats()
-        top_fw = ", ".join(f"{f['name']} ({f['symbolCount']:,})" for f in st.get("frameworks", [])[:8])
+        fw_all = st.get("frameworks", [])
+        indexed = [f for f in fw_all if int(f.get("symbolCount") or 0) >= INDEXED_FRAMEWORK_MIN_SYMBOLS]
+        cross_ref = [f for f in fw_all if int(f.get("symbolCount") or 0) < INDEXED_FRAMEWORK_MIN_SYMBOLS]
+        hydrated = int(st.get("semanticItemCount") or 0) > 0
+
+        probe_ms = 0.0
+        probe_hit = "index unavailable — probe skipped"
+        if st.get("ok"):
+            try:
+                probe_t0 = time.perf_counter()
+                warm = self.search_symbols_data("NavigationSplitView", max_results=1)
+                probe_ms = round((time.perf_counter() - probe_t0) * 1000, 2)
+                probe_hit = warm["results"][0]["title"] if warm.get("results") else "no hit"
+            except (sqlite3.Error, FileNotFoundError) as err:
+                probe_hit = f"probe failed: {err}"
+
+        coverage = (
+            f"{len(indexed)} indexed"
+            + (f" + {len(cross_ref)} cross-reference modules" if cross_ref else " frameworks")
+        )
         return (
             f"# Apple Developer Documentation Engine v{st['version']}\n\n"
-            f"- **Indexed Symbols:** {st['symbolCount']:,} offline symbols\n"
-            f"- **Indexed Frameworks:** {st['frameworkCount']} ({top_fw}, ...)\n"
-            f"- **Search Engine:** `{st['mode']}` ({st['idiomCount']} cross-framework idioms + SQLite FTS5 BM25)\n"
-            f"- **Dense Vectors Hydrated:** {st['semanticItemCount']:,}\n"
+            f"- **Runtime:** `{st.get('engine', 'hermes-native-sqlite-fts5')}` — pure-Python stdlib SQLite in read-only URI mode (no subprocess, no API key)\n"
+            f"- **Search Mode:** `{st['mode']}` (SQLite FTS5 BM25 + Cross-Framework Idiom RRF k=60)\n"
+            f"- **Corpus:** {st['symbolCount']:,} symbols · {st['frameworkCount']} frameworks ({coverage})\n"
+            f"- **Dense Vectors:** "
+            + (
+                f"{st['semanticItemCount']:,} hydrated (768-d hybrid)"
+                if hydrated
+                else "not hydrated — lexical FTS5 + idiom RRF only (`index_info` shows hydration steps)"
+            )
+            + "\n"
+            f"- **Capabilities:** 6 tools (`discover_technologies`, `search_symbols`, `semantic_search`, `get_documentation`, `get_version`, `index_info`) · "
+            f"{st['idiomCount']} cross-framework idioms · {st['compilerRuleCount']} verified compiler migrations\n"
+            f"- **Surfaces:** `transform_terminal_output` compiler hook · `::apple-doc{{...}}` transcript directive · `/apple-docs` slash command · Desktop Studio (`/apple-docs`)\n"
+            f"- **Latency:** index probe `{st.get('latencyMs', 0)} ms` · warm FTS5 query `{probe_ms} ms` (`{probe_hit}`)\n"
             f"- **Index Built At:** `{st.get('builtAt') or 'bundled'}`\n"
-            f"- **Query Latency:** `{st.get('latencyMs', 0)} ms`\n"
         )
+
+    def _schema_snapshot(self) -> Dict[str, Any]:
+        """Read-only facts about the shipped SQLite file used by `index_info`."""
+        target = self.db_path
+        snapshot: Dict[str, Any] = {
+            "dbPath": str(target),
+            "dbMode": "read-only",
+            "dbSizeMb": round(target.stat().st_size / (1024 * 1024), 2) if target.exists() else 0.0,
+            "tables": [],
+            "fts5": False,
+            "fts5Docs": 0,
+            "vecTable": False,
+            "vecRows": None,
+            "metaSymbolCount": 0,
+            "error": "",
+        }
+        if not target.exists():
+            snapshot["error"] = f"index file missing at {target}"
+            return snapshot
+        try:
+            with self._connect() as conn:
+                names = [
+                    r["name"]
+                    for r in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name"
+                    ).fetchall()
+                ]
+                snapshot["tables"] = [n for n in names if not n.startswith("sqlite_")]
+                snapshot["vecTable"] = "vec_items" in names
+                if "meta" in names:
+                    meta_row = conn.execute(
+                        "SELECT value FROM meta WHERE key = 'symbol_count'"
+                    ).fetchone()
+                    snapshot["metaSymbolCount"] = int((meta_row["value"] if meta_row else 0) or 0)
+                if "symbols_fts_docsize" not in names:
+                    snapshot["error"] = "symbols_fts (FTS5) missing from index — rebuild required"
+                else:
+                    try:
+                        snapshot["fts5Docs"] = int(
+                            conn.execute("SELECT COUNT(*) AS c FROM symbols_fts_docsize").fetchone()["c"]
+                        )
+                        snapshot["fts5"] = True
+                    except sqlite3.Error as err:
+                        snapshot["error"] = f"FTS5 verification failed: {err}"
+                if snapshot["vecTable"]:
+                    try:
+                        snapshot["vecRows"] = int(
+                            conn.execute("SELECT COUNT(*) AS c FROM vec_items").fetchone()["c"]
+                        )
+                    except sqlite3.Error:
+                        # vec0 lives in the sqlite-vec extension; the pure-Python
+                        # engine never loads it, so the table is opaque here.
+                        snapshot["vecRows"] = None
+        except (sqlite3.Error, FileNotFoundError) as err:
+            snapshot["error"] = f"index probe failed: {err}"
+        return snapshot
+
+    def format_index_info_markdown(self) -> str:
+        """Detailed SQLite index breakdown: path, schema, FTS5, per-framework counts, vectors."""
+        st = self.get_index_stats()
+        schema = self._schema_snapshot()
+        fw_all = list(st.get("frameworks", []))
+        indexed = [f for f in fw_all if int(f.get("symbolCount") or 0) >= INDEXED_FRAMEWORK_MIN_SYMBOLS]
+        cross_ref = [f for f in fw_all if int(f.get("symbolCount") or 0) < INDEXED_FRAMEWORK_MIN_SYMBOLS]
+        sem_count = int(st.get("semanticItemCount") or 0)
+
+        fts_line = (
+            f"`symbols_fts` present · {schema['fts5Docs']:,} indexed documents · tokenizer `unicode61 remove_diacritics 2`"
+            if schema["fts5"]
+            else "`symbols_fts` unavailable — FTS5 search degrades to `LIKE` scans"
+        )
+        vec_rows = (
+            "absent from the index"
+            if not schema["vecTable"]
+            else (
+                "unreadable (sqlite-vec `vec0` extension not loaded by the Python engine)"
+                if schema["vecRows"] is None
+                else f"{schema['vecRows']:,} rows"
+            )
+        )
+        core_tables = [t for t in schema["tables"] if t in ("meta", "symbols", "symbols_fts", "semantic_items", "vec_items")]
+        meta_total = int(schema["metaSymbolCount"] or 0)
+        if not st.get("ok"):
+            agreement = "⚠ no readable index at this path — run `npm run repair-index` or reinstall the plugin"
+        elif meta_total == int(st["symbolCount"]):
+            agreement = "`meta.symbol_count` agrees with the live `GROUP BY framework` total"
+        else:
+            agreement = f"⚠ `meta.symbol_count` = {meta_total:,} disagrees with the live total — run `npm run repair-index`"
+
+        lines = [
+            f"# Apple Docs SQLite Index — `{Path(schema['dbPath']).name}`",
+            "",
+            f"- **DB path:** `{schema['dbPath']}`",
+            f"- **URI mode:** `{schema['dbMode']}` (`file:...?mode=ro`) · {schema['dbSizeMb']} MB on disk",
+            f"- **Symbols:** {st['symbolCount']:,} — {agreement}",
+            f"- **Frameworks:** {st['frameworkCount']} total — {len(indexed)} indexed (≥{INDEXED_FRAMEWORK_MIN_SYMBOLS} symbols) + {len(cross_ref)} cross-reference modules",
+            f"- **Schema:** {', '.join(f'`{t}`' for t in core_tables) or 'unavailable'}",
+            f"- **FTS5 status:** {fts_line}",
+            f"- **Idiom / compiler rules:** {st['idiomCount']} cross-framework idioms · {st['compilerRuleCount']} verified compiler migrations",
+            f"- **Index built at:** `{st.get('builtAt') or 'bundled'}` · **probe latency:** `{st.get('latencyMs', 0)} ms`",
+        ]
+        if schema["error"]:
+            lines.append(f"- **⚠ Index warning:** {schema['error']}")
+        lines.extend(
+            [
+                "",
+                f"## Per-Framework Symbol Counts ({len(fw_all)})",
+                "",
+                "| Framework | Symbols | Coverage |",
+                "| :--- | ---: | :--- |",
+            ]
+        )
+        for fw in fw_all:
+            kind = "indexed" if int(fw.get("symbolCount") or 0) >= INDEXED_FRAMEWORK_MIN_SYMBOLS else "cross-reference"
+            lines.append(f"| **{fw['name']}** | {int(fw['symbolCount']):,} | {kind} |")
+        lines.extend(
+            [
+                "",
+                "## Dense Vectors",
+                "",
+                f"- **`meta.semantic_item_count`:** {sem_count:,} "
+                + ("→ hybrid dense retrieval active" if sem_count > 0 else "→ not hydrated; `has_hydrated_vectors()` is `False`"),
+                f"- **`vec_items` (768-d cosine):** {vec_rows}",
+                f"- **`semantic_items` table rows:** {'present' if 'semantic_items' in schema['tables'] else 'absent'}",
+                (
+                    "- **To hydrate:** `npm run download-vectors` (bundled offline artifact, gzip + SHA-256; "
+                    "requires `npm run build` first) or `npm run embed-index` with `GEMINI_API_KEY` set. "
+                    "Vectors land in `data/apple-docs.runtime.db`, never in the shipped read-only index."
+                ),
+            ]
+        )
+        return "\n".join(lines)
 
     def discover_technologies_data(
         self, query: str = "", page: int = 1, page_size: int = 25
@@ -1270,12 +1446,28 @@ class AppleDocsNativeEngine:
                 search_res = self.search_symbols_data(sym, max_results=3)["results"]
                 if search_res:
                     top = search_res[0]
+                    # Only an exact/identifier-resolution hit may be presented as
+                    # indexed fact; a prefix/fuzzy FTS5 neighbour is a suggestion.
+                    bare_title = (top.get("title") or "").split("(")[0].strip()
+                    is_exact = bool(top.get("source") == "exact") or (
+                        bare_title.lower() == sym.lower()
+                    ) or bare_title.lower() == f"func {sym.lower()}" or bare_title.lower() == f"var {sym.lower()}"
+                    availability = ", ".join(top.get("platforms")[:4]) if top.get("platforms") else ""
+                    where = f"{top['kind']} in {top['framework']}"
+                    if availability:
+                        where = f"{where} ({availability})"
+                    head = (
+                        f"Indexed {where}."
+                        if is_exact
+                        else f"Closest DocC match: {where} — related FTS5 hit, not a verified replacement."
+                    )
+                    abstract = (top.get("abstract") or "").strip()
                     findings.append({
                         "symbol": sym,
-                        "kind": "docc-lookup",
+                        "kind": "docc-exact" if is_exact else "docc-suggestion",
                         "replacement": f"{top['title']} ({top['framework']})",
                         "framework": top["framework"],
-                        "reason": top["abstract"] or f"Verified {top['kind']} in {top['framework']} ({', '.join(top['platforms'][:4])}).",
+                        "reason": f"{head} {abstract}".strip() if abstract else head,
                         "fixSnippet": f'get_documentation({{ "path": "{top["path"]}", "framework": "{top["framework"]}" }})',
                         "docPath": top["path"],
                     })
@@ -1294,10 +1486,20 @@ class AppleDocsNativeEngine:
             "─── [Apple DocC Grounding · Offline 95.9k Index] ───",
         ]
         for f in findings:
-            ann_lines.append(
-                f"• `{f['symbol']}` -> **{f['replacement']}** (`{f['framework']}` · `{f['docPath']}`)\n"
-                f"  {f['reason']}"
-            )
+            kind = f.get("kind")
+            if kind == "migration":
+                head = (
+                    f"• `{f['symbol']}` -> **{f['replacement']}** "
+                    f"(Verified Migration · `{f['framework']}` · `{f['docPath']}`)"
+                )
+            elif kind == "docc-exact":
+                head = f"• `{f['symbol']}`: **{f['replacement']}** (Exact Symbol · `{f['docPath']}`)"
+            else:
+                head = (
+                    f"• `{f['symbol']}` ~? **{f['replacement']}** "
+                    f"(Related FTS5 Suggestion · `{f['docPath']}`)"
+                )
+            ann_lines.append(f"{head}\n  {f['reason']}")
         ann_lines.append("────────────────────────────────────────────────────")
 
         return {

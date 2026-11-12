@@ -46,34 +46,48 @@ const FALLBACK_STATS = {
 	version: '1.1.0',
 	engine: 'hermes-native-sqlite-fts5',
 	symbolCount: 95899,
-	semanticItemCount: 19473,
+	// Rule 17 (Hermes Catalog) strips dense vectors from the shipped binary; the
+	// bundled `data/apple-docs.db` reports `semantic_item_count = 0`, so this
+	// offline preview must not advertise hydrated embeddings it does not have.
+	semanticItemCount: 0,
 	frameworkCount: 30,
 	mode: 'hybrid-idiom-fts5',
 	idiomCount: 16,
 	compilerRuleCount: 11,
 	latencyMs: 2.8,
+	// Mirrors `SELECT framework, COUNT(*) FROM symbols GROUP BY framework` on the
+	// shipped `data/apple-docs.db` (sums to exactly 95,899 / 30 frameworks).
 	frameworks: [
-		{ name: 'Foundation', symbolCount: 18420 },
-		{ name: 'AppKit', symbolCount: 16940 },
-		{ name: 'UIKit', symbolCount: 15810 },
-		{ name: 'SwiftUI', symbolCount: 9840 },
-		{ name: 'Security', symbolCount: 5412 },
-		{ name: 'AVFoundation', symbolCount: 4890 },
-		{ name: 'RealityKit', symbolCount: 4215 },
-		{ name: 'CoreData', symbolCount: 3120 },
-		{ name: 'WebKit', symbolCount: 2840 },
-		{ name: 'MapKit', symbolCount: 2490 },
-		{ name: 'Vision', symbolCount: 2180 },
-		{ name: 'StoreKit', symbolCount: 1860 },
-		{ name: 'Combine', symbolCount: 1740 },
-		{ name: 'Swift', symbolCount: 1690 },
-		{ name: 'CoreLocation', symbolCount: 1180 },
-		{ name: 'AuthenticationServices', symbolCount: 990 },
-		{ name: 'UserNotifications', symbolCount: 640 },
-		{ name: 'SwiftData', symbolCount: 580 },
-		{ name: 'WidgetKit', symbolCount: 540 },
-		{ name: 'Observation', symbolCount: 262 },
-		{ name: 'LocalAuthentication', symbolCount: 260 },
+		{ name: 'Swift', symbolCount: 18442 },
+		{ name: 'Foundation', symbolCount: 13013 },
+		{ name: 'AppKit', symbolCount: 12654 },
+		{ name: 'UIKit', symbolCount: 11449 },
+		{ name: 'Security', symbolCount: 7331 },
+		{ name: 'SwiftUI', symbolCount: 7202 },
+		{ name: 'RealityKit', symbolCount: 6235 },
+		{ name: 'AVFoundation', symbolCount: 5614 },
+		{ name: 'WebKit', symbolCount: 3193 },
+		{ name: 'Vision', symbolCount: 1915 },
+		{ name: 'StoreKit', symbolCount: 1531 },
+		{ name: 'AuthenticationServices', symbolCount: 1473 },
+		{ name: 'MapKit', symbolCount: 1299 },
+		{ name: 'CoreData', symbolCount: 1170 },
+		{ name: 'Combine', symbolCount: 1062 },
+		{ name: 'SwiftData', symbolCount: 552 },
+		{ name: 'CoreLocation', symbolCount: 474 },
+		{ name: 'RegexBuilder', symbolCount: 462 },
+		{ name: 'LocalAuthentication', symbolCount: 246 },
+		{ name: 'Synchronization', symbolCount: 196 },
+		{ name: 'Distributed', symbolCount: 93 },
+		{ name: 'BundleResources', symbolCount: 88 },
+		{ name: 'ObjectiveC', symbolCount: 77 },
+		{ name: 'AVFAudio', symbolCount: 45 },
+		{ name: 'Observation', symbolCount: 37 },
+		{ name: 'visionOS', symbolCount: 22 },
+		{ name: 'Xcode', symbolCount: 11 },
+		{ name: 'PassKit', symbolCount: 6 },
+		{ name: 'WidgetKit', symbolCount: 4 },
+		{ name: 'AVKit', symbolCount: 3 },
 	],
 };
 
@@ -491,6 +505,17 @@ function localDiagnoseFallback(logText) {
 }
 
 function localSearchFallback(query, framework) {
+	const t0 =
+		typeof performance !== 'undefined' && performance.now
+			? performance.now()
+			: Date.now();
+	const elapsed = () => {
+		const now =
+			typeof performance !== 'undefined' && performance.now
+				? performance.now()
+				: Date.now();
+		return Math.max(0, Math.round((now - t0) * 10) / 10);
+	};
 	const q = (query || '').trim().toLowerCase();
 	const pool = framework
 		? FALLBACK_SYMBOLS.filter(
@@ -500,9 +525,10 @@ function localSearchFallback(query, framework) {
 	if (!q)
 		return {
 			results: pool,
-			latencyMs: 0.9,
+			latencyMs: elapsed(),
 			mode: 'curated-preview',
 			expansion: {},
+			offlineFallback: true,
 		};
 
 	const matchedIdioms = FALLBACK_IDIOMS.filter(
@@ -523,11 +549,14 @@ function localSearchFallback(query, framework) {
 			mappedTokens.some((tok) => t.includes(tok))
 		);
 	});
+	// No result-substitution: a zero-match offline search returns an honest empty
+	// list so the UI can render "no offline matches" instead of 4 unrelated symbols.
 	return {
-		results: filtered.length ? filtered : pool.slice(0, 4),
-		latencyMs: 1.2,
-		mode: matchedIdioms.length ? 'hybrid-idiom-rrf' : 'fts5-bm25',
+		results: filtered,
+		latencyMs: elapsed(),
+		mode: matchedIdioms.length ? 'offline-fallback-idiom' : 'offline-fallback',
 		expansion: { matchedIdioms },
+		offlineFallback: true,
 	};
 }
 
@@ -1420,47 +1449,59 @@ function AppleDocsStudioPage({ ctx }) {
 											className: 'h-full',
 											children: jsxs('div', {
 												className: 'p-2 flex flex-col gap-1',
-												children: (searchResult.results || []).map((item) => {
-													const selected =
-														selectedSymbol && selectedSymbol.path === item.path;
-													return jsx(
-														RowButton,
-														{
-															onClick: () => setSelectedSymbol(item),
-															className: selected
-																? 'w-full text-left px-3 py-2.5 rounded-lg bg-(--ui-hover) border border-(--ui-stroke-secondary) flex flex-col gap-1 cursor-pointer'
-																: 'w-full text-left px-3 py-2.5 rounded-lg hover:bg-(--ui-hover)/60 border border-transparent flex flex-col gap-1 cursor-pointer',
-															children: jsxs(Fragment, {
-																children: [
-																	jsxs('div', {
-																		className:
-																			'flex items-center justify-between gap-2',
-																		children: [
-																			jsx('span', {
-																				className:
-																					'font-mono text-xs font-medium text-(--ui-text) truncate',
-																				children: item.title,
-																			}),
-																			jsx('span', {
-																				className:
-																					'text-[10px] px-1.5 py-0.5 rounded bg-(--ui-input)/60 text-(--ui-text-tertiary) shrink-0',
-																				children: item.framework,
-																			}),
-																		],
-																	}),
-																	item.abstract
-																		? jsx('p', {
-																				className:
-																					'text-[11px] text-(--ui-text-tertiary) line-clamp-2',
-																				children: item.abstract,
-																			})
-																		: null,
-																],
-															}),
-														},
-														item.id || item.path,
-													);
-												}),
+												children: [
+													(searchResult.results || []).length === 0 &&
+													!searching
+														? jsx('p', {
+																className:
+																	'px-3 py-4 text-[11px] leading-relaxed text-(--ui-text-tertiary)',
+																children:
+																	'No offline matches in the curated preview (the live index is unreachable). Note the preview only carries a handful of hand-checked symbols — try a broader query or clear the framework filter.',
+															})
+														: null,
+													...(searchResult.results || []).map((item) => {
+														const selected =
+															selectedSymbol &&
+															selectedSymbol.path === item.path;
+														return jsx(
+															RowButton,
+															{
+																onClick: () => setSelectedSymbol(item),
+																className: selected
+																	? 'w-full text-left px-3 py-2.5 rounded-lg bg-(--ui-hover) border border-(--ui-stroke-secondary) flex flex-col gap-1 cursor-pointer'
+																	: 'w-full text-left px-3 py-2.5 rounded-lg hover:bg-(--ui-hover)/60 border border-transparent flex flex-col gap-1 cursor-pointer',
+																children: jsxs(Fragment, {
+																	children: [
+																		jsxs('div', {
+																			className:
+																				'flex items-center justify-between gap-2',
+																			children: [
+																				jsx('span', {
+																					className:
+																						'font-mono text-xs font-medium text-(--ui-text) truncate',
+																					children: item.title,
+																				}),
+																				jsx('span', {
+																					className:
+																						'text-[10px] px-1.5 py-0.5 rounded bg-(--ui-input)/60 text-(--ui-text-tertiary) shrink-0',
+																					children: item.framework,
+																				}),
+																			],
+																		}),
+																		item.abstract
+																			? jsx('p', {
+																					className:
+																						'text-[11px] text-(--ui-text-tertiary) line-clamp-2',
+																					children: item.abstract,
+																				})
+																			: null,
+																	],
+																}),
+															},
+															item.id || item.path,
+														);
+													}),
+												],
 											}),
 										}),
 									}),
