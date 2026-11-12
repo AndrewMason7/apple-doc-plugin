@@ -2486,6 +2486,199 @@ function AppleDocsSidePane({ ctx }) {
 
 const AppleDocsQuickPane = AppleDocsSidePane;
 
+/**
+ * Second docked pane: the Xcode Error Hook Lab, standalone.
+ *
+ * Not decoration — the desktop pane shell treats a plugin that owns exactly ONE
+ * pane as disposable: closing that pane calls `setPluginEnabled(pluginId,
+ * false)`, which unregisters every contribution the plugin ever made (the
+ * sessions-sidebar row, the /apple-docs page, the statusbar chip, the palette
+ * commands). With two panes, closing either one only dismisses that pane, so
+ * the Apple Docs entry point can never be nuked by closing the docked studio.
+ */
+function AppleDocsCompilerPane({ ctx }) {
+	const [compilerLog, setCompilerLog] = useState(COMPILER_PRESETS[0].log);
+	const [diagResult, setDiagResult] = useState(() =>
+		localDiagnoseFallback(COMPILER_PRESETS[0].log),
+	);
+	const [diagnosing, setDiagnosing] = useState(false);
+	const seqRef = useRef(0);
+
+	const runCompilerDiagnosis = useCallback(
+		(text) => {
+			const seq = ++seqRef.current;
+			const body = typeof text === 'string' && text ? text : compilerLog;
+
+			setDiagnosing(true);
+			safeRest(ctx, '/diagnose', {
+				method: 'POST',
+				body: { command: 'swift build', output: body, returncode: 1 },
+			})
+				.then((res) => {
+					if (seq !== seqRef.current) return;
+					setDiagResult(
+						res && Array.isArray(res.findings)
+							? res
+							: localDiagnoseFallback(body),
+					);
+				})
+				.catch(() => {
+					if (seq === seqRef.current) setDiagResult(localDiagnoseFallback(body));
+				})
+				.finally(() => {
+					if (seq === seqRef.current) setDiagnosing(false);
+				});
+		},
+		[ctx, compilerLog],
+	);
+
+	const findings =
+		diagResult && Array.isArray(diagResult.findings) ? diagResult.findings : [];
+
+	return jsxs('div', {
+		className: 'h-full w-full flex flex-col overflow-hidden p-3 gap-2',
+		children: [
+			jsxs('div', {
+				className: 'flex items-center justify-between gap-2 shrink-0',
+				children: [
+					jsxs('div', {
+						className: 'flex items-center gap-1.5 min-w-0',
+						children: [
+							jsx(Codicon, {
+								name: 'warning',
+								className: 'text-(--ui-accent) shrink-0',
+							}),
+							jsxs('div', {
+								className: 'min-w-0',
+								children: [
+									jsx('div', {
+										className:
+											'text-xs font-semibold text-(--ui-text) truncate',
+										children: 'Xcode Error Hook',
+									}),
+									jsx('div', {
+										className:
+											'text-[10px] text-(--ui-text-tertiary) truncate',
+										children: 'Offline deprecated-API migrations',
+									}),
+								],
+							}),
+						],
+					}),
+					jsx(Button, {
+						size: 'xs',
+						variant: 'ghost',
+						onClick: () => safeNavigate(STUDIO_ROUTE),
+						children: 'Studio ↗',
+					}),
+				],
+			}),
+			jsxs('div', {
+				className: 'flex items-center gap-1 flex-wrap shrink-0',
+				children: COMPILER_PRESETS.map((preset) =>
+					jsx(
+						'button',
+						{
+							type: 'button',
+							onClick: () => {
+								setCompilerLog(preset.log);
+								runCompilerDiagnosis(preset.log);
+							},
+							className:
+								'px-1.5 py-0.5 rounded text-[10px] font-mono border border-(--ui-stroke-secondary) text-(--ui-text-tertiary) hover:text-(--ui-text) hover:bg-(--ui-hover) cursor-pointer truncate max-w-[150px]',
+							children: preset.label,
+						},
+						preset.label,
+					),
+				),
+			}),
+			jsx(Textarea, {
+				value: compilerLog,
+				onChange: (e) => setCompilerLog(e.target.value),
+				rows: 5,
+				className: 'font-mono text-[10px] shrink-0',
+				placeholder: 'Paste swift build / xcodebuild error output here…',
+			}),
+			jsx(Button, {
+				size: 'xs',
+				variant: 'secondary',
+				onClick: () => runCompilerDiagnosis(compilerLog),
+				children: diagnosing ? 'Diagnosing…' : 'Diagnose Errors',
+			}),
+			jsx(ScrollArea, {
+				className: 'flex-1 min-h-0',
+				children: jsxs('div', {
+					className: 'flex flex-col gap-1.5 pr-1',
+					children: findings.length
+						? findings.map((f, idx) =>
+								jsxs(
+									'div',
+									{
+										className:
+											'rounded-lg border border-(--ui-stroke-secondary) p-2 flex flex-col gap-1 bg-(--ui-surface-secondary)/30',
+										children: [
+											jsxs('div', {
+												className: 'flex items-center justify-between gap-1.5',
+												children: [
+													jsx('span', {
+														className:
+															'font-mono text-[10px] font-semibold text-(--ui-accent) truncate',
+														children: f.symbol,
+													}),
+													jsx(Badge, {
+														variant: 'secondary',
+														className: 'text-[9px] shrink-0',
+														children: f.framework,
+													}),
+												],
+											}),
+											f.issue
+												? jsx('p', {
+														className:
+															'text-[10px] text-(--ui-text-tertiary)',
+														children: f.issue,
+													})
+												: null,
+											f.suggestion
+												? jsxs('div', {
+														className:
+															'flex items-center justify-between gap-1 pt-1 border-t border-(--ui-stroke-secondary)/40',
+														children: [
+															jsx('span', {
+																className:
+																	'text-[10px] font-mono text-(--ui-text) truncate',
+																children: `→ ${f.suggestion}`,
+															}),
+															jsx(Button, {
+																size: 'xs',
+																variant: 'ghost',
+																onClick: () =>
+																	insertIntoChatComposer(
+																		ctx,
+																		`@apple:${f.framework}/${f.suggestion}`,
+																		false,
+																	),
+																children: 'Insert @apple:',
+															}),
+														],
+													})
+												: null,
+										],
+									},
+									`finding-${idx}`,
+								),
+							)
+						: jsx('p', {
+								className: 'text-[10px] text-(--ui-text-tertiary) p-2',
+								children:
+									'No deprecated Apple symbols identified in output.',
+							}),
+				}),
+			}),
+		],
+	});
+}
+
 function AppleDocsStatusChip() {
 	return jsx(Tip, {
 		content:
@@ -2539,10 +2732,16 @@ export default {
 				render: () => jsx(AppleDocsStudioPage, { ctx }),
 			},
 			{
+				// Route-AGNOSTIC on purpose. This row must stay in the sessions
+				// sidebar whether the full Studio page is open or the docked side
+				// pane is closed — it is the only way back in. The desktop app's
+				// sidebar reader consumes `data` only (`path`, `label`, `codicon`,
+				// `tier`) and treats a contribution-level `path` as a per-route
+				// visibility gate, so NO route field may sit at this level: the row
+				// would vanish the moment the app is anywhere but /apple-docs.
 				id: 'sidebar-nav',
 				area: SIDEBAR_NAV_AREA,
 				order: 62,
-				path: STUDIO_ROUTE,
 				label: 'Apple Docs',
 				title: 'Apple Docs',
 				codicon: 'book',
@@ -2591,6 +2790,31 @@ export default {
 					},
 				},
 				render: () => jsx(AppleDocsSidePane, { ctx }),
+			},
+			{
+				// The SECOND pane. See `AppleDocsCompilerPane`: the pane shell
+				// disables a plugin outright when its last pane is closed, which
+				// would take the sidebar entry, page, statusbar chip and palette
+				// commands with it. Two panes make Close a dismiss instead.
+				id: 'compiler-pane',
+				area: PANES_AREA,
+				title: 'Apple Docs: Xcode Errors',
+				placement: 'right',
+				width: '360px',
+				dock: {
+					pane: 'workspace',
+					pos: 'right',
+				},
+				data: {
+					title: 'Apple Docs: Xcode Errors',
+					placement: 'right',
+					width: '360px',
+					dock: {
+						pane: 'workspace',
+						pos: 'right',
+					},
+				},
+				render: () => jsx(AppleDocsCompilerPane, { ctx }),
 			},
 			{
 				id: 'inline-directive',
@@ -2670,6 +2894,39 @@ export default {
 					},
 					run: () => {
 						if (!safeOpenPane('inspector-pane')) {
+							safeNavigate(STUDIO_ROUTE);
+						}
+					},
+				},
+			},
+			{
+				id: 'palette-compiler',
+				area: PALETTE_AREA,
+				label: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
+				title: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
+				keywords: ['apple', 'xcode', 'swift', 'error', 'build', 'deprecated', 'compiler'],
+				action: () => {
+					if (!safeOpenPane('compiler-pane')) {
+						safeNavigate(STUDIO_ROUTE);
+					}
+				},
+				run: () => {
+					if (!safeOpenPane('compiler-pane')) {
+						safeNavigate(STUDIO_ROUTE);
+					}
+				},
+				data: {
+					id: 'apple-docs.open-compiler',
+					label: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
+					title: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
+					keywords: ['apple', 'xcode', 'swift', 'error', 'build', 'deprecated', 'compiler'],
+					action: () => {
+						if (!safeOpenPane('compiler-pane')) {
+							safeNavigate(STUDIO_ROUTE);
+						}
+					},
+					run: () => {
+						if (!safeOpenPane('compiler-pane')) {
 							safeNavigate(STUDIO_ROUTE);
 						}
 					},

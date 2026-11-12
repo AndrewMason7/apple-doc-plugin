@@ -11,6 +11,7 @@
 """
 
 import json
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -283,6 +284,83 @@ class TestVersionAndIndexInfoAreDistinct(unittest.TestCase):
         self.assertIn("no readable index at this path", index_md)
         self.assertIn("Per-Framework Symbol Counts (0)", index_md)
         self.assertNotEqual(version_md, index_md)
+
+
+class TestSidebarNavPersistence(unittest.TestCase):
+    """The `Apple Docs` sessions-sidebar row must outlive the docked Studio pane.
+
+    Desktop app behaviour this pins: the `sidebar.nav` reader consumes `data`
+    only (`path`/`label`/`codicon`/`tier`), while a contribution-level `path`
+    (or `when()`) is a visibility gate. A route field sitting next to `area` is
+    the exact shape that makes the row vanish as soon as the app is anywhere
+    but `/apple-docs` — closing the docked pane is enough, since that row is
+    the only way back into the Studio.
+    """
+
+    def _entry_head(self) -> str:
+        src = PLUGIN_JS.read_text(encoding="utf-8")
+        entry = _js_block(src, "id: 'sidebar-nav',", "render: () => jsx(AppleDocsSidePane")
+        return entry.split("data:", 1)[0]
+
+    def test_row_carries_no_contribution_level_route_field(self):
+        head = self._entry_head()
+
+        self.assertNotIn(
+            "path:",
+            head,
+            "sidebar-nav must not carry a contribution-level `path`: route-scoped "
+            "visibility hides the row off /apple-docs and strands the user",
+        )
+        self.assertNotIn(
+            "when:",
+            head,
+            "sidebar-nav must not carry a `when()` gate — the row is the permanent "
+            "way back into the Studio",
+        )
+
+    def test_row_is_not_advanced_tier_only(self):
+        self.assertNotIn("tier: 'advanced'", self._entry_head())
+
+    def test_destination_and_label_live_in_data(self):
+        src = PLUGIN_JS.read_text(encoding="utf-8")
+        entry = _js_block(src, "id: 'sidebar-nav',", "render: () => jsx(AppleDocsSidePane")
+
+        self.assertIn("path: STUDIO_ROUTE", entry)
+        self.assertIn("label: 'Apple Docs'", entry)
+        self.assertIn("codicon: 'book'", entry)
+
+
+class TestPaneOwnershipKeepsPluginAlive(unittest.TestCase):
+    """Closing the docked Studio must never disable the whole plugin.
+
+    Desktop `closeTreePane` behaviour this pins: a plugin that owns exactly ONE
+    pane is treated as disposable — closing that pane calls
+    `setPluginEnabled(pluginId, false)`, unregistering every contribution the
+    plugin made (sidebar row, `/apple-docs` page, statusbar chip, palette
+    commands). Owning a SECOND pane turns Close into a plain dismiss, which is
+    the only plugin-side way to keep the Apple Docs entry point permanent.
+    """
+
+    def test_registers_more_than_one_pane(self):
+        src = PLUGIN_JS.read_text(encoding="utf-8")
+        panes_block = _js_block(src, "register(ctx) {", "\n\tdeactivate()")
+
+        pane_ids = re.findall(r"area: PANES_AREA,\s*\n\t+title: '([^']+)'", panes_block)
+
+        self.assertGreaterEqual(
+            len(pane_ids),
+            2,
+            "a single-pane plugin is disabled outright when that pane is closed; "
+            f"register at least two panes (found: {pane_ids})",
+        )
+        self.assertIn('inspector-pane', panes_block)
+        self.assertIn('compiler-pane', panes_block)
+
+    def test_second_pane_has_a_renderer(self):
+        src = PLUGIN_JS.read_text(encoding="utf-8")
+
+        self.assertIn("function AppleDocsCompilerPane(", src)
+        self.assertIn("jsx(AppleDocsCompilerPane, { ctx })", src)
 
 
 if __name__ == "__main__":
