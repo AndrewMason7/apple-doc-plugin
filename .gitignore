@@ -114,7 +114,10 @@ data/apple-docs.runtime.db*
 # and must NOT be ignored (bare `dist` swallowed it and 404'd the dashboard tab).
 /dist
 
-# Handoff notes
-*-handoff-*.md
+# Video and recording scratch assets
+video/
+scripts/demo_cli.py
+scripts/generate-recordings.js
+
 
 

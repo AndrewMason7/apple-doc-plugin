@@ -3,7 +3,7 @@ label: Apple Developer Documentation
 version: 1.1.0
 manifest_version: 2
 api_version: 1
-requires_hermes: ">=0.22.5"
+requires_hermes: '>=0.22.5'
 author: Andrew Mason <https://github.com/AndrewMason7>
 license: MIT
 homepage: https://github.com/AndrewMason7/apple-doc-plugin
@@ -29,16 +29,16 @@ optional_env:
   - GEMINI_API_KEY
 external_dependencies:
   - name: node
-    install_hint: "Optional (Node.js >= 22) for 768-d dense vector hydration; offline SQLite FTS5 + idiom RRF runs natively in Python."
+    install_hint: 'Optional (Node.js >= 22) for 768-d dense vector hydration; offline SQLite FTS5 + idiom RRF runs natively in Python.'
 config_schema:
   compiler_grounding:
     type: bool
     default: true
-    description: "Automatically append verified Apple DocC replacements when swift build / swiftc / xcodebuild fails."
+    description: 'Automatically append verified Apple DocC replacements when swift build / swiftc / xcodebuild fails.'
   prefer_node_bridge:
     type: bool
     default: false
-    description: "Route tool calls through the Node.js MCP runtime even when dense vectors are not hydrated."
+    description: 'Route tool calls through the Node.js MCP runtime even when dense vectors are not hydrated.'
 provides_tools:
   - search_symbols
   - semantic_search

@@ -12,3 +12,7 @@ __pycache__/
 *.pyc
 .cache-test-*
 
+# Video recordings
+video/
+
+
