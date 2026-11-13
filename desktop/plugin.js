@@ -1385,10 +1385,10 @@ function AppleDocsStudioPage({ ctx }) {
 											}),
 											jsx(SegmentedControl, {
 												value: searchMode,
-												onValueChange: setSearchMode,
+												onChange: setSearchMode,
 												options: [
-													{ value: 'semantic', label: 'Hybrid' },
-													{ value: 'lexical', label: 'FTS5' },
+													{ id: 'semantic', label: 'Hybrid' },
+													{ id: 'lexical', label: 'FTS5' },
 												],
 											}),
 											jsx('span', {
@@ -2066,10 +2066,10 @@ function AppleDocsSidePane({ ctx }) {
 									}),
 									jsx(SegmentedControl, {
 										value: searchMode,
-										onValueChange: setSearchMode,
+										onChange: setSearchMode,
 										options: [
-											{ value: 'semantic', label: 'Hybrid' },
-											{ value: 'lexical', label: 'FTS5' },
+											{ id: 'semantic', label: 'Hybrid' },
+											{ id: 'lexical', label: 'FTS5' },
 										],
 									}),
 								],
