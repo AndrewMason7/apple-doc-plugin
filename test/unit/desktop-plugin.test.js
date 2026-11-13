@@ -90,6 +90,7 @@ test('desktop/plugin.js registers valid HermesPlugin contributions and scoped pa
 			Button: noop,
 			Codicon: noop,
 			CopyButton: noop,
+			EmptyState: noop,
 			GlyphSpinner: noop,
 			haptic: () => {},
 			host: {
@@ -108,11 +109,20 @@ test('desktop/plugin.js registers valid HermesPlugin contributions and scoped pa
 			ROUTES_AREA: 'routes',
 			RowButton: noop,
 			ScrollArea: noop,
+			SearchField: noop,
 			SegmentedControl: noop,
+			Select: noop,
+			SelectContent: noop,
+			SelectItem: noop,
+			SelectTrigger: noop,
+			SelectValue: noop,
 			Separator: noop,
 			SIDEBAR_NAV_AREA: 'sidebar.nav',
 			STATUSBAR_AREAS: { left: 'statusBar.left', right: 'statusBar.right' },
 			StatusDot: noop,
+			Tabs: noop,
+			TabsList: noop,
+			TabsTrigger: noop,
 			Textarea: noop,
 			Tip: noop,
 			TRANSCRIPT_DIRECTIVE_AREA: 'transcript.directive',
@@ -161,6 +171,7 @@ test('desktop/plugin.js registers valid HermesPlugin contributions and scoped pa
 		Button: () => null,
 		Codicon: () => null,
 		CopyButton: () => null,
+		EmptyState: () => null,
 		GlyphSpinner: () => null,
 		haptic: () => {},
 		host: {
@@ -179,11 +190,20 @@ test('desktop/plugin.js registers valid HermesPlugin contributions and scoped pa
 		ROUTES_AREA: 'routes',
 		RowButton: () => null,
 		ScrollArea: () => null,
+		SearchField: () => null,
 		SegmentedControl: () => null,
+		Select: () => null,
+		SelectContent: () => null,
+		SelectItem: () => null,
+		SelectTrigger: () => null,
+		SelectValue: () => null,
 		Separator: () => null,
 		SIDEBAR_NAV_AREA: 'sidebar.nav',
 		STATUSBAR_AREAS: { left: 'statusBar.left', right: 'statusBar.right' },
 		StatusDot: () => null,
+		Tabs: () => null,
+		TabsList: () => null,
+		TabsTrigger: () => null,
 		Textarea: () => null,
 		Tip: () => null,
 		TRANSCRIPT_DIRECTIVE_AREA: 'transcript.directive',
@@ -255,6 +275,22 @@ test('desktop/plugin.js registers valid HermesPlugin contributions and scoped pa
 	openStudioPalette.data.run();
 	assert.deepEqual(undismissedPanes, ['apple-doc-plugin:inspector-pane']);
 	assert.deepEqual(revealedPanes, ['apple-doc-plugin:inspector-pane']);
+
+	// Render the Studio route and Side Pane components directly to verify no runtime throws
+	const studioRoute = registered.find((c) => c.id === 'studio-route');
+	const studioEl = studioRoute.render();
+	assert.ok(studioEl && typeof studioEl.type === 'function');
+	const studioTree = studioEl.type(studioEl.props);
+	assert.ok(studioTree);
+
+	const inspectorPane = registered.find((c) => c.id === 'inspector-pane');
+	const inspectorEl = inspectorPane.render();
+	assert.ok(inspectorEl && typeof inspectorEl.type === 'function');
+	const inspectorTree = inspectorEl.type(inspectorEl.props);
+	assert.ok(inspectorTree);
+	// Side pane must be single-purpose Quick Lookup (no SegmentedControl multi-tab switcher)
+	const inspectorText = JSON.stringify(inspectorTree);
+	assert.equal(inspectorText.includes('Rosetta'), false);
 
 	delete globalThis.__APPLE_DOC_TEST_STUBS__;
 	delete globalThis.__SDK_EXPORTS__;

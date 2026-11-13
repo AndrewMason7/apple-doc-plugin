@@ -19,6 +19,7 @@ import {
 	Button,
 	Codicon,
 	CopyButton,
+	EmptyState,
 	GlyphSpinner as SdkGlyphSpinner,
 	haptic,
 	host,
@@ -28,11 +29,20 @@ import {
 	ROUTES_AREA,
 	RowButton,
 	ScrollArea,
+	SearchField,
 	SegmentedControl,
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
 	Separator,
 	SIDEBAR_NAV_AREA,
 	STATUSBAR_AREAS,
 	StatusDot,
+	Tabs,
+	TabsList,
+	TabsTrigger,
 	Textarea,
 	Tip,
 	TRANSCRIPT_DIRECTIVE_AREA,
@@ -1217,110 +1227,89 @@ function AppleDocsStudioPage({ ctx }) {
 		children: [
 			jsxs('div', {
 				className:
-					'px-4 py-2 bg-(--ui-accent)/10 border-b border-(--ui-accent)/20 flex items-center justify-between gap-3 shrink-0 flex-wrap',
-				children: [
-					jsxs('div', {
-						className:
-							'flex items-center gap-2 text-xs text-(--ui-text-secondary)',
-						children: [
-							jsx(Codicon, {
-								name: 'layout-sidebar-right',
-								className: 'text-(--ui-accent)',
-							}),
-							jsx('span', {
-								children:
-									'Viewing Full Studio. Prefer Apple Docs docked side-by-side with your active chat session?',
-							}),
-						],
-					}),
-					jsxs('div', {
-						className: 'flex items-center gap-2',
-						children: [
-							jsx(Button, {
-								size: 'xs',
-								variant: 'primary',
-								onClick: () => {
-									safeOpenPane('inspector-pane');
-									safeNavigate('/');
-								},
-								children: '⇥ Dock to Side & Back to Chat',
-							}),
-							jsx(Button, {
-								size: 'xs',
-								variant: 'ghost',
-								onClick: () => safeNavigate('/'),
-								children: '← Back to Chat',
-							}),
-						],
-					}),
-				],
-			}),
-			jsxs('div', {
-				className:
 					'px-6 py-4 border-b border-(--ui-stroke-secondary) flex items-center justify-between gap-4 flex-wrap shrink-0',
 				children: [
 					jsxs('div', {
-						className: 'flex items-center gap-3',
+						className: 'flex items-center gap-3 min-w-0',
 						children: [
 							jsx(Codicon, {
 								name: 'book',
-								className: 'text-(--ui-accent) text-lg',
+								className: 'text-(--ui-accent) text-lg shrink-0',
 							}),
 							jsxs('div', {
+								className: 'min-w-0',
 								children: [
 									jsxs('div', {
 										className: 'flex items-center gap-2',
 										children: [
 											jsx('h1', {
-												className: 'text-base font-semibold text-(--ui-text)',
-												children: 'Apple Developer Documentation Studio',
-											}),
-											jsx(Badge, {
-												variant: 'secondary',
-												children: `v${stats.version || '1.1.0'}`,
+												className:
+													'text-base font-semibold text-(--ui-text) truncate',
+												children: 'Apple Developer Documentation',
 											}),
 											jsxs('span', {
 												className:
-													'inline-flex items-center gap-1.5 text-[11px] text-(--ui-text-tertiary)',
+													'inline-flex items-center gap-1.5 text-[11px] text-(--ui-text-tertiary) shrink-0',
 												children: [
-													jsx(StatusDot, { tone: apiLive ? 'ok' : 'idle' }),
+													jsx(StatusDot, {
+														tone: apiLive ? 'success' : 'neutral',
+														size: 'xs',
+													}),
 													apiLive
-														? `Live SQLite FTS5 (${(stats.symbolCount || 95899).toLocaleString()} symbols)`
-														: 'Offline Seed Ready · Run /apple-docs demo',
+														? `${(stats.symbolCount || 95899).toLocaleString()} live`
+														: 'Offline index',
 												],
 											}),
 										],
-									}),
-									jsx('p', {
-										className: 'text-xs text-(--ui-text-tertiary) mt-0.5',
-										children:
-											'95,899 offline Apple SDK symbols · React/Web/Android-to-SwiftUI Idiom RRF · Automatic swift build Diagnostic Grounding Hook · @apple: Context Refs',
 									}),
 								],
 							}),
 						],
 					}),
 					jsxs('div', {
-						className: 'flex items-center gap-2',
+						className: 'flex items-center gap-3 flex-wrap',
 						children: [
-							jsx(SegmentedControl, {
+							jsx(Tabs, {
 								value: activeTab,
 								onValueChange: (val) => {
 									haptic('tap');
 									setActiveTab(val);
 								},
-								options: [
-									{ value: 'explorer', label: '95.9k Explorer' },
-									{ value: 'idioms', label: 'Idiom Rosetta Stone' },
-									{ value: 'compiler', label: 'Xcode Error Hook Lab' },
-									{ value: 'frameworks', label: '30 Frameworks' },
-								],
+								children: jsxs(TabsList, {
+									children: [
+										jsx(TabsTrigger, {
+											value: 'explorer',
+											children: 'Explorer',
+										}),
+										jsx(TabsTrigger, {
+											value: 'idioms',
+											children: 'Idioms',
+										}),
+										jsx(TabsTrigger, {
+											value: 'compiler',
+											children: 'Xcode Hook',
+										}),
+										jsx(TabsTrigger, {
+											value: 'frameworks',
+											children: 'Frameworks',
+										}),
+									],
+								}),
 							}),
 							jsx(Button, {
 								size: 'sm',
-								variant: 'secondary',
-								onClick: () => sendDemoCommandInChat(ctx),
-								children: 'Run /apple-docs demo',
+								variant: 'ghost',
+								onClick: () => {
+									safeOpenPane('inspector-pane');
+									safeNavigate('/');
+								},
+								children: 'Side Pane',
+							}),
+							jsx(Button, {
+								size: 'sm',
+								variant: 'ghost',
+								onClick: () => safeNavigate('/'),
+								children: '← Chat',
 							}),
 						],
 					}),
@@ -1340,19 +1329,50 @@ function AppleDocsStudioPage({ ctx }) {
 										children: [
 											jsx('div', {
 												className: 'flex-1 min-w-[240px]',
-												children: jsx(Input, {
+												children: jsx(SearchField, {
 													value: query,
-													onChange: (e) => setQuery(e.target.value),
+													onChange: (e) =>
+														setQuery(
+															typeof e === 'string'
+																? e
+																: (e?.target?.value ?? ''),
+														),
 													placeholder:
-														'Search 95,899 symbols, wildcards (Grid*, Navigation*View), React hooks (useEffect), or intent ("prevent sheet swipe dismiss")...',
+														'Search Apple symbols, wildcards (Grid*), or React idioms…',
 												}),
+											}),
+											jsxs(Select, {
+												value: frameworkFilter || '__all__',
+												onValueChange: (val) =>
+													setFrameworkFilter(val === '__all__' ? '' : val),
+												children: [
+													jsx(SelectTrigger, {
+														size: 'sm',
+														className: 'w-[170px]',
+														children: jsx(SelectValue, {
+															placeholder: 'All Frameworks',
+														}),
+													}),
+													jsxs(SelectContent, {
+														children: TOP_FRAMEWORK_PILLS.map((fw) =>
+															jsx(
+																SelectItem,
+																{
+																	value: fw || '__all__',
+																	children: fw || 'All Frameworks',
+																},
+																fw || '__all__',
+															),
+														),
+													}),
+												],
 											}),
 											jsx(SegmentedControl, {
 												value: searchMode,
 												onValueChange: setSearchMode,
 												options: [
-													{ value: 'semantic', label: 'Hybrid + Idiom RRF' },
-													{ value: 'lexical', label: 'Wildcard / FTS5' },
+													{ value: 'semantic', label: 'Hybrid' },
+													{ value: 'lexical', label: 'FTS5' },
 												],
 											}),
 											jsx('span', {
@@ -1365,47 +1385,23 @@ function AppleDocsStudioPage({ ctx }) {
 										],
 									}),
 									jsxs('div', {
-										className:
-											'flex items-center justify-between gap-2 flex-wrap',
-										children: [
-											jsxs('div', {
-												className: 'flex items-center gap-1 flex-wrap',
-												children: TOP_FRAMEWORK_PILLS.map((fw) =>
-													jsx(
-														'button',
-														{
-															type: 'button',
-															onClick: () => setFrameworkFilter(fw),
-															className:
-																frameworkFilter === fw
-																	? 'px-2 py-0.5 rounded-md text-[11px] font-medium bg-(--ui-accent)/15 text-(--ui-accent) border border-(--ui-accent)/40 cursor-pointer'
-																	: 'px-2 py-0.5 rounded-md text-[11px] text-(--ui-text-tertiary) hover:bg-(--ui-hover) border border-transparent cursor-pointer',
-															children: fw || 'All Frameworks',
-														},
-														fw || 'all',
-													),
-												),
-											}),
-											jsxs('div', {
-												className: 'flex items-center gap-1 flex-wrap',
-												children: QUICK_QUERIES.map((preset) =>
-													jsx(
-														'button',
-														{
-															type: 'button',
-															onClick: () => {
-																setSearchMode(preset.mode);
-																setQuery(preset.q);
-															},
-															className:
-																'px-2 py-0.5 rounded text-[10px] font-mono border border-(--ui-stroke-secondary) text-(--ui-text-tertiary) hover:text-(--ui-text) hover:bg-(--ui-hover) cursor-pointer',
-															children: preset.label,
-														},
-														preset.label,
-													),
-												),
-											}),
-										],
+										className: 'flex items-center gap-1.5 flex-wrap',
+										children: QUICK_QUERIES.map((preset) =>
+											jsx(
+												Button,
+												{
+													size: 'xs',
+													variant: 'ghost',
+													onClick: () => {
+														setSearchMode(preset.mode);
+														setQuery(preset.q);
+													},
+													className: 'font-mono text-[10px]',
+													children: preset.label,
+												},
+												preset.label,
+											),
+										),
 									}),
 									searchResult.expansion &&
 									Array.isArray(searchResult.expansion.matchedIdioms) &&
@@ -1447,11 +1443,10 @@ function AppleDocsStudioPage({ ctx }) {
 												children: [
 													(searchResult.results || []).length === 0 &&
 													!searching
-														? jsx('p', {
-																className:
-																	'px-3 py-4 text-[11px] leading-relaxed text-(--ui-text-tertiary)',
-																children:
-																	'No offline matches in the curated preview (the live index is unreachable). Note the preview only carries a handful of hand-checked symbols — try a broader query or clear the framework filter.',
+														? jsx(EmptyState, {
+																title: 'No matching symbols',
+																description:
+																	'Try a broader query or reset the framework filter.',
 															})
 														: null,
 													...(searchResult.results || []).map((item) => {
@@ -1901,23 +1896,14 @@ function AppleDocsStudioPage({ ctx }) {
 }
 
 function AppleDocsSidePane({ ctx }) {
-	const [activeTab, setActiveTab] = useState('search');
 	const [q, setQ] = useState('');
 	const [framework, setFramework] = useState('');
 	const [searchMode, setSearchMode] = useState('semantic');
 	const [selectedSymbol, setSelectedSymbol] = useState(null);
 
-	const [idiomFilter, setIdiomFilter] = useState('all');
-	const [idiomQ, setIdiomQ] = useState('');
-
 	const debouncedQ = useDebouncedValue(q, 180);
 	const targetQ = debouncedQ.trim() || 'NavigationSplitView';
 
-	const idiomsQuery = useQuery({
-		queryKey: [PLUGIN_ID, 'idioms'],
-		queryFn: () => fetchPluginIdioms(ctx),
-		staleTime: 60_000,
-	});
 	const searchQuery = useQuery({
 		queryKey: [PLUGIN_ID, 'search', targetQ, framework, searchMode, 15],
 		queryFn: () =>
@@ -1946,7 +1932,6 @@ function AppleDocsSidePane({ ctx }) {
 		staleTime: 60_000,
 	});
 
-	const idioms = idiomsQuery.data || FALLBACK_IDIOMS;
 	const items = useMemo(
 		() =>
 			searchQuery.data?.data?.results?.length
@@ -1958,366 +1943,199 @@ function AppleDocsSidePane({ ctx }) {
 	const liveDoc = selectedSymbol ? docQuery.data || null : null;
 	const loadingDoc = docQuery.isFetching;
 
-	const filteredIdioms = useMemo(() => {
-		return idioms.filter((i) => {
-			if (idiomFilter !== 'all' && i.ecosystem !== idiomFilter) return false;
-			if (!idiomQ.trim()) return true;
-			const needle = idiomQ.toLowerCase();
-			return (
-				(i.idiom || '').toLowerCase().includes(needle) ||
-				(i.description || '').toLowerCase().includes(needle) ||
-				(i.category || '').toLowerCase().includes(needle) ||
-				(i.frameworks || []).some((f) => f.toLowerCase().includes(needle))
-			);
-		});
-	}, [idioms, idiomFilter, idiomQ]);
-
 	return jsxs('div', {
 		className:
 			'h-full w-full flex flex-col overflow-hidden bg-(--ui-surface) text-(--ui-text)',
 		children: [
 			jsxs('div', {
 				className:
-					'p-2.5 border-b border-(--ui-stroke-secondary) flex flex-col gap-2 shrink-0 bg-(--ui-surface)',
+					'px-3 py-2.5 border-b border-(--ui-stroke-secondary) flex items-center justify-between gap-2 shrink-0 bg-(--ui-surface)',
 				children: [
 					jsxs('div', {
-						className: 'flex items-center justify-between gap-1.5',
+						className: 'flex items-center gap-1.5 min-w-0',
 						children: [
-							jsxs('div', {
-								className: 'flex items-center gap-1.5 min-w-0',
-								children: [
-									jsx(Codicon, {
-										name: 'book',
-										className: 'text-(--ui-accent) text-sm shrink-0',
-									}),
-									jsx('span', {
-										className: 'text-xs font-semibold truncate',
-										children: ' Apple Docs',
-									}),
-									jsx(Badge, {
-										variant: 'secondary',
-										className: 'text-[9px] px-1 py-0',
-										children: '95.9k',
-									}),
-								],
+							jsx(Codicon, {
+								name: 'book',
+								className: 'text-(--ui-accent) text-sm shrink-0',
 							}),
-							jsxs('div', {
-								className: 'flex items-center gap-1 shrink-0',
-								children: [
-									jsx(Button, {
-										size: 'xs',
-										variant: 'ghost',
-										title: 'Open in Full Studio Page',
-										onClick: () => safeNavigate(STUDIO_ROUTE),
-										children: 'Full Studio ↗',
-									}),
-								],
+							jsx('span', {
+								className: 'text-xs font-semibold truncate',
+								children: ' Apple Docs',
 							}),
 						],
 					}),
-					jsx(SegmentedControl, {
-						value: activeTab,
-						onValueChange: (val) => {
-							safeHaptic('tap');
-							setActiveTab(val);
-						},
-						options: [
-							{ value: 'search', label: 'Symbols' },
-							{ value: 'idioms', label: 'Rosetta' },
-							{ value: 'compiler', label: 'Compiler' },
-						],
+					jsx(Button, {
+						size: 'xs',
+						variant: 'ghost',
+						title: 'Open in Full Studio Page',
+						onClick: () => safeNavigate(STUDIO_ROUTE),
+						children: 'Studio ↗',
 					}),
 				],
 			}),
 
-			activeTab === 'search'
-				? selectedSymbol
-					? jsxs('div', {
-							className: 'flex-1 min-h-0 flex flex-col',
-							children: [
-								jsxs('div', {
-									className:
-										'px-2.5 py-1.5 border-b border-(--ui-stroke-secondary) flex items-center justify-between gap-2 shrink-0 bg-(--ui-surface-secondary)',
-									children: [
-										jsx(Button, {
-											size: 'xs',
-											variant: 'ghost',
-											onClick: () => setSelectedSymbol(null),
-											children: '← Back to Results',
-										}),
-										jsx('span', {
-											className:
-												'text-[10px] font-mono text-(--ui-text-tertiary) truncate max-w-[160px]',
-											children: selectedSymbol.title,
-										}),
-									],
-								}),
-								jsx('div', {
-									className: 'flex-1 min-h-0',
-									children: jsx(SymbolInspectorDetail, {
-										ctx,
-										item: selectedSymbol,
-										liveDoc,
-										loadingDoc,
-									}),
-								}),
-							],
-						})
-					: jsxs('div', {
-							className: 'flex-1 min-h-0 flex flex-col p-2.5 gap-2',
-							children: [
-								jsx(Input, {
-									value: q,
-									onChange: (e) => setQ(e.target.value),
-									placeholder: 'Symbol, Grid*, or React idiom…',
-								}),
-								jsxs('div', {
-									className:
-										'flex items-center justify-between gap-1 flex-wrap',
-									children: [
-										jsxs('div', {
-											className: 'flex items-center gap-1',
-											children: [
-												jsx('button', {
-													type: 'button',
-													onClick: () => setSearchMode('semantic'),
-													className:
-														searchMode === 'semantic'
-															? 'px-1.5 py-0.5 rounded text-[10px] font-medium bg-(--ui-accent)/15 text-(--ui-accent) border border-(--ui-accent)/40 cursor-pointer'
-															: 'px-1.5 py-0.5 rounded text-[10px] text-(--ui-text-tertiary) hover:bg-(--ui-hover) border border-transparent cursor-pointer',
-													children: 'Semantic',
-												}),
-												jsx('button', {
-													type: 'button',
-													onClick: () => setSearchMode('lexical'),
-													className:
-														searchMode === 'lexical'
-															? 'px-1.5 py-0.5 rounded text-[10px] font-medium bg-(--ui-accent)/15 text-(--ui-accent) border border-(--ui-accent)/40 cursor-pointer'
-															: 'px-1.5 py-0.5 rounded text-[10px] text-(--ui-text-tertiary) hover:bg-(--ui-hover) border border-transparent cursor-pointer',
-													children: 'Lexical',
-												}),
-											],
-										}),
-										jsx('span', {
-											className: 'text-[10px] text-(--ui-text-tertiary)',
-											children: searching
-												? 'Searching…'
-												: `${items.length} hits`,
-										}),
-									],
-								}),
-								jsx(ScrollArea, {
-									className: 'flex-1 min-h-0',
-									children: jsxs('div', {
-										className: 'flex flex-col gap-1.5 pr-1',
-										children: items.map((it) => {
-											const bare = (it.title || '')
-												.split('(')[0]
-												.replace(/^func\s+|^var\s+|^@/, '')
-												.trim();
-											const refToken = `@apple:${it.framework}/${bare}`;
-											return jsxs(
-												'div',
-												{
-													className:
-														'rounded-lg border border-(--ui-stroke-secondary) p-2 flex flex-col gap-1 hover:bg-(--ui-hover)/50 transition-colors',
-													children: [
-														jsxs('div', {
-															className:
-																'flex items-center justify-between gap-1.5 cursor-pointer',
-															onClick: () => setSelectedSymbol(it),
-															children: [
-																jsx('span', {
-																	className:
-																		'font-mono text-[11px] font-semibold text-(--ui-text) truncate',
-																	children: it.title,
-																}),
-																jsx(Badge, {
-																	variant: 'secondary',
-																	className: 'text-[9px] shrink-0',
-																	children: it.framework,
-																}),
-															],
-														}),
-														it.abstract
-															? jsx('p', {
-																	className:
-																		'text-[10px] text-(--ui-text-tertiary) line-clamp-2 cursor-pointer',
-																	onClick: () => setSelectedSymbol(it),
-																	children: it.abstract,
-																})
-															: null,
-														jsxs('div', {
-															className:
-																'flex items-center justify-between gap-1 pt-1 border-t border-(--ui-stroke-secondary)/40 mt-0.5',
-															children: [
-																jsx(Button, {
-																	size: 'xs',
-																	variant: 'ghost',
-																	onClick: () => setSelectedSymbol(it),
-																	children: 'Inspect →',
-																}),
-																jsxs('div', {
-																	className: 'flex items-center gap-1',
-																	children: [
-																		jsx(Button, {
-																			size: 'xs',
-																			variant: 'ghost',
-																			onClick: () =>
-																				insertIntoChatComposer(
-																					ctx,
-																					refToken,
-																					false,
-																				),
-																			children: 'Insert @apple:',
-																		}),
-																		jsx(Button, {
-																			size: 'xs',
-																			variant: 'ghost',
-																			onClick: () =>
-																				safeOpenExternal(
-																					ctx,
-																					it.webUrl ||
-																						`https://developer.apple.com${it.path}`,
-																				),
-																			children: 'DocC ↗',
-																		}),
-																	],
-																}),
-															],
-														}),
-													],
-												},
-												it.id || it.path,
-											);
-										}),
-									}),
-								}),
-							],
-						})
-				: null,
-
-			activeTab === 'idioms'
+			selectedSymbol
 				? jsxs('div', {
-						className: 'flex-1 min-h-0 flex flex-col p-2.5 gap-2',
+						className: 'flex-1 min-h-0 flex flex-col',
 						children: [
-							jsx(Input, {
-								value: idiomQ,
-								onChange: (e) => setIdiomQ(e.target.value),
-								placeholder: 'Filter idioms (useEffect, state, redux…)',
+							jsxs('div', {
+								className:
+									'px-2.5 py-1.5 border-b border-(--ui-stroke-secondary) flex items-center justify-between gap-2 shrink-0 bg-(--ui-surface-secondary)',
+								children: [
+									jsx(Button, {
+										size: 'xs',
+										variant: 'ghost',
+										onClick: () => setSelectedSymbol(null),
+										children: '← Results',
+									}),
+									jsx('span', {
+										className:
+											'text-[10px] font-mono text-(--ui-text-tertiary) truncate max-w-[180px]',
+										children: selectedSymbol.title,
+									}),
+								],
+							}),
+							jsx('div', {
+								className: 'flex-1 min-h-0',
+								children: jsx(SymbolInspectorDetail, {
+									ctx,
+									item: selectedSymbol,
+									liveDoc,
+									loadingDoc,
+								}),
+							}),
+						],
+					})
+				: jsxs('div', {
+						className: 'flex-1 min-h-0 flex flex-col p-3 gap-2.5',
+						children: [
+							jsx(SearchField, {
+								value: q,
+								onChange: (e) =>
+									setQ(typeof e === 'string' ? e : (e?.target?.value ?? '')),
+								placeholder: 'Search symbols, Grid*, or React idiom…',
 							}),
 							jsxs('div', {
-								className: 'flex items-center gap-1 flex-wrap',
-								children: ['all', 'react', 'web', 'android'].map((eco) =>
-									jsx(
-										'button',
-										{
-											type: 'button',
-											onClick: () => setIdiomFilter(eco),
-											className:
-												idiomFilter === eco
-													? 'px-2 py-0.5 rounded text-[10px] font-medium bg-(--ui-accent)/15 text-(--ui-accent) border border-(--ui-accent)/40 cursor-pointer'
-													: 'px-2 py-0.5 rounded text-[10px] text-(--ui-text-tertiary) hover:bg-(--ui-hover) border border-transparent cursor-pointer',
-											children:
-												eco === 'all'
-													? 'All'
-													: eco.charAt(0).toUpperCase() + eco.slice(1),
-										},
-										eco,
-									),
-								),
+								className: 'flex items-center gap-2',
+								children: [
+									jsxs(Select, {
+										value: framework || '__all__',
+										onValueChange: (val) =>
+											setFramework(val === '__all__' ? '' : val),
+										children: [
+											jsx(SelectTrigger, {
+												size: 'sm',
+												className: 'flex-1 min-w-0',
+												children: jsx(SelectValue, {
+													placeholder: 'All Frameworks',
+												}),
+											}),
+											jsxs(SelectContent, {
+												children: TOP_FRAMEWORK_PILLS.map((fw) =>
+													jsx(
+														SelectItem,
+														{
+															value: fw || '__all__',
+															children: fw || 'All Frameworks',
+														},
+														fw || '__all__',
+													),
+												),
+											}),
+										],
+									}),
+									jsx(SegmentedControl, {
+										value: searchMode,
+										onValueChange: setSearchMode,
+										options: [
+											{ value: 'semantic', label: 'Hybrid' },
+											{ value: 'lexical', label: 'FTS5' },
+										],
+									}),
+								],
+							}),
+							jsx('div', {
+								className: 'text-[10px] text-(--ui-text-tertiary)',
+								children: searching ? 'Searching…' : `${items.length} results`,
 							}),
 							jsx(ScrollArea, {
 								className: 'flex-1 min-h-0',
-								children: jsxs('div', {
-									className: 'flex flex-col gap-2 pr-1',
-									children: filteredIdioms.map((item) =>
-										jsxs(
-											'div',
-											{
-												className:
-													'rounded-lg border border-(--ui-stroke-secondary) p-2.5 flex flex-col gap-1.5 bg-(--ui-surface-secondary)/30',
-												children: [
-													jsxs('div', {
+								children: items.length
+									? jsxs('div', {
+											className: 'flex flex-col gap-2 pr-1',
+											children: items.map((it) => {
+												const bare = (it.title || '')
+													.split('(')[0]
+													.replace(/^func\s+|^var\s+|^@/, '')
+													.trim();
+												const refToken = `@apple:${it.framework}/${bare}`;
+												return jsxs(
+													'div',
+													{
 														className:
-															'flex items-center justify-between gap-1.5',
+															'rounded-lg border border-(--ui-stroke-secondary) p-2.5 flex flex-col gap-1.5 hover:bg-(--ui-hover)/50 transition-colors',
 														children: [
-															jsx('span', {
+															jsxs('div', {
 																className:
-																	'text-[11px] font-semibold text-(--ui-text)',
-																children: item.idiom,
-															}),
-															jsx(Badge, {
-																variant: 'secondary',
-																className: 'text-[9px]',
-																children: item.ecosystem,
-															}),
-														],
-													}),
-													jsx('p', {
-														className: 'text-[10px] text-(--ui-text-tertiary)',
-														children: item.description,
-													}),
-													item.snippet
-														? jsxs('div', {
-																className:
-																	'rounded bg-(--ui-surface) border border-(--ui-stroke-secondary) p-2 flex flex-col gap-1 font-mono text-[10px]',
+																	'flex items-center justify-between gap-1.5 cursor-pointer',
+																onClick: () => setSelectedSymbol(it),
 																children: [
-																	jsx('pre', {
+																	jsx('span', {
 																		className:
-																			'overflow-x-auto text-(--ui-text-secondary)',
-																		children: item.snippet,
+																			'font-mono text-[11px] font-semibold text-(--ui-text) truncate',
+																		children: it.title,
 																	}),
-																	jsxs('div', {
-																		className:
-																			'flex items-center justify-end gap-1 pt-1 border-t border-(--ui-stroke-secondary)/40',
-																		children: [
-																			jsx(CopyButton, {
-																				text: item.snippet,
-																				label: 'Copy Swift',
-																			}),
-																			item.appleSymbols &&
-																			item.appleSymbols.length
-																				? jsx(Button, {
-																						size: 'xs',
-																						variant: 'ghost',
-																						onClick: () =>
-																							insertIntoChatComposer(
-																								ctx,
-																								`@apple:${item.frameworks?.[0] || 'SwiftUI'}/${item.appleSymbols[0]}`,
-																								false,
-																							),
-																						children: 'Insert @apple:',
-																					})
-																				: null,
-																		],
+																	jsx(Badge, {
+																		variant: 'secondary',
+																		className: 'text-[9px] shrink-0',
+																		children: it.framework,
 																	}),
 																],
-															})
-														: null,
-												],
-											},
-											item.idiom,
-										),
-									),
-								}),
+															}),
+															it.abstract
+																? jsx('p', {
+																		className:
+																			'text-[11px] text-(--ui-text-tertiary) line-clamp-2 cursor-pointer',
+																		onClick: () => setSelectedSymbol(it),
+																		children: it.abstract,
+																	})
+																: null,
+															jsxs('div', {
+																className:
+																	'flex items-center justify-between gap-1 pt-1 border-t border-(--ui-stroke-secondary)/40',
+																children: [
+																	jsx(Button, {
+																		size: 'xs',
+																		variant: 'ghost',
+																		onClick: () => setSelectedSymbol(it),
+																		children: 'Docs →',
+																	}),
+																	jsx(Button, {
+																		size: 'xs',
+																		variant: 'ghost',
+																		onClick: () =>
+																			insertIntoChatComposer(
+																				ctx,
+																				refToken,
+																				false,
+																			),
+																		children: 'Insert @apple:',
+																	}),
+																],
+															}),
+														],
+													},
+													it.id || it.path,
+												);
+											}),
+										})
+									: jsx(EmptyState, {
+											title: 'No matching symbols',
+											description: 'Try a broader query or switch framework.',
+										}),
 							}),
 						],
-					})
-				: null,
-
-			activeTab === 'compiler'
-				? jsxs('div', {
-						className: 'flex-1 min-h-0 flex flex-col p-2.5 gap-2',
-						children: [
-							jsx('span', {
-								className: 'text-[11px] font-semibold text-(--ui-text)',
-								children: 'Xcode / Swift Build Log',
-							}),
-							jsx(CompactCompilerLab, { ctx, rows: 4 }),
-						],
-					})
-				: null,
+					}),
 		],
 	});
 }
