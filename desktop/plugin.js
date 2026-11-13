@@ -12,7 +12,7 @@
  *  4. Statusbar Readiness Chip (`STATUSBAR_AREAS.right`) + Command Palette (`PALETTE_AREA`)
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import {
 	Badge,
@@ -36,6 +36,9 @@ import {
 	Textarea,
 	Tip,
 	TRANSCRIPT_DIRECTIVE_AREA,
+	useMutation,
+	usePluginI18n,
+	useQuery,
 } from '@hermes/plugin-sdk';
 
 const PLUGIN_ID = 'apple-doc-plugin';
@@ -576,16 +579,12 @@ function safeNavigate(path) {
 
 function safeOpenPane(paneId = 'inspector-pane') {
 	try {
+		const scopedId = paneId.includes(':') ? paneId : `${PLUGIN_ID}:${paneId}`;
+		if (typeof host?.undismissPane === 'function') {
+			host.undismissPane(scopedId);
+		}
 		if (typeof host?.revealPane === 'function') {
-			host.revealPane(paneId);
-			return true;
-		}
-		if (typeof host?.togglePane === 'function') {
-			host.togglePane(paneId);
-			return true;
-		}
-		if (typeof host?.openPane === 'function') {
-			host.openPane(paneId);
+			host.revealPane(scopedId);
 			return true;
 		}
 	} catch {}
@@ -594,14 +593,6 @@ function safeOpenPane(paneId = 'inspector-pane') {
 
 function safeNotify(message, kind = 'info') {
 	try {
-		if (typeof host?.toast === 'function') {
-			host.toast({
-				tone:
-					kind === 'error' ? 'error' : kind === 'success' ? 'success' : 'info',
-				description: message,
-			});
-			return;
-		}
 		if (typeof host?.notify === 'function') {
 			host.notify({ kind, message });
 		}
@@ -611,14 +602,7 @@ function safeNotify(message, kind = 'info') {
 async function safeWriteClipboard(ctx, text) {
 	try {
 		if (ctx?.os?.writeClipboard) {
-			await ctx.os.writeClipboard(text);
-			return true;
-		}
-	} catch {}
-	try {
-		if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
-			await navigator.clipboard.writeText(text);
-			return true;
+			return Boolean(await ctx.os.writeClipboard(text));
 		}
 	} catch {}
 	return false;
@@ -627,15 +611,10 @@ async function safeWriteClipboard(ctx, text) {
 function safeOpenExternal(ctx, url) {
 	try {
 		if (ctx?.os?.openExternal) {
-			ctx.os.openExternal(url);
-			return;
+			return ctx.os.openExternal(url);
 		}
 	} catch {}
-	try {
-		if (typeof window !== 'undefined' && window.open) {
-			window.open(url, '_blank', 'noopener,noreferrer');
-		}
-	} catch {}
+	return false;
 }
 
 function safeRest(ctx, endpoint, options) {
@@ -643,6 +622,75 @@ function safeRest(ctx, endpoint, options) {
 		return ctx.rest(endpoint, options);
 	}
 	return Promise.reject(new Error('ctx.rest unavailable'));
+}
+
+function useDebouncedValue(value, delayMs = 160) {
+	const [debounced, setDebounced] = useState(value);
+	useEffect(() => {
+		const timer = setTimeout(() => setDebounced(value), delayMs);
+		return () => clearTimeout(timer);
+	}, [value, delayMs]);
+	return debounced;
+}
+
+async function fetchPluginStatus(ctx) {
+	try {
+		const res = await safeRest(ctx, '/status');
+		if (res && res.symbolCount) {
+			return { stats: res, apiLive: true };
+		}
+	} catch {}
+	return { stats: FALLBACK_STATS, apiLive: false };
+}
+
+async function fetchPluginIdioms(ctx) {
+	try {
+		const res = await safeRest(ctx, '/idioms');
+		if (res && Array.isArray(res.idioms) && res.idioms.length) {
+			return res.idioms;
+		}
+	} catch {}
+	return FALLBACK_IDIOMS;
+}
+
+async function fetchPluginSearch(ctx, { q, framework, mode, limit }) {
+	const targetQ = (q || '').trim() || 'NavigationSplitView';
+	const params = new URLSearchParams();
+	params.set('q', targetQ);
+	params.set('mode', mode || 'semantic');
+	params.set('limit', String(limit || 25));
+	if (framework) params.set('framework', framework);
+	try {
+		const res = await safeRest(ctx, `/search?${params.toString()}`);
+		if (res && Array.isArray(res.results)) {
+			return { data: res, apiLive: true };
+		}
+	} catch {}
+	return { data: localSearchFallback(targetQ, framework), apiLive: false };
+}
+
+async function fetchPluginDoc(ctx, { path, framework }) {
+	if (!path) return null;
+	const params = new URLSearchParams({ path, live: 'true' });
+	if (framework) params.set('framework', framework);
+	try {
+		const res = await safeRest(ctx, `/doc?${params.toString()}`);
+		if (res && res.ok) return res;
+	} catch {}
+	return null;
+}
+
+async function runPluginDiagnose(ctx, textToAnalyze) {
+	try {
+		const res = await safeRest(ctx, '/diagnose', {
+			method: 'POST',
+			body: { command: 'swift build', output: textToAnalyze, returncode: 1 },
+		});
+		if (res && Array.isArray(res.findings)) {
+			return { result: res, apiLive: true };
+		}
+	} catch {}
+	return { result: localDiagnoseFallback(textToAnalyze), apiLive: false };
 }
 
 async function insertIntoChatComposer(
@@ -1066,151 +1114,98 @@ const TOP_FRAMEWORK_PILLS = [
 
 function AppleDocsStudioPage({ ctx }) {
 	const [activeTab, setActiveTab] = useState('explorer');
-	const [stats, setStats] = useState(FALLBACK_STATS);
-	const [apiLive, setApiLive] = useState(false);
 
 	const [query, setQuery] = useState('NavigationSplitView');
 	const [frameworkFilter, setFrameworkFilter] = useState('');
 	const [searchMode, setSearchMode] = useState('semantic');
-	const [searchResult, setSearchResult] = useState(() =>
-		localSearchFallback('NavigationSplitView', ''),
-	);
-	const [searching, setSearching] = useState(false);
 	const [selectedSymbol, setSelectedSymbol] = useState(FALLBACK_SYMBOLS[0]);
-	const [liveDoc, setLiveDoc] = useState(null);
-	const [loadingDoc, setLoadingDoc] = useState(false);
 
 	const [ecoFilter, setEcoFilter] = useState('all');
-	const [idioms, setIdioms] = useState(FALLBACK_IDIOMS);
-
 	const [compilerLog, setCompilerLog] = useState(COMPILER_PRESETS[0].log);
-	const [diagResult, setDiagResult] = useState(() =>
-		localDiagnoseFallback(COMPILER_PRESETS[0].log),
-	);
-	const [diagnosing, setDiagnosing] = useState(false);
 
-	const searchSeqRef = useRef(0);
-	const docSeqRef = useRef(0);
+	const debouncedQuery = useDebouncedValue(query, 160);
+
+	const statusQuery = useQuery({
+		queryKey: [PLUGIN_ID, 'status'],
+		queryFn: () => fetchPluginStatus(ctx),
+		staleTime: 30_000,
+	});
+	const idiomsQuery = useQuery({
+		queryKey: [PLUGIN_ID, 'idioms'],
+		queryFn: () => fetchPluginIdioms(ctx),
+		staleTime: 60_000,
+	});
+	const searchQuery = useQuery({
+		queryKey: [
+			PLUGIN_ID,
+			'search',
+			debouncedQuery,
+			frameworkFilter,
+			searchMode,
+			25,
+		],
+		queryFn: () =>
+			fetchPluginSearch(ctx, {
+				q: debouncedQuery,
+				framework: frameworkFilter,
+				mode: searchMode,
+				limit: 25,
+			}),
+		staleTime: 15_000,
+		placeholderData: (prev) => prev,
+	});
+	const docQuery = useQuery({
+		queryKey: [
+			PLUGIN_ID,
+			'doc',
+			selectedSymbol?.path || '',
+			selectedSymbol?.framework || '',
+		],
+		queryFn: () =>
+			fetchPluginDoc(ctx, {
+				path: selectedSymbol?.path,
+				framework: selectedSymbol?.framework,
+			}),
+		enabled: Boolean(selectedSymbol && selectedSymbol.path),
+		staleTime: 60_000,
+	});
+	const diagnoseMutation = useMutation({
+		mutationFn: (textToAnalyze) => runPluginDiagnose(ctx, textToAnalyze),
+	});
+
+	const stats = statusQuery.data?.stats || FALLBACK_STATS;
+	const idioms = idiomsQuery.data || FALLBACK_IDIOMS;
+	const searchResult = useMemo(
+		() =>
+			searchQuery.data?.data ||
+			localSearchFallback(debouncedQuery, frameworkFilter),
+		[searchQuery.data, debouncedQuery, frameworkFilter],
+	);
+	const searching = searchQuery.isFetching;
+	const liveDoc = docQuery.data || null;
+	const loadingDoc = docQuery.isFetching;
+	const apiLive = Boolean(
+		statusQuery.data?.apiLive ||
+		searchQuery.data?.apiLive ||
+		diagnoseMutation.data?.apiLive,
+	);
+	const diagResult = useMemo(
+		() =>
+			diagnoseMutation.data?.result ||
+			localDiagnoseFallback(COMPILER_PRESETS[0].log),
+		[diagnoseMutation.data],
+	);
+	const diagnosing = diagnoseMutation.isPending;
 
 	useEffect(() => {
-		let cancelled = false;
-		safeRest(ctx, '/status')
-			.then((res) => {
-				if (!cancelled && res && res.symbolCount) {
-					setStats(res);
-					setApiLive(true);
-				}
-			})
-			.catch(() => {
-				if (!cancelled) setApiLive(false);
-			});
-		safeRest(ctx, '/idioms')
-			.then((res) => {
-				if (
-					!cancelled &&
-					res &&
-					Array.isArray(res.idioms) &&
-					res.idioms.length
-				) {
-					setIdioms(res.idioms);
-				}
-			})
-			.catch(() => {});
-		return () => {
-			cancelled = true;
-		};
-	}, [ctx]);
+		if (searchResult?.results?.length > 0) {
+			setSelectedSymbol(searchResult.results[0]);
+		}
+	}, [searchResult]);
 
-	const runSearch = useCallback(
-		(qText, fw, mode) => {
-			const seq = ++searchSeqRef.current;
-			setSearching(true);
-			const params = new URLSearchParams();
-			params.set('q', qText || 'NavigationSplitView');
-			params.set('mode', mode || 'semantic');
-			params.set('limit', '25');
-			if (fw) params.set('framework', fw);
-
-			safeRest(ctx, `/search?${params.toString()}`)
-				.then((res) => {
-					if (seq !== searchSeqRef.current) return;
-					if (res && Array.isArray(res.results)) {
-						setSearchResult(res);
-						setApiLive(true);
-						if (res.results.length > 0) {
-							setSelectedSymbol(res.results[0]);
-						}
-					} else {
-						const fb = localSearchFallback(qText, fw);
-						setSearchResult(fb);
-						if (fb.results.length > 0) setSelectedSymbol(fb.results[0]);
-					}
-				})
-				.catch(() => {
-					if (seq !== searchSeqRef.current) return;
-					const fb = localSearchFallback(qText, fw);
-					setSearchResult(fb);
-					if (fb.results.length > 0) setSelectedSymbol(fb.results[0]);
-				})
-				.finally(() => {
-					if (seq === searchSeqRef.current) setSearching(false);
-				});
-		},
-		[ctx],
-	);
-
-	useEffect(() => {
-		const timer = setTimeout(() => {
-			runSearch(query, frameworkFilter, searchMode);
-		}, 160);
-		return () => clearTimeout(timer);
-	}, [query, frameworkFilter, searchMode, runSearch]);
-
-	useEffect(() => {
-		if (!selectedSymbol || !selectedSymbol.path) return;
-		const seq = ++docSeqRef.current;
-		setLoadingDoc(true);
-		const params = new URLSearchParams({
-			path: selectedSymbol.path,
-			live: 'true',
-		});
-		if (selectedSymbol.framework)
-			params.set('framework', selectedSymbol.framework);
-		safeRest(ctx, `/doc?${params.toString()}`)
-			.then((res) => {
-				if (seq !== docSeqRef.current) return;
-				if (res && res.ok) {
-					setLiveDoc(res);
-				}
-			})
-			.catch(() => {})
-			.finally(() => {
-				if (seq === docSeqRef.current) setLoadingDoc(false);
-			});
-	}, [ctx, selectedSymbol]);
-
-	const runCompilerDiagnosis = useCallback(
-		(textToAnalyze) => {
-			setDiagnosing(true);
-			safeRest(ctx, '/diagnose', {
-				method: 'POST',
-				body: { command: 'swift build', output: textToAnalyze, returncode: 1 },
-			})
-				.then((res) => {
-					if (res && Array.isArray(res.findings)) {
-						setDiagResult(res);
-						setApiLive(true);
-					} else {
-						setDiagResult(localDiagnoseFallback(textToAnalyze));
-					}
-				})
-				.catch(() => {
-					setDiagResult(localDiagnoseFallback(textToAnalyze));
-				})
-				.finally(() => setDiagnosing(false));
-		},
-		[ctx],
-	);
+	const runCompilerDiagnosis = (textToAnalyze) => {
+		diagnoseMutation.mutate(textToAnalyze);
+	};
 
 	const filteredIdioms = useMemo(() => {
 		if (ecoFilter === 'all') return idioms;
@@ -1910,111 +1905,58 @@ function AppleDocsSidePane({ ctx }) {
 	const [q, setQ] = useState('');
 	const [framework, setFramework] = useState('');
 	const [searchMode, setSearchMode] = useState('semantic');
-	const [items, setItems] = useState(FALLBACK_SYMBOLS.slice(0, 8));
-	const [searching, setSearching] = useState(false);
 	const [selectedSymbol, setSelectedSymbol] = useState(null);
-	const [liveDoc, setLiveDoc] = useState(null);
-	const [loadingDoc, setLoadingDoc] = useState(false);
 
-	const [idioms, setIdioms] = useState(FALLBACK_IDIOMS);
 	const [idiomFilter, setIdiomFilter] = useState('all');
 	const [idiomQ, setIdiomQ] = useState('');
 
-	const [compilerLog, setCompilerLog] = useState(COMPILER_PRESETS[0].log);
-	const [diagResult, setDiagResult] = useState(() =>
-		localDiagnoseFallback(COMPILER_PRESETS[0].log),
+	const debouncedQ = useDebouncedValue(q, 180);
+	const targetQ = debouncedQ.trim() || 'NavigationSplitView';
+
+	const idiomsQuery = useQuery({
+		queryKey: [PLUGIN_ID, 'idioms'],
+		queryFn: () => fetchPluginIdioms(ctx),
+		staleTime: 60_000,
+	});
+	const searchQuery = useQuery({
+		queryKey: [PLUGIN_ID, 'search', targetQ, framework, searchMode, 15],
+		queryFn: () =>
+			fetchPluginSearch(ctx, {
+				q: targetQ,
+				framework,
+				mode: searchMode,
+				limit: 15,
+			}),
+		staleTime: 15_000,
+		placeholderData: (prev) => prev,
+	});
+	const docQuery = useQuery({
+		queryKey: [
+			PLUGIN_ID,
+			'doc',
+			selectedSymbol?.path || '',
+			selectedSymbol?.framework || '',
+		],
+		queryFn: () =>
+			fetchPluginDoc(ctx, {
+				path: selectedSymbol?.path,
+				framework: selectedSymbol?.framework,
+			}),
+		enabled: Boolean(selectedSymbol && selectedSymbol.path),
+		staleTime: 60_000,
+	});
+
+	const idioms = idiomsQuery.data || FALLBACK_IDIOMS;
+	const items = useMemo(
+		() =>
+			searchQuery.data?.data?.results?.length
+				? searchQuery.data.data.results
+				: localSearchFallback(targetQ, framework).results,
+		[searchQuery.data, targetQ, framework],
 	);
-	const [diagnosing, setDiagnosing] = useState(false);
-
-	const searchSeqRef = useRef(0);
-	const docSeqRef = useRef(0);
-
-	useEffect(() => {
-		safeRest(ctx, '/idioms')
-			.then((res) => {
-				if (res && Array.isArray(res.idioms) && res.idioms.length) {
-					setIdioms(res.idioms);
-				}
-			})
-			.catch(() => {});
-	}, [ctx]);
-
-	useEffect(() => {
-		const timer = setTimeout(() => {
-			const seq = ++searchSeqRef.current;
-			const targetQ = q.trim() || 'NavigationSplitView';
-			setSearching(true);
-			const params = new URLSearchParams();
-			params.set('q', targetQ);
-			params.set('mode', searchMode);
-			params.set('limit', '15');
-			if (framework) params.set('framework', framework);
-
-			safeRest(ctx, `/search?${params.toString()}`)
-				.then((res) => {
-					if (seq !== searchSeqRef.current) return;
-					if (res && Array.isArray(res.results) && res.results.length) {
-						setItems(res.results);
-					} else {
-						setItems(localSearchFallback(targetQ, framework).results);
-					}
-				})
-				.catch(() => {
-					if (seq !== searchSeqRef.current) return;
-					setItems(localSearchFallback(targetQ, framework).results);
-				})
-				.finally(() => {
-					if (seq === searchSeqRef.current) setSearching(false);
-				});
-		}, 180);
-		return () => clearTimeout(timer);
-	}, [ctx, q, framework, searchMode]);
-
-	useEffect(() => {
-		if (!selectedSymbol || !selectedSymbol.path) {
-			setLiveDoc(null);
-			return;
-		}
-		const seq = ++docSeqRef.current;
-		setLoadingDoc(true);
-		const params = new URLSearchParams({
-			path: selectedSymbol.path,
-			live: 'true',
-		});
-		if (selectedSymbol.framework)
-			params.set('framework', selectedSymbol.framework);
-		safeRest(ctx, `/doc?${params.toString()}`)
-			.then((res) => {
-				if (seq !== docSeqRef.current) return;
-				if (res && res.ok) setLiveDoc(res);
-			})
-			.catch(() => {})
-			.finally(() => {
-				if (seq === docSeqRef.current) setLoadingDoc(false);
-			});
-	}, [ctx, selectedSymbol]);
-
-	const runCompilerDiagnosis = useCallback(
-		(textToAnalyze) => {
-			setDiagnosing(true);
-			safeRest(ctx, '/diagnose', {
-				method: 'POST',
-				body: { command: 'swift build', output: textToAnalyze, returncode: 1 },
-			})
-				.then((res) => {
-					if (res && Array.isArray(res.findings)) {
-						setDiagResult(res);
-					} else {
-						setDiagResult(localDiagnoseFallback(textToAnalyze));
-					}
-				})
-				.catch(() => {
-					setDiagResult(localDiagnoseFallback(textToAnalyze));
-				})
-				.finally(() => setDiagnosing(false));
-		},
-		[ctx],
-	);
+	const searching = searchQuery.isFetching;
+	const liveDoc = selectedSymbol ? docQuery.data || null : null;
+	const loadingDoc = docQuery.isFetching;
 
 	const filteredIdioms = useMemo(() => {
 		return idioms.filter((i) => {
@@ -2372,111 +2314,7 @@ function AppleDocsSidePane({ ctx }) {
 								className: 'text-[11px] font-semibold text-(--ui-text)',
 								children: 'Xcode / Swift Build Log',
 							}),
-							jsxs('div', {
-								className: 'flex items-center gap-1 flex-wrap',
-								children: COMPILER_PRESETS.map((preset) =>
-									jsx(
-										'button',
-										{
-											type: 'button',
-											onClick: () => {
-												setCompilerLog(preset.log);
-												runCompilerDiagnosis(preset.log);
-											},
-											className:
-												'px-1.5 py-0.5 rounded text-[10px] font-mono border border-(--ui-stroke-secondary) text-(--ui-text-tertiary) hover:text-(--ui-text) hover:bg-(--ui-hover) cursor-pointer truncate max-w-[150px]',
-											children: preset.label,
-										},
-										preset.label,
-									),
-								),
-							}),
-							jsx(Textarea, {
-								value: compilerLog,
-								onChange: (e) => setCompilerLog(e.target.value),
-								rows: 4,
-								className: 'font-mono text-[10px]',
-								placeholder: 'Paste swift build error output here…',
-							}),
-							jsx(Button, {
-								size: 'xs',
-								variant: 'secondary',
-								onClick: () => runCompilerDiagnosis(compilerLog),
-								children: diagnosing ? 'Diagnosing…' : 'Diagnose Errors',
-							}),
-							jsx(ScrollArea, {
-								className: 'flex-1 min-h-0',
-								children: jsxs('div', {
-									className: 'flex flex-col gap-1.5 pr-1',
-									children:
-										diagResult &&
-										diagResult.findings &&
-										diagResult.findings.length
-											? diagResult.findings.map((f, idx) =>
-													jsxs(
-														'div',
-														{
-															className:
-																'rounded-lg border border-(--ui-stroke-secondary) p-2 flex flex-col gap-1 bg-(--ui-surface-secondary)/30',
-															children: [
-																jsxs('div', {
-																	className:
-																		'flex items-center justify-between gap-1.5',
-																	children: [
-																		jsx('span', {
-																			className:
-																				'font-mono text-[10px] font-semibold text-(--ui-accent)',
-																			children: f.symbol,
-																		}),
-																		jsx(Badge, {
-																			variant: 'secondary',
-																			className: 'text-[9px]',
-																			children: f.framework,
-																		}),
-																	],
-																}),
-																jsx('p', {
-																	className:
-																		'text-[10px] text-(--ui-text-tertiary)',
-																	children: f.issue,
-																}),
-																f.suggestion
-																	? jsxs('div', {
-																			className:
-																				'flex items-center justify-between gap-1 pt-1 border-t border-(--ui-stroke-secondary)/40',
-																			children: [
-																				jsx('span', {
-																					className:
-																						'text-[10px] font-mono text-(--ui-text)',
-																					children: `→ ${f.suggestion}`,
-																				}),
-																				jsx(Button, {
-																					size: 'xs',
-																					variant: 'ghost',
-																					onClick: () =>
-																						insertIntoChatComposer(
-																							ctx,
-																							`@apple:${f.framework}/${f.suggestion}`,
-																							false,
-																						),
-																					children: 'Insert @apple:',
-																				}),
-																			],
-																		})
-																	: null,
-															],
-														},
-														idx,
-													),
-												)
-											: jsx('p', {
-													className:
-														'text-[10px] text-(--ui-text-tertiary) p-2',
-													children:
-														'No deprecated Apple symbols identified in output.',
-												}),
-								}),
-							}),
+							jsx(CompactCompilerLab, { ctx, rows: 4 }),
 						],
 					})
 				: null,
@@ -2486,106 +2324,46 @@ function AppleDocsSidePane({ ctx }) {
 
 const AppleDocsQuickPane = AppleDocsSidePane;
 
-/**
- * Second docked pane: the Xcode Error Hook Lab, standalone.
- *
- * Not decoration — the desktop pane shell treats a plugin that owns exactly ONE
- * pane as disposable: closing that pane calls `setPluginEnabled(pluginId,
- * false)`, which unregisters every contribution the plugin ever made (the
- * sessions-sidebar row, the /apple-docs page, the statusbar chip, the palette
- * commands). With two panes, closing either one only dismisses that pane, so
- * the Apple Docs entry point can never be nuked by closing the docked studio.
- */
-function AppleDocsCompilerPane({ ctx }) {
+function CompactCompilerLab({ ctx, rows = 4 }) {
+	const t = usePluginI18n(PLUGIN_ID);
 	const [compilerLog, setCompilerLog] = useState(COMPILER_PRESETS[0].log);
-	const [diagResult, setDiagResult] = useState(() =>
-		localDiagnoseFallback(COMPILER_PRESETS[0].log),
-	);
-	const [diagnosing, setDiagnosing] = useState(false);
-	const seqRef = useRef(0);
 
-	const runCompilerDiagnosis = useCallback(
-		(text) => {
-			const seq = ++seqRef.current;
-			const body = typeof text === 'string' && text ? text : compilerLog;
+	const diagnoseMutation = useMutation({
+		mutationFn: (textToAnalyze) => runPluginDiagnose(ctx, textToAnalyze),
+	});
 
-			setDiagnosing(true);
-			safeRest(ctx, '/diagnose', {
-				method: 'POST',
-				body: { command: 'swift build', output: body, returncode: 1 },
-			})
-				.then((res) => {
-					if (seq !== seqRef.current) return;
-					setDiagResult(
-						res && Array.isArray(res.findings)
-							? res
-							: localDiagnoseFallback(body),
-					);
-				})
-				.catch(() => {
-					if (seq === seqRef.current) setDiagResult(localDiagnoseFallback(body));
-				})
-				.finally(() => {
-					if (seq === seqRef.current) setDiagnosing(false);
-				});
-		},
-		[ctx, compilerLog],
+	const diagResult = useMemo(
+		() =>
+			diagnoseMutation.data?.result ||
+			localDiagnoseFallback(COMPILER_PRESETS[0].log),
+		[diagnoseMutation.data],
 	);
+	const diagnosing = diagnoseMutation.isPending;
+
+	const runCompilerDiagnosis = (text) => {
+		const body = typeof text === 'string' && text ? text : compilerLog;
+		diagnoseMutation.mutate(body);
+	};
 
 	const findings =
 		diagResult && Array.isArray(diagResult.findings) ? diagResult.findings : [];
 
 	return jsxs('div', {
-		className: 'h-full w-full flex flex-col overflow-hidden p-3 gap-2',
+		className: 'flex-1 min-h-0 flex flex-col gap-2',
 		children: [
-			jsxs('div', {
-				className: 'flex items-center justify-between gap-2 shrink-0',
-				children: [
-					jsxs('div', {
-						className: 'flex items-center gap-1.5 min-w-0',
-						children: [
-							jsx(Codicon, {
-								name: 'warning',
-								className: 'text-(--ui-accent) shrink-0',
-							}),
-							jsxs('div', {
-								className: 'min-w-0',
-								children: [
-									jsx('div', {
-										className:
-											'text-xs font-semibold text-(--ui-text) truncate',
-										children: 'Xcode Error Hook',
-									}),
-									jsx('div', {
-										className:
-											'text-[10px] text-(--ui-text-tertiary) truncate',
-										children: 'Offline deprecated-API migrations',
-									}),
-								],
-							}),
-						],
-					}),
-					jsx(Button, {
-						size: 'xs',
-						variant: 'ghost',
-						onClick: () => safeNavigate(STUDIO_ROUTE),
-						children: 'Studio ↗',
-					}),
-				],
-			}),
 			jsxs('div', {
 				className: 'flex items-center gap-1 flex-wrap shrink-0',
 				children: COMPILER_PRESETS.map((preset) =>
 					jsx(
-						'button',
+						Button,
 						{
-							type: 'button',
+							size: 'xs',
+							variant: 'outline',
 							onClick: () => {
 								setCompilerLog(preset.log);
 								runCompilerDiagnosis(preset.log);
 							},
-							className:
-								'px-1.5 py-0.5 rounded text-[10px] font-mono border border-(--ui-stroke-secondary) text-(--ui-text-tertiary) hover:text-(--ui-text) hover:bg-(--ui-hover) cursor-pointer truncate max-w-[150px]',
+							className: 'font-mono text-[10px] max-w-[150px] truncate',
 							children: preset.label,
 						},
 						preset.label,
@@ -2595,15 +2373,15 @@ function AppleDocsCompilerPane({ ctx }) {
 			jsx(Textarea, {
 				value: compilerLog,
 				onChange: (e) => setCompilerLog(e.target.value),
-				rows: 5,
+				rows,
 				className: 'font-mono text-[10px] shrink-0',
-				placeholder: 'Paste swift build / xcodebuild error output here…',
+				placeholder: t('compilerPlaceholder'),
 			}),
 			jsx(Button, {
 				size: 'xs',
 				variant: 'secondary',
 				onClick: () => runCompilerDiagnosis(compilerLog),
-				children: diagnosing ? 'Diagnosing…' : 'Diagnose Errors',
+				children: diagnosing ? t('diagnosing') : t('diagnoseBtn'),
 			}),
 			jsx(ScrollArea, {
 				className: 'flex-1 min-h-0',
@@ -2634,8 +2412,7 @@ function AppleDocsCompilerPane({ ctx }) {
 											}),
 											f.issue
 												? jsx('p', {
-														className:
-															'text-[10px] text-(--ui-text-tertiary)',
+														className: 'text-[10px] text-(--ui-text-tertiary)',
 														children: f.issue,
 													})
 												: null,
@@ -2670,8 +2447,7 @@ function AppleDocsCompilerPane({ ctx }) {
 							)
 						: jsx('p', {
 								className: 'text-[10px] text-(--ui-text-tertiary) p-2',
-								children:
-									'No deprecated Apple symbols identified in output.',
+								children: t('noDeprecated'),
 							}),
 				}),
 			}),
@@ -2679,11 +2455,86 @@ function AppleDocsCompilerPane({ ctx }) {
 	});
 }
 
-function AppleDocsStatusChip() {
+/**
+ * Second docked pane: the Xcode Error Hook Lab, standalone.
+ *
+ * Not decoration — the desktop pane shell treats a plugin that owns exactly ONE
+ * pane as disposable: closing that pane calls `setPluginEnabled(pluginId,
+ * false)`, which unregisters every contribution the plugin ever made (the
+ * sessions-sidebar row, the /apple-docs page, the statusbar chip, the palette
+ * commands). With two panes, closing either one only dismisses that pane, so
+ * the Apple Docs entry point can never be nuked by closing the docked studio.
+ */
+function AppleDocsCompilerPane({ ctx }) {
+	const t = usePluginI18n(PLUGIN_ID);
+
+	return jsxs('div', {
+		className: 'h-full w-full flex flex-col overflow-hidden p-3 gap-2',
+		children: [
+			jsxs('div', {
+				className: 'flex items-center justify-between gap-2 shrink-0',
+				children: [
+					jsxs('div', {
+						className: 'flex items-center gap-1.5 min-w-0',
+						children: [
+							jsx(Codicon, {
+								name: 'warning',
+								className: 'text-(--ui-accent) shrink-0',
+							}),
+							jsxs('div', {
+								className: 'min-w-0',
+								children: [
+									jsx('div', {
+										className:
+											'text-xs font-semibold text-(--ui-text) truncate',
+										children: t('compilerPaneTitle'),
+									}),
+									jsx('div', {
+										className: 'text-[10px] text-(--ui-text-tertiary) truncate',
+										children: t('compilerPaneSubtitle'),
+									}),
+								],
+							}),
+						],
+					}),
+					jsx(Button, {
+						size: 'xs',
+						variant: 'ghost',
+						onClick: () => safeNavigate(STUDIO_ROUTE),
+						children: 'Studio ↗',
+					}),
+				],
+			}),
+			jsx(CompactCompilerLab, { ctx, rows: 5 }),
+		],
+	});
+}
+
+function formatCompactCount(count) {
+	const num = Number(count) || 0;
+	if (num >= 1000) {
+		return `${(num / 1000).toFixed(1)}k`;
+	}
+	return String(num);
+}
+
+function AppleDocsStatusChip({ ctx }) {
+	const t = usePluginI18n(PLUGIN_ID);
+	const statusQuery = useQuery({
+		queryKey: [PLUGIN_ID, 'status'],
+		queryFn: () => fetchPluginStatus(ctx),
+		staleTime: 30_000,
+	});
+	const stats = statusQuery.data?.stats || FALLBACK_STATS;
+	const apiLive = Boolean(statusQuery.data?.apiLive);
+	const symbolCount = stats.symbolCount || FALLBACK_STATS.symbolCount;
+	const compact = formatCompactCount(symbolCount);
+
 	return jsx(Tip, {
-		content:
-			'Open Apple Developer Documentation side pane (95,899 offline symbols)',
-		children: jsx('button', {
+		label: apiLive
+			? t('statusTipLive', symbolCount.toLocaleString())
+			: t('statusTipOffline', symbolCount.toLocaleString()),
+		children: jsxs('button', {
 			type: 'button',
 			onClick: () => {
 				safeHaptic('tap');
@@ -2693,18 +2544,27 @@ function AppleDocsStatusChip() {
 			},
 			className:
 				'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] text-(--ui-text-tertiary) hover:text-(--ui-text) hover:bg-(--chrome-action-hover) transition-colors cursor-pointer',
-			children: ' 95.9k Docs',
+			children: [
+				jsx(StatusDot, {
+					tone: apiLive ? 'success' : 'neutral',
+					size: 'xs',
+				}),
+				` ${compact} Docs`,
+			],
 		}),
 	});
 }
 
 function registerContributions(ctx, entries) {
 	if (typeof ctx?.registerMany === 'function') {
-		ctx.registerMany(entries);
-	} else if (typeof ctx?.register === 'function') {
+		return ctx.registerMany(entries);
+	}
+	if (typeof ctx?.register === 'function') {
+		const disposers = [];
 		for (const entry of entries) {
 			try {
-				ctx.register(entry);
+				const dispose = ctx.register(entry);
+				if (typeof dispose === 'function') disposers.push(dispose);
 			} catch (err) {
 				console.warn(
 					`[apple-doc-plugin] failed to register contribution ${entry.id}:`,
@@ -2712,7 +2572,11 @@ function registerContributions(ctx, entries) {
 				);
 			}
 		}
+		return () => {
+			for (const dispose of disposers) dispose();
+		};
 	}
+	return undefined;
 }
 
 export default {
@@ -2721,67 +2585,58 @@ export default {
 	defaultEnabled: true,
 
 	register(ctx) {
+		if (ctx?.i18n?.register) {
+			ctx.i18n.register({
+				en: {
+					statusTipLive: (n) => `Apple Docs (${n} symbols, live backend)`,
+					statusTipOffline: (n) => `Apple Docs (${n} symbols, offline index)`,
+					compilerPaneTitle: 'Xcode Error Hook',
+					compilerPaneSubtitle: 'Offline deprecated-API migrations',
+					compilerPlaceholder:
+						'Paste swift build / xcodebuild error output here…',
+					diagnoseBtn: 'Diagnose Errors',
+					diagnosing: 'Diagnosing…',
+					noDeprecated: 'No deprecated Apple symbols identified in output.',
+				},
+				ar: {
+					statusTipLive: (n) => `توثيق أبل (${n} رمز، الخادم متصل)`,
+					statusTipOffline: (n) => `توثيق أبل (${n} رمز، فهرس محلي)`,
+					compilerPaneTitle: 'فاحص أخطاء Xcode',
+					compilerPaneSubtitle: 'ترحيل واجهات API القديمة بدون نت',
+					compilerPlaceholder: 'الصق مخرجات swift build أو xcodebuild هنا…',
+					diagnoseBtn: 'تحليل الأخطاء',
+					diagnosing: 'جاري التحليل…',
+					noDeprecated: 'ما فيه رموز أبل مهجورة في المخرجات.',
+				},
+			});
+		}
+
 		const statusbarArea =
-			(STATUSBAR_AREAS && STATUSBAR_AREAS.right) || 'statusbar.right';
-		registerContributions(ctx, [
+			(STATUSBAR_AREAS && STATUSBAR_AREAS.right) || 'statusBar.right';
+		return registerContributions(ctx, [
 			{
 				id: 'studio-route',
 				area: ROUTES_AREA,
-				path: STUDIO_ROUTE,
 				data: { path: STUDIO_ROUTE },
 				render: () => jsx(AppleDocsStudioPage, { ctx }),
 			},
 			{
-				// Route-AGNOSTIC on purpose. This row must stay in the sessions
-				// sidebar whether the full Studio page is open or the docked side
-				// pane is closed — it is the only way back in. The desktop app's
-				// sidebar reader consumes `data` only (`path`, `label`, `codicon`,
-				// `tier`) and treats a contribution-level `path` as a per-route
-				// visibility gate, so NO route field may sit at this level: the row
-				// would vanish the moment the app is anywhere but /apple-docs.
+				// Route-agnostic sidebar entry: `data.path` navigates to /apple-docs
+				// when clicked, without gating visibility to a single route.
 				id: 'sidebar-nav',
 				area: SIDEBAR_NAV_AREA,
 				order: 62,
-				label: 'Apple Docs',
-				title: 'Apple Docs',
-				codicon: 'book',
-				icon: 'book',
-				action: () => {
-					if (safeOpenPane('inspector-pane')) return;
-					safeNavigate(STUDIO_ROUTE);
-				},
-				onClick: () => {
-					if (safeOpenPane('inspector-pane')) return;
-					safeNavigate(STUDIO_ROUTE);
-				},
 				data: {
 					path: STUDIO_ROUTE,
 					label: 'Apple Docs',
-					title: 'Apple Docs',
 					codicon: 'book',
-					icon: 'book',
-					action: () => {
-						if (safeOpenPane('inspector-pane')) return;
-						safeNavigate(STUDIO_ROUTE);
-					},
-					onClick: () => {
-						if (safeOpenPane('inspector-pane')) return;
-						safeNavigate(STUDIO_ROUTE);
-					},
 				},
 			},
 			{
 				id: 'inspector-pane',
 				area: PANES_AREA,
 				title: 'Apple Docs',
-				placement: 'right',
-				width: '380px',
-				dock: {
-					pane: 'workspace',
-					pos: 'right',
-				},
 				data: {
-					title: 'Apple Docs',
 					placement: 'right',
 					width: '380px',
 					dock: {
@@ -2792,21 +2647,12 @@ export default {
 				render: () => jsx(AppleDocsSidePane, { ctx }),
 			},
 			{
-				// The SECOND pane. See `AppleDocsCompilerPane`: the pane shell
-				// disables a plugin outright when its last pane is closed, which
-				// would take the sidebar entry, page, statusbar chip and palette
-				// commands with it. Two panes make Close a dismiss instead.
+				// Second pane: keeps Close as a dismiss instead of disabling the
+				// entire plugin when the user closes one pane.
 				id: 'compiler-pane',
 				area: PANES_AREA,
 				title: 'Apple Docs: Xcode Errors',
-				placement: 'right',
-				width: '360px',
-				dock: {
-					pane: 'workspace',
-					pos: 'right',
-				},
 				data: {
-					title: 'Apple Docs: Xcode Errors',
 					placement: 'right',
 					width: '360px',
 					dock: {
@@ -2819,7 +2665,6 @@ export default {
 			{
 				id: 'inline-directive',
 				area: TRANSCRIPT_DIRECTIVE_AREA,
-				name: 'apple-doc',
 				data: {
 					name: 'apple-doc',
 					render: (props) =>
@@ -2830,51 +2675,19 @@ export default {
 							streaming: props?.streaming,
 						}),
 				},
-				render: (props) =>
-					jsx(InlineAppleDocCard, {
-						ctx,
-						attrs: props?.attrs || {},
-						sessionId: props?.sessionId,
-						streaming: props?.streaming,
-					}),
 			},
 			{
 				id: 'statusbar-chip',
 				area: statusbarArea,
 				order: 118,
-				render: () => jsx(AppleDocsStatusChip, {}),
+				render: () => jsx(AppleDocsStatusChip, { ctx }),
 			},
 			{
 				id: 'palette-open',
 				area: PALETTE_AREA,
-				label: 'Apple Docs: Open Documentation (Side Pane)',
-				title: 'Apple Docs: Open Documentation (Side Pane)',
-				keywords: [
-					'apple',
-					'swift',
-					'swiftui',
-					'ios',
-					'macos',
-					'docc',
-					'xcode',
-					'documentation',
-					'side',
-					'pane',
-				],
-				action: () => {
-					if (!safeOpenPane('inspector-pane')) {
-						safeNavigate(STUDIO_ROUTE);
-					}
-				},
-				run: () => {
-					if (!safeOpenPane('inspector-pane')) {
-						safeNavigate(STUDIO_ROUTE);
-					}
-				},
 				data: {
 					id: 'apple-docs.open-studio',
 					label: 'Apple Docs: Open Documentation (Side Pane)',
-					title: 'Apple Docs: Open Documentation (Side Pane)',
 					keywords: [
 						'apple',
 						'swift',
@@ -2887,11 +2700,6 @@ export default {
 						'side',
 						'pane',
 					],
-					action: () => {
-						if (!safeOpenPane('inspector-pane')) {
-							safeNavigate(STUDIO_ROUTE);
-						}
-					},
 					run: () => {
 						if (!safeOpenPane('inspector-pane')) {
 							safeNavigate(STUDIO_ROUTE);
@@ -2902,29 +2710,18 @@ export default {
 			{
 				id: 'palette-compiler',
 				area: PALETTE_AREA,
-				label: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
-				title: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
-				keywords: ['apple', 'xcode', 'swift', 'error', 'build', 'deprecated', 'compiler'],
-				action: () => {
-					if (!safeOpenPane('compiler-pane')) {
-						safeNavigate(STUDIO_ROUTE);
-					}
-				},
-				run: () => {
-					if (!safeOpenPane('compiler-pane')) {
-						safeNavigate(STUDIO_ROUTE);
-					}
-				},
 				data: {
 					id: 'apple-docs.open-compiler',
 					label: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
-					title: 'Apple Docs: Open Xcode Error Hook (Side Pane)',
-					keywords: ['apple', 'xcode', 'swift', 'error', 'build', 'deprecated', 'compiler'],
-					action: () => {
-						if (!safeOpenPane('compiler-pane')) {
-							safeNavigate(STUDIO_ROUTE);
-						}
-					},
+					keywords: [
+						'apple',
+						'xcode',
+						'swift',
+						'error',
+						'build',
+						'deprecated',
+						'compiler',
+					],
 					run: () => {
 						if (!safeOpenPane('compiler-pane')) {
 							safeNavigate(STUDIO_ROUTE);
@@ -2935,24 +2732,13 @@ export default {
 			{
 				id: 'palette-demo',
 				area: PALETTE_AREA,
-				label: 'Apple Docs: Load /apple-docs demo Showcase in Chat',
-				title: 'Apple Docs: Load /apple-docs demo Showcase in Chat',
-				keywords: ['apple', 'demo', 'hackathon', 'benchmark', 'swiftui'],
-				run: () => sendDemoCommandInChat(ctx),
 				data: {
 					id: 'apple-docs.run-demo',
 					label: 'Apple Docs: Load /apple-docs demo Showcase in Chat',
-					title: 'Apple Docs: Load /apple-docs demo Showcase in Chat',
 					keywords: ['apple', 'demo', 'hackathon', 'benchmark', 'swiftui'],
 					run: () => sendDemoCommandInChat(ctx),
 				},
 			},
 		]);
 	},
-
-	activate(ctx) {
-		return this.register(ctx);
-	},
-
-	deactivate() {},
 };
