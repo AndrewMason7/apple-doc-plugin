@@ -23,7 +23,6 @@ import {
 	GlyphSpinner as SdkGlyphSpinner,
 	haptic,
 	host,
-	Input,
 	PALETTE_AREA,
 	PANES_AREA,
 	ROUTES_AREA,
@@ -651,6 +650,9 @@ function useDebouncedValue(value, delayMs = 160) {
 async function fetchPluginStatus(ctx) {
 	try {
 		const res = await safeRest(ctx, '/status');
+		if (res && typeof res === 'object' && 'ok' in res) {
+			return { stats: res, apiLive: Boolean(res.ok) };
+		}
 		if (res && res.symbolCount) {
 			return { stats: res, apiLive: true };
 		}
@@ -676,10 +678,11 @@ async function fetchPluginSearch(ctx, { q, framework, mode, limit }) {
 			apiLive: false,
 		};
 	}
-	const effectiveQ = targetQ || framework;
+	const effectiveQ = targetQ || '*';
+	const effectiveMode = targetQ ? mode || 'semantic' : 'lexical';
 	const params = new URLSearchParams();
 	params.set('q', effectiveQ);
-	params.set('mode', mode || 'semantic');
+	params.set('mode', effectiveMode);
 	params.set('limit', String(limit || 25));
 	if (framework) params.set('framework', framework);
 	try {
@@ -688,7 +691,7 @@ async function fetchPluginSearch(ctx, { q, framework, mode, limit }) {
 			return { data: res, apiLive: true };
 		}
 	} catch {}
-	return { data: localSearchFallback(effectiveQ, framework), apiLive: false };
+	return { data: localSearchFallback(targetQ, framework), apiLive: false };
 }
 
 async function fetchPluginDoc(ctx, { path, framework }) {
@@ -774,17 +777,40 @@ async function sendDemoCommandInChat(ctx, sessionId = null) {
 	);
 }
 
-function InlineAppleDocCard({ ctx, attrs, sessionId }) {
-	const safeAttrs = attrs || {};
-	const title = safeAttrs.title || safeAttrs.symbol || 'Apple SDK Symbol';
-	const framework = safeAttrs.framework || 'SwiftUI';
-	const kind = safeAttrs.kind || 'symbol';
-	const path = safeAttrs.path || `/documentation/${framework.toLowerCase()}`;
-	const summary = safeAttrs.summary || safeAttrs.abstract || '';
-	const platforms = (safeAttrs.platforms || '')
-		.split(',')
-		.map((p) => p.trim())
-		.filter(Boolean);
+function InlineAppleDocCard({ ctx, attrs }) {
+	const safeAttrs = attrs && typeof attrs === 'object' ? attrs : {};
+	const rawTitle = safeAttrs.title ?? safeAttrs.symbol;
+	const title =
+		typeof rawTitle === 'string' && rawTitle.trim()
+			? rawTitle.trim()
+			: 'Apple SDK Symbol';
+	const framework =
+		typeof safeAttrs.framework === 'string' && safeAttrs.framework.trim()
+			? safeAttrs.framework.trim()
+			: 'SwiftUI';
+	const kind =
+		typeof safeAttrs.kind === 'string' && safeAttrs.kind.trim()
+			? safeAttrs.kind.trim()
+			: 'symbol';
+	const rawPath = safeAttrs.path;
+	const path =
+		typeof rawPath === 'string' && rawPath.trim()
+			? rawPath.trim().replace(/^doc:\/\/[^/]+/, '')
+			: `/documentation/${framework.toLowerCase()}`;
+	const summary =
+		typeof safeAttrs.summary === 'string'
+			? safeAttrs.summary
+			: typeof safeAttrs.abstract === 'string'
+				? safeAttrs.abstract
+				: '';
+	const platforms = Array.isArray(safeAttrs.platforms)
+		? safeAttrs.platforms.map((p) => String(p).trim()).filter(Boolean)
+		: typeof safeAttrs.platforms === 'string'
+			? safeAttrs.platforms
+					.split(',')
+					.map((p) => p.trim())
+					.filter(Boolean)
+			: [];
 	const webUrl = `https://developer.apple.com${path.startsWith('/') ? path : '/' + path}`;
 	const cleanRef = `@apple:${framework}/${title
 		.split('(')[0]
@@ -807,10 +833,10 @@ function InlineAppleDocCard({ ctx, attrs, sessionId }) {
 							}),
 							jsx('span', {
 								className:
-									'font-mono text-xs font-semibold text-(--ui-text) break-all',
+									'font-mono text-xs font-semibold text-(--ui-text-primary) break-all',
 								children: title,
 							}),
-							jsx(Badge, { variant: 'secondary', children: framework }),
+							jsx(Badge, { variant: 'muted', children: framework }),
 							jsx('span', {
 								className:
 									'text-[11px] uppercase tracking-wider text-(--ui-text-tertiary)',
@@ -917,7 +943,7 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 									className: 'flex items-center gap-2 flex-wrap',
 									children: [
 										jsx(Badge, {
-											variant: 'secondary',
+											variant: 'muted',
 											children: doc.framework,
 										}),
 										jsx('span', {
@@ -937,7 +963,7 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 								}),
 								jsx('h2', {
 									className:
-										'text-base font-semibold font-mono text-(--ui-text) break-all mt-1',
+										'text-base font-semibold font-mono text-(--ui-text-primary) break-all mt-1',
 									children: doc.title,
 								}),
 								jsx('span', {
@@ -952,7 +978,7 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 							children: [
 								jsx(Button, {
 									size: 'sm',
-									variant: 'secondary',
+									variant: 'muted',
 									onClick: () => insertIntoChatComposer(ctx, atToken, true),
 									children: `Insert ${atToken}`,
 								}),
@@ -979,7 +1005,7 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 								jsx('span', {
 									key: p,
 									className:
-										'text-[11px] px-2 py-0.5 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-input)/40 text-(--ui-text-secondary)',
+										'text-[11px] px-2 py-0.5 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/40 text-(--ui-text-secondary)',
 									children: p,
 								}),
 							),
@@ -989,7 +1015,7 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 				doc.deprecation
 					? jsxs('div', {
 							className:
-								'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-input)/60 p-3 text-xs text-(--ui-text)',
+								'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/60 p-3 text-xs text-(--ui-text-primary)',
 							children: [
 								jsx('div', {
 									className: 'font-semibold mb-1',
@@ -1027,7 +1053,7 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 								}),
 								jsx('pre', {
 									className:
-										'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-input)/50 p-3 text-xs font-mono text-(--ui-text) overflow-x-auto whitespace-pre-wrap',
+										'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/50 p-3 text-xs font-mono text-(--ui-text-primary) overflow-x-auto whitespace-pre-wrap',
 									children: declaration,
 								}),
 							],
@@ -1050,7 +1076,7 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 										jsx('div', {
 											key: idx,
 											className:
-												'rounded-md bg-(--ui-input)/30 px-3 py-2 font-mono text-[11px]',
+												'rounded-md bg-(--ui-bg-input)/30 px-3 py-2 font-mono text-[11px]',
 											children: paramLine,
 										}),
 									),
@@ -1076,7 +1102,8 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 												'rounded-lg border border-(--ui-stroke-secondary) p-3 flex flex-col gap-1',
 											children: [
 												jsx('div', {
-													className: 'text-xs font-semibold text-(--ui-text)',
+													className:
+														'text-xs font-semibold text-(--ui-text-primary)',
 													children: sec.title,
 												}),
 												...(sec.items || []).map((it) =>
@@ -1087,7 +1114,8 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 																'text-[11px] text-(--ui-text-secondary)',
 															children: [
 																jsx('span', {
-																	className: 'font-mono text-(--ui-text)',
+																	className:
+																		'font-mono text-(--ui-text-primary)',
 																	children: it.title,
 																}),
 																it.abstract ? ` — ${it.abstract}` : '',
@@ -1212,9 +1240,16 @@ function AppleDocsStudioPage({ ctx }) {
 	const diagnosing = diagnoseMutation.isPending;
 
 	useEffect(() => {
-		if (searchResult?.results?.length > 0) {
-			setSelectedSymbol(searchResult.results[0]);
+		const results = searchResult?.results || [];
+		if (results.length === 0) {
+			return;
 		}
+		setSelectedSymbol((prev) => {
+			if (prev && results.some((r) => r.path === prev.path)) {
+				return prev;
+			}
+			return results[0];
+		});
 	}, [searchResult]);
 
 	const runCompilerDiagnosis = (textToAnalyze) => {
@@ -1248,7 +1283,7 @@ function AppleDocsStudioPage({ ctx }) {
 										children: [
 											jsx('h1', {
 												className:
-													'text-base font-semibold text-(--ui-text) truncate',
+													'text-base font-semibold text-(--ui-text-primary) truncate',
 												children: 'Apple Developer Documentation',
 											}),
 											jsxs('span', {
@@ -1257,7 +1292,6 @@ function AppleDocsStudioPage({ ctx }) {
 												children: [
 													jsx(StatusDot, {
 														tone: apiLive ? 'success' : 'neutral',
-														size: 'xs',
 													}),
 													apiLive
 														? `${(stats.symbolCount || 95899).toLocaleString()} live`
@@ -1393,14 +1427,14 @@ function AppleDocsStudioPage({ ctx }) {
 									searchResult.expansion.matchedIdioms.length > 0
 										? jsxs('div', {
 												className:
-													'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-input)/40 px-3 py-2 text-xs flex items-center gap-2 flex-wrap',
+													'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/40 px-3 py-2 text-xs flex items-center gap-2 flex-wrap',
 												children: [
 													jsx(Codicon, {
 														name: 'sparkle',
 														className: 'text-(--ui-accent)',
 													}),
 													jsx('span', {
-														className: 'font-medium text-(--ui-text)',
+														className: 'font-medium text-(--ui-text-primary)',
 														children: `Idiom Expansion (${searchResult.expansion.matchedIdioms[0].ecosystem} → Apple):`,
 													}),
 													jsx('span', {
@@ -1429,9 +1463,12 @@ function AppleDocsStudioPage({ ctx }) {
 													(searchResult.results || []).length === 0 &&
 													!searching
 														? jsx(EmptyState, {
-																title: 'No matching symbols',
-																description:
-																	'Try a broader query or reset the framework filter.',
+																title: hasQuery
+																	? 'No matching symbols'
+																	: 'Search Apple Docs',
+																description: hasQuery
+																	? 'Try a broader query or reset the framework filter.'
+																	: 'Type a symbol name, wildcard (Grid*), or pick a framework.',
 															})
 														: null,
 													...(searchResult.results || []).map((item) => {
@@ -1443,8 +1480,8 @@ function AppleDocsStudioPage({ ctx }) {
 															{
 																onClick: () => setSelectedSymbol(item),
 																className: selected
-																	? 'w-full text-left px-3 py-2.5 rounded-lg bg-(--ui-hover) border border-(--ui-stroke-secondary) flex flex-col gap-1 cursor-pointer'
-																	: 'w-full text-left px-3 py-2.5 rounded-lg hover:bg-(--ui-hover)/60 border border-transparent flex flex-col gap-1 cursor-pointer',
+																	? 'w-full text-left px-3 py-2.5 rounded-lg bg-(--ui-control-hover-background) border border-(--ui-stroke-secondary) flex flex-col gap-1 cursor-pointer'
+																	: 'w-full text-left px-3 py-2.5 rounded-lg hover:bg-(--ui-control-hover-background)/60 border border-transparent flex flex-col gap-1 cursor-pointer',
 																children: jsxs(Fragment, {
 																	children: [
 																		jsxs('div', {
@@ -1453,12 +1490,12 @@ function AppleDocsStudioPage({ ctx }) {
 																			children: [
 																				jsx('span', {
 																					className:
-																						'font-mono text-xs font-medium text-(--ui-text) truncate',
+																						'font-mono text-xs font-medium text-(--ui-text-primary) truncate',
 																					children: item.title,
 																				}),
 																				jsx('span', {
 																					className:
-																						'text-[10px] px-1.5 py-0.5 rounded bg-(--ui-input)/60 text-(--ui-text-tertiary) shrink-0',
+																						'text-[10px] px-1.5 py-0.5 rounded bg-(--ui-bg-input)/60 text-(--ui-text-tertiary) shrink-0',
 																					children: item.framework,
 																				}),
 																			],
@@ -1508,7 +1545,8 @@ function AppleDocsStudioPage({ ctx }) {
 										jsxs('div', {
 											children: [
 												jsx('h2', {
-													className: 'text-sm font-semibold text-(--ui-text)',
+													className:
+														'text-sm font-semibold text-(--ui-text-primary)',
 													children: 'Cross-Framework Idiom Rosetta Stone',
 												}),
 												jsx('p', {
@@ -1537,7 +1575,7 @@ function AppleDocsStudioPage({ ctx }) {
 											'div',
 											{
 												className:
-													'rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-input)/25 p-4 flex flex-col gap-2.5',
+													'rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/25 p-4 flex flex-col gap-2.5',
 												children: [
 													jsxs('div', {
 														className:
@@ -1547,12 +1585,12 @@ function AppleDocsStudioPage({ ctx }) {
 																className: 'flex items-center gap-2',
 																children: [
 																	jsx(Badge, {
-																		variant: 'secondary',
+																		variant: 'muted',
 																		children: entry.ecosystem,
 																	}),
 																	jsx('span', {
 																		className:
-																			'font-mono text-sm font-semibold text-(--ui-text)',
+																			'font-mono text-sm font-semibold text-(--ui-text-primary)',
 																		children: entry.idiom,
 																	}),
 																],
@@ -1589,7 +1627,7 @@ function AppleDocsStudioPage({ ctx }) {
 																		setActiveTab('explorer');
 																	},
 																	className:
-																		'px-2 py-0.5 rounded font-mono text-[11px] border border-(--ui-stroke-secondary) bg-(--ui-input)/50 text-(--ui-accent) hover:bg-(--ui-hover) cursor-pointer',
+																		'px-2 py-0.5 rounded font-mono text-[11px] border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/50 text-(--ui-accent) hover:bg-(--ui-control-hover-background) cursor-pointer',
 																	children: sym,
 																},
 																sym,
@@ -1599,7 +1637,7 @@ function AppleDocsStudioPage({ ctx }) {
 													entry.snippet
 														? jsx('pre', {
 																className:
-																	'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-input)/50 p-2.5 text-[11px] font-mono text-(--ui-text) overflow-x-auto',
+																	'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/50 p-2.5 text-[11px] font-mono text-(--ui-text-primary) overflow-x-auto',
 																children: entry.snippet,
 															})
 														: null,
@@ -1627,7 +1665,8 @@ function AppleDocsStudioPage({ ctx }) {
 										jsxs('div', {
 											children: [
 												jsx('h2', {
-													className: 'text-sm font-semibold text-(--ui-text)',
+													className:
+														'text-sm font-semibold text-(--ui-text-primary)',
 													children:
 														'Automatic Swift & Xcode Compiler Grounding Hook (`transform_terminal_output`)',
 												}),
@@ -1677,7 +1716,7 @@ function AppleDocsStudioPage({ ctx }) {
 												}),
 												jsx(Button, {
 													size: 'sm',
-													variant: 'secondary',
+													variant: 'muted',
 													onClick: () => runCompilerDiagnosis(compilerLog),
 													children: diagnosing
 														? 'Analyzing…'
@@ -1694,7 +1733,7 @@ function AppleDocsStudioPage({ ctx }) {
 											'div',
 											{
 												className:
-													'rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-input)/30 p-4 flex flex-col gap-2',
+													'rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/30 p-4 flex flex-col gap-2',
 												children: [
 													jsxs('div', {
 														className:
@@ -1719,7 +1758,7 @@ function AppleDocsStudioPage({ ctx }) {
 																		children: f.replacement,
 																	}),
 																	jsx(Badge, {
-																		variant: 'secondary',
+																		variant: 'muted',
 																		children: f.framework,
 																	}),
 																],
@@ -1749,7 +1788,7 @@ function AppleDocsStudioPage({ ctx }) {
 													f.fixSnippet
 														? jsx('pre', {
 																className:
-																	'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-input)/50 p-2.5 text-[11px] font-mono text-(--ui-text) overflow-x-auto',
+																	'rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/50 p-2.5 text-[11px] font-mono text-(--ui-text-primary) overflow-x-auto',
 																children: f.fixSnippet,
 															})
 														: null,
@@ -1794,11 +1833,11 @@ function AppleDocsStudioPage({ ctx }) {
 											'div',
 											{
 												className:
-													'rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-input)/30 p-4 flex flex-col gap-1',
+													'rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-input)/30 p-4 flex flex-col gap-1',
 												children: [
 													jsx('span', {
 														className:
-															'text-lg font-bold font-mono text-(--ui-text)',
+															'text-lg font-bold font-mono text-(--ui-text-primary)',
 														children: kpi.val,
 													}),
 													jsx('span', {
@@ -1837,7 +1876,7 @@ function AppleDocsStudioPage({ ctx }) {
 														setActiveTab('explorer');
 													},
 													className:
-														'rounded-lg border border-(--ui-stroke-secondary) p-3 hover:bg-(--ui-hover) flex flex-col gap-1.5 text-left cursor-pointer',
+														'rounded-lg border border-(--ui-stroke-secondary) p-3 hover:bg-(--ui-control-hover-background) flex flex-col gap-1.5 text-left cursor-pointer',
 													children: jsxs(Fragment, {
 														children: [
 															jsxs('div', {
@@ -1845,7 +1884,8 @@ function AppleDocsStudioPage({ ctx }) {
 																	'flex items-center justify-between text-xs',
 																children: [
 																	jsx('span', {
-																		className: 'font-semibold text-(--ui-text)',
+																		className:
+																			'font-semibold text-(--ui-text-primary)',
 																		children: fw.name,
 																	}),
 																	jsx('span', {
@@ -1857,7 +1897,7 @@ function AppleDocsStudioPage({ ctx }) {
 															}),
 															jsx('div', {
 																className:
-																	'h-1.5 w-full rounded-full bg-(--ui-input) overflow-hidden',
+																	'h-1.5 w-full rounded-full bg-(--ui-bg-input) overflow-hidden',
 																children: jsx('div', {
 																	className:
 																		'h-full rounded-full bg-(--ui-accent)',
@@ -1934,11 +1974,11 @@ function AppleDocsSidePane({ ctx }) {
 
 	return jsxs('div', {
 		className:
-			'h-full w-full flex flex-col overflow-hidden bg-(--ui-surface) text-(--ui-text)',
+			'h-full w-full flex flex-col overflow-hidden bg-(--ui-surface-background) text-(--ui-text-primary)',
 		children: [
 			jsxs('div', {
 				className:
-					'px-3 py-2.5 border-b border-(--ui-stroke-secondary) flex items-center justify-between gap-2 shrink-0 bg-(--ui-surface)',
+					'px-3 py-2.5 border-b border-(--ui-stroke-secondary) flex items-center justify-between gap-2 shrink-0 bg-(--ui-surface-background)',
 				children: [
 					jsxs('div', {
 						className: 'flex items-center gap-1.5 min-w-0',
@@ -2062,7 +2102,7 @@ function AppleDocsSidePane({ ctx }) {
 													'div',
 													{
 														className:
-															'rounded-lg border border-(--ui-stroke-secondary) p-2.5 flex flex-col gap-1.5 hover:bg-(--ui-hover)/50 transition-colors',
+															'rounded-lg border border-(--ui-stroke-secondary) p-2.5 flex flex-col gap-1.5 hover:bg-(--ui-control-hover-background)/50 transition-colors',
 														children: [
 															jsxs('div', {
 																className:
@@ -2071,11 +2111,11 @@ function AppleDocsSidePane({ ctx }) {
 																children: [
 																	jsx('span', {
 																		className:
-																			'font-mono text-[11px] font-semibold text-(--ui-text) truncate',
+																			'font-mono text-[11px] font-semibold text-(--ui-text-primary) truncate',
 																		children: it.title,
 																	}),
 																	jsx(Badge, {
-																		variant: 'secondary',
+																		variant: 'muted',
 																		className: 'text-[9px] shrink-0',
 																		children: it.framework,
 																	}),
@@ -2199,8 +2239,15 @@ function CompactCompilerLab({ ctx, rows = 4 }) {
 				children: jsxs('div', {
 					className: 'flex flex-col gap-1.5 pr-1',
 					children: findings.length
-						? findings.map((f, idx) =>
-								jsxs(
+						? findings.map((f, idx) => {
+								const replacementText = f.replacement || f.suggestion || '';
+								const reasonText = f.reason || f.issue || '';
+								const cleanInsertToken = replacementText
+									.split('/')[0]
+									.replace(/^@/, '')
+									.split('(')[0]
+									.trim();
+								return jsxs(
 									'div',
 									{
 										className:
@@ -2215,47 +2262,56 @@ function CompactCompilerLab({ ctx, rows = 4 }) {
 														children: f.symbol,
 													}),
 													jsx(Badge, {
-														variant: 'secondary',
+														variant: 'muted',
 														className: 'text-[9px] shrink-0',
 														children: f.framework,
 													}),
 												],
 											}),
-											f.issue
+											reasonText
 												? jsx('p', {
 														className: 'text-[10px] text-(--ui-text-tertiary)',
-														children: f.issue,
+														children: reasonText,
 													})
 												: null,
-											f.suggestion
+											replacementText
 												? jsxs('div', {
 														className:
 															'flex items-center justify-between gap-1 pt-1 border-t border-(--ui-stroke-secondary)/40',
 														children: [
 															jsx('span', {
 																className:
-																	'text-[10px] font-mono text-(--ui-text) truncate',
-																children: `→ ${f.suggestion}`,
+																	'text-[10px] font-mono text-(--ui-text-primary) truncate',
+																children: `→ ${replacementText}`,
 															}),
-															jsx(Button, {
-																size: 'xs',
-																variant: 'ghost',
-																onClick: () =>
-																	insertIntoChatComposer(
-																		ctx,
-																		`@apple:${f.framework}/${f.suggestion}`,
-																		false,
-																	),
-																children: 'Insert @apple:',
-															}),
+															cleanInsertToken
+																? jsx(Button, {
+																		size: 'xs',
+																		variant: 'ghost',
+																		onClick: () =>
+																			insertIntoChatComposer(
+																				ctx,
+																				`@apple:${f.framework}/${cleanInsertToken}`,
+																				false,
+																			),
+																		children: 'Insert @apple:',
+																	})
+																: null,
 														],
+													})
+												: null,
+											f.fixSnippet
+												? jsx('pre', {
+														className:
+															'rounded bg-(--ui-bg-input)/50 p-1.5 text-[9px] font-mono text-(--ui-text-secondary) overflow-x-auto',
+														children: f.fixSnippet,
 													})
 												: null,
 										],
 									},
 									`finding-${idx}`,
-								),
-							)
+								);
+							})
 						: jsx('p', {
 								className: 'text-[10px] text-(--ui-text-tertiary) p-2',
 								children: t('noDeprecated'),
@@ -2297,7 +2353,7 @@ function AppleDocsCompilerPane({ ctx }) {
 								children: [
 									jsx('div', {
 										className:
-											'text-xs font-semibold text-(--ui-text) truncate',
+											'text-xs font-semibold text-(--ui-text-primary) truncate',
 										children: t('compilerPaneTitle'),
 									}),
 									jsx('div', {
@@ -2354,11 +2410,10 @@ function AppleDocsStatusChip({ ctx }) {
 				}
 			},
 			className:
-				'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] text-(--ui-text-tertiary) hover:text-(--ui-text) hover:bg-(--chrome-action-hover) transition-colors cursor-pointer',
+				'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors cursor-pointer',
 			children: [
 				jsx(StatusDot, {
 					tone: apiLive ? 'success' : 'neutral',
-					size: 'xs',
 				}),
 				` ${compact} Docs`,
 			],

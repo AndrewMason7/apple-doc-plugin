@@ -32,12 +32,24 @@ test('desktop/plugin.js obeys strict @hermes/plugin-sdk static invariants', () =
 		);
 	}
 
-	// 2. No hardcoded color literals
+	// 2. No hardcoded color literals or invalid theme CSS variables
 	assert.equal(
 		/#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(|\bhsla?\s*\(/.test(source),
 		false,
 		'desktop/plugin.js must use var(--ui-*) theme tokens, never hardcoded colors',
 	);
+	for (const badToken of [
+		'(--ui-text)',
+		'(--ui-input)',
+		'(--ui-hover)',
+		'(--ui-surface)',
+	]) {
+		assert.equal(
+			source.includes(badToken),
+			false,
+			`desktop/plugin.js must not use non-existent CSS variable ${badToken}`,
+		);
+	}
 
 	// 3. No forbidden legacy or browser-global escapes
 	for (const forbidden of [
@@ -296,6 +308,21 @@ test('desktop/plugin.js registers valid HermesPlugin contributions and scoped pa
 		false,
 		'Side pane must not auto-search NavigationSplitView when query is empty',
 	);
+
+	// Render compiler-pane, statusbar-chip, and inline-directive (including malformed non-string attrs)
+	const compilerPane = registered.find((c) => c.id === 'compiler-pane');
+	const compilerEl = compilerPane.render();
+	assert.ok(compilerEl.type(compilerEl.props));
+
+	const statusChip = registered.find((c) => c.id === 'statusbar-chip');
+	const statusEl = statusChip.render();
+	assert.ok(statusEl.type(statusEl.props));
+
+	const inlineDir = registered.find((c) => c.id === 'inline-directive');
+	const inlineEl = inlineDir.data.render({
+		attrs: { title: 'Button', platforms: ['iOS', 'macOS'], path: 123 },
+	});
+	assert.ok(inlineEl.type(inlineEl.props));
 
 	delete globalThis.__APPLE_DOC_TEST_STUBS__;
 	delete globalThis.__SDK_EXPORTS__;
