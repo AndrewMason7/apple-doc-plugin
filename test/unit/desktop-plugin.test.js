@@ -291,6 +291,11 @@ test('desktop/plugin.js registers valid HermesPlugin contributions and scoped pa
 	// Side pane must be single-purpose Quick Lookup (no SegmentedControl multi-tab switcher)
 	const inspectorText = JSON.stringify(inspectorTree);
 	assert.equal(inspectorText.includes('Rosetta'), false);
+	assert.equal(
+		inspectorText.includes('NavigationSplitView'),
+		false,
+		'Side pane must not auto-search NavigationSplitView when query is empty',
+	);
 
 	delete globalThis.__APPLE_DOC_TEST_STUBS__;
 	delete globalThis.__SDK_EXPORTS__;

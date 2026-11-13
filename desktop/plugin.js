@@ -664,9 +664,16 @@ async function fetchPluginIdioms(ctx) {
 }
 
 async function fetchPluginSearch(ctx, { q, framework, mode, limit }) {
-	const targetQ = (q || '').trim() || 'NavigationSplitView';
+	const targetQ = (q || '').trim();
+	if (!targetQ && !framework) {
+		return {
+			data: { results: [], latencyMs: 0, mode: mode || 'semantic' },
+			apiLive: false,
+		};
+	}
+	const effectiveQ = targetQ || framework;
 	const params = new URLSearchParams();
-	params.set('q', targetQ);
+	params.set('q', effectiveQ);
 	params.set('mode', mode || 'semantic');
 	params.set('limit', String(limit || 25));
 	if (framework) params.set('framework', framework);
@@ -676,7 +683,7 @@ async function fetchPluginSearch(ctx, { q, framework, mode, limit }) {
 			return { data: res, apiLive: true };
 		}
 	} catch {}
-	return { data: localSearchFallback(targetQ, framework), apiLive: false };
+	return { data: localSearchFallback(effectiveQ, framework), apiLive: false };
 }
 
 async function fetchPluginDoc(ctx, { path, framework }) {
@@ -1125,15 +1132,16 @@ const TOP_FRAMEWORK_PILLS = [
 function AppleDocsStudioPage({ ctx }) {
 	const [activeTab, setActiveTab] = useState('explorer');
 
-	const [query, setQuery] = useState('NavigationSplitView');
+	const [query, setQuery] = useState('');
 	const [frameworkFilter, setFrameworkFilter] = useState('');
 	const [searchMode, setSearchMode] = useState('semantic');
-	const [selectedSymbol, setSelectedSymbol] = useState(FALLBACK_SYMBOLS[0]);
+	const [selectedSymbol, setSelectedSymbol] = useState(null);
 
 	const [ecoFilter, setEcoFilter] = useState('all');
 	const [compilerLog, setCompilerLog] = useState(COMPILER_PRESETS[0].log);
 
 	const debouncedQuery = useDebouncedValue(query, 160);
+	const hasQuery = Boolean(debouncedQuery.trim() || frameworkFilter);
 
 	const statusQuery = useQuery({
 		queryKey: [PLUGIN_ID, 'status'],
@@ -1161,6 +1169,7 @@ function AppleDocsStudioPage({ ctx }) {
 				mode: searchMode,
 				limit: 25,
 			}),
+		enabled: hasQuery,
 		staleTime: 15_000,
 		placeholderData: (prev) => prev,
 	});
@@ -1187,9 +1196,11 @@ function AppleDocsStudioPage({ ctx }) {
 	const idioms = idiomsQuery.data || FALLBACK_IDIOMS;
 	const searchResult = useMemo(
 		() =>
-			searchQuery.data?.data ||
-			localSearchFallback(debouncedQuery, frameworkFilter),
-		[searchQuery.data, debouncedQuery, frameworkFilter],
+			hasQuery
+				? searchQuery.data?.data ||
+					localSearchFallback(debouncedQuery, frameworkFilter)
+				: { results: [], latencyMs: 0 },
+		[hasQuery, searchQuery.data, debouncedQuery, frameworkFilter],
 	);
 	const searching = searchQuery.isFetching;
 	const liveDoc = docQuery.data || null;
@@ -1902,7 +1913,8 @@ function AppleDocsSidePane({ ctx }) {
 	const [selectedSymbol, setSelectedSymbol] = useState(null);
 
 	const debouncedQ = useDebouncedValue(q, 180);
-	const targetQ = debouncedQ.trim() || 'NavigationSplitView';
+	const targetQ = debouncedQ.trim();
+	const hasQuery = Boolean(targetQ || framework);
 
 	const searchQuery = useQuery({
 		queryKey: [PLUGIN_ID, 'search', targetQ, framework, searchMode, 15],
@@ -1913,6 +1925,7 @@ function AppleDocsSidePane({ ctx }) {
 				mode: searchMode,
 				limit: 15,
 			}),
+		enabled: hasQuery,
 		staleTime: 15_000,
 		placeholderData: (prev) => prev,
 	});
@@ -1934,10 +1947,12 @@ function AppleDocsSidePane({ ctx }) {
 
 	const items = useMemo(
 		() =>
-			searchQuery.data?.data?.results?.length
-				? searchQuery.data.data.results
-				: localSearchFallback(targetQ, framework).results,
-		[searchQuery.data, targetQ, framework],
+			hasQuery
+				? searchQuery.data?.data?.results?.length
+					? searchQuery.data.data.results
+					: localSearchFallback(targetQ, framework).results
+				: [],
+		[hasQuery, searchQuery.data, targetQ, framework],
 	);
 	const searching = searchQuery.isFetching;
 	const liveDoc = selectedSymbol ? docQuery.data || null : null;
@@ -2130,8 +2145,12 @@ function AppleDocsSidePane({ ctx }) {
 											}),
 										})
 									: jsx(EmptyState, {
-											title: 'No matching symbols',
-											description: 'Try a broader query or switch framework.',
+											title: hasQuery
+												? 'No matching symbols'
+												: 'Search Apple Docs',
+											description: hasQuery
+												? 'Try a broader query or switch framework.'
+												: 'Type a symbol name, wildcard (Grid*), or React idiom.',
 										}),
 							}),
 						],
