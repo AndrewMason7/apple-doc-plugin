@@ -544,12 +544,17 @@ function localSearchFallback(query, framework) {
 			offlineFallback: true,
 		};
 
-	const matchedIdioms = FALLBACK_IDIOMS.filter(
-		(i) =>
-			i.idiom.toLowerCase().includes(q) ||
-			q.includes(i.idiom.toLowerCase().split(' ')[0]) ||
-			i.description.toLowerCase().includes(q),
-	);
+	const matchedIdioms =
+		q.length >= 3
+			? FALLBACK_IDIOMS.filter((i) => {
+					const idiomLower = i.idiom.toLowerCase();
+					const firstWord = idiomLower.split(' ')[0];
+					return (
+						idiomLower.includes(q) ||
+						(firstWord.length >= 3 && q.includes(firstWord))
+					);
+				})
+			: [];
 	const mappedTokens = matchedIdioms.flatMap((i) =>
 		i.appleSymbols.map((s) => s.replace(/^@/, '').split('(')[0].toLowerCase()),
 	);
@@ -1948,7 +1953,7 @@ function AppleDocsSidePane({ ctx }) {
 	const items = useMemo(
 		() =>
 			hasQuery
-				? searchQuery.data?.data?.results?.length
+				? Array.isArray(searchQuery.data?.data?.results)
 					? searchQuery.data.data.results
 					: localSearchFallback(targetQ, framework).results
 				: [],
