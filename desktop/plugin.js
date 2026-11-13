@@ -1109,18 +1109,6 @@ function SymbolInspectorDetail({ ctx, item, liveDoc, loadingDoc }) {
 	});
 }
 
-const QUICK_QUERIES = [
-	{ label: 'Navigation*View', q: 'Navigation*View', mode: 'lexical' },
-	{
-		label: 'prevent sheet swipe dismiss',
-		q: 'prevent sheet swipe dismiss',
-		mode: 'semantic',
-	},
-	{ label: 'React useEffect', q: 'useEffect', mode: 'semantic' },
-	{ label: '@Observable', q: 'Observable', mode: 'semantic' },
-	{ label: 'Keychain SecItemAdd', q: 'SecItemAdd', mode: 'lexical' },
-];
-
 const TOP_FRAMEWORK_PILLS = [
 	'',
 	'SwiftUI',
@@ -1399,25 +1387,6 @@ function AppleDocsStudioPage({ ctx }) {
 													: `${(searchResult.results || []).length} hits · ${searchResult.latencyMs ?? 1.5} ms`,
 											}),
 										],
-									}),
-									jsxs('div', {
-										className: 'flex items-center gap-1.5 flex-wrap',
-										children: QUICK_QUERIES.map((preset) =>
-											jsx(
-												Button,
-												{
-													size: 'xs',
-													variant: 'ghost',
-													onClick: () => {
-														setSearchMode(preset.mode);
-														setQuery(preset.q);
-													},
-													className: 'font-mono text-[10px]',
-													children: preset.label,
-												},
-												preset.label,
-											),
-										),
 									}),
 									searchResult.expansion &&
 									Array.isArray(searchResult.expansion.matchedIdioms) &&
