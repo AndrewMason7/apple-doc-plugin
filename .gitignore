@@ -109,6 +109,8 @@ test-*.js
 data/apple-docs.runtime.db*
 
 .superpowers/
+docs/superpowers/
+superpowers/
 
 # Root build output only — dashboard/dist/index.js is a shipped plugin payload
 # and must NOT be ignored (bare `dist` swallowed it and 404'd the dashboard tab).
